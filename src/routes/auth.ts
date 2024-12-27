@@ -1,4 +1,4 @@
-import { Request, Response, Router } from 'express';
+import { Request, RequestHandler, Response, Router } from 'express';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 
@@ -48,7 +48,40 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
     // Generate a JWT token
     const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '1h' });
 
-    res.status(200).json({ token });
+    // Set the token as an httpOnly cookie
+    res.cookie('token', token, {
+        httpOnly: true, // Prevents JavaScript access
+        secure: process.env.NODE_ENV === 'production', // Requires HTTPS in production
+        sameSite: 'strict', // CSRF protection
+        maxAge: 3600000, // 1 hour
+    });
+
+    res.status(200).json({ message: 'Login successful!' });
 });
+
+// Logout route
+router.post('/logout', (req: Request, res: Response): void => {
+    // Clear the token cookie
+    res.clearCookie('token');
+    res.status(200).json({ message: 'Logged out successfully!' });
+});
+
+// Token verification middleware
+export const authenticateToken: RequestHandler = (req, res, next) => {
+    const token = req.cookies?.token; // Read the token from cookies
+
+    if (!token) {
+        res.status(401).json({ message: 'Unauthorized: Token missing' });
+        return;
+    }
+
+    try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        (req as any).user = decoded; // Attach the decoded token to the req object
+        next();
+    } catch (err) {
+        res.status(403).json({ message: 'Forbidden: Invalid token' });
+    }
+};
 
 export default router;
