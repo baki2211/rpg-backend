@@ -17,17 +17,17 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
     }
 
     try {
-        // Hash the password
         const hashedPassword = await bcrypt.hash(password, 10);
-
-        // Insert the user into the database
-        await query('INSERT INTO users (username, password) VALUES ($1, $2)', [username, hashedPassword]);
+        const result = await query(
+            'INSERT INTO users (username, password) VALUES ($1, $2)',
+            [username, hashedPassword]
+        );
 
         res.status(201).json({ message: 'User registered successfully' });
     } catch (error) {
         console.error('Error registering user:', error);
         if ((error as any).code === '23505') {
-            res.status(409).json({ message: 'Username already exists' }); // Handle unique constraint violation
+            res.status(409).json({ message: 'Username already exists' });
         } else {
             res.status(500).json({ message: 'Internal server error' });
         }
