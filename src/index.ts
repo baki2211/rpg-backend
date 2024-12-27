@@ -13,14 +13,14 @@ const app: Application = express();
 const PORT = process.env.PORT || 5001;
 
 // Middleware
-app.use(cors());
-app.use(cookieParser()); // Required for parsing cookies in requests
-app.use(bodyParser.json()); // Required for parsing JSON in requests
-app.use(bodyParser.urlencoded({ extended: true })); // Required for parsing form data in requests
+app.use(cors({origin: 'http://localhost:3000', credentials: true, methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],}));
+app.use(cookieParser()); 
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
 
 // Routes
 app.get('/home', router);
-app.use('/api/auth', authRoutes); // Register authentication routes
+app.use('/api/auth', authRoutes);
 app.get('/api/protected', authenticateToken, (req, res) => {
     const user = (req as any).user;
     res.status(200).json({ message: `Welcome, ${user.username}!` });
