@@ -2,8 +2,10 @@ import { Request, RequestHandler, Response, Router } from 'express';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import { query } from '../db';
+import { UserService } from '../services/UserService';
 
 const router = Router();
+const userService = new UserService();
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your_secret_key';
 
@@ -17,20 +19,17 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
     }
 
     try {
-        const hashedPassword = await bcrypt.hash(password, 10);
-        const result = await query(
-            'INSERT INTO users (username, password) VALUES ($1, $2)',
-            [username, hashedPassword]
-        );
+        const existingUser = await userService.findByUsername(username);
+        if (existingUser) {
+            res.status(409).json({ message: 'Username already exists' });
+            return;
+        }
 
-        res.status(201).json({ message: 'User registered successfully' });
+        const newUser = await userService.register(username, password);
+        res.status(201).json({ message: 'User registered successfully', user: newUser });
     } catch (error) {
         console.error('Error registering user:', error);
-        if ((error as any).code === '23505') {
-            res.status(409).json({ message: 'Username already exists' });
-        } else {
-            res.status(500).json({ message: 'Internal server error' });
-        }
+        res.status(500).json({ message: 'Internal server error' });
     }
 });
 
@@ -39,23 +38,18 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
     const { username, password } = req.body;
 
     try {
-        // Find the user in the database
-        const result = await query('SELECT * FROM users WHERE username = $1', [username]);
-        const user = result.rows[0];
-
-        if (!user) {
+        const user = await userService.findByUsername(username);
+        if (!user || !user.password) {
             res.status(401).json({ message: 'Invalid username or password' });
             return;
         }
 
-        // Verify the password
-        const isPasswordValid = await bcrypt.compare(password, user.password);
+        const isPasswordValid = await userService.verifyPassword(password, user.password);
         if (!isPasswordValid) {
             res.status(401).json({ message: 'Invalid username or password' });
             return;
         }
 
-        // Generate a JWT token
         const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '1h' });
 
         // Set the token as a cookie
@@ -74,7 +68,6 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
 
 // Logout route
 router.post('/logout', (req: Request, res: Response): void => {
-    // Clear the token cookie
     res.clearCookie('token');
     res.status(200).json({ message: 'Logged out successfully!' });
 });
