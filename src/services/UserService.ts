@@ -6,12 +6,13 @@ export class UserService {
     private userRepository = AppDataSource.getRepository(User);
 
     // Register a new user
-    async register(username: string, password: string): Promise<User> {
+    async register(username: string, password: string, role: string): Promise<User> {
         const hashedPassword = await bcrypt.hash(password, 10);
 
         const newUser = this.userRepository.create({
             username,
             password: hashedPassword,
+            role,
         });
 
         return this.userRepository.save(newUser); // Save to the database

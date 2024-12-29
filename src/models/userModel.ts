@@ -18,6 +18,13 @@ export class User {
     })
     password!: string;
 
+    @Column({
+        type: 'varchar',
+        length: 50,
+        default: 'user',
+    })
+    role!: string;
+
     @CreateDateColumn({ type: 'timestamp with time zone' })
     createdAt!: Date;
 
