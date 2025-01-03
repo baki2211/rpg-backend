@@ -1,0 +1,15 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "npm",
+			"script": "install typeorm-ts-node-esm",
+			"group": "build",
+			"problemMatcher": [],
+			"label": "npm: install typeorm-ts-node-esm",
+			"presentation": {
+				"reveal": "silent"
+			}
+		}
+	]
+}

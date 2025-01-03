@@ -1,6 +1,6 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import { query } from '../db';
+import { query } from '../db.js';
 
 export interface IUser {
     id?: number;

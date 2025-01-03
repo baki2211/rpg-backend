@@ -1,6 +1,6 @@
 import express, { Request, Response } from 'express';
 import cookieParser from 'cookie-parser';
-import authRoutes, { authenticateToken } from '../routes/auth';
+import authRoutes, { authenticateToken } from '../routes/auth.js';
 
 const app = express();
 

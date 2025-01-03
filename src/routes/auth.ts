@@ -1,8 +1,6 @@
 import { Request, RequestHandler, Response, Router } from 'express';
 import jwt from 'jsonwebtoken';
-import bcrypt from 'bcrypt';
-import { query } from '../db';
-import { UserService } from '../services/UserService';
+import { UserService } from '../services/UserService.js';
 
 const router = Router();
 const userService = new UserService();
@@ -55,8 +53,8 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
         // Set the token as a cookie
         res.cookie('token', token, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'none',
+            secure: process.env.NODE_ENV === 'production', // Set 'secure' only in production
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // Use 'none' in production, 'lax' in dev
         });
 
         res.status(200).json({ message: 'Login successful!' });
@@ -66,9 +64,14 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
     }
 });
 
+
 // Logout route
 router.post('/logout', (req: Request, res: Response): void => {
-    res.clearCookie('token');
+    res.clearCookie('token', {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    });
     res.status(200).json({ message: 'Logged out successfully!' });
 });
 
