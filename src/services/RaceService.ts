@@ -1,6 +1,5 @@
-// src/services/RaceService.ts
-import { AppDataSource } from '../data-source';
-import { Race } from '../models/raceModel';
+import { AppDataSource } from '../data-source.js';
+import { Race } from '../models/raceModel.js';
 
 export class RaceService {
     private raceRepository = AppDataSource.getRepository(Race);

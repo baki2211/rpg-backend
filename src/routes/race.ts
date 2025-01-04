@@ -1,8 +1,8 @@
 // src/routes/raceRoutes.ts
 import { Router } from 'express';
-import { RaceController } from '../controllers/raceController';
-import { authenticateToken } from '../middleware/authMiddleware';
-import { isAdmin } from '../middleware/adminMiddleware';
+import { RaceController } from '../controllers/raceController.js';
+import { authenticateToken } from '../middleware/authMiddleware.js';
+import { isAdmin } from '../middleware/adminMiddleware.js';
 
 const router = Router();
 

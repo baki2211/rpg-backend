@@ -1,6 +1,5 @@
 import { UserService } from '../src/services/UserService';
 import { AppDataSource } from '../src/data-source';
-import { User } from '../src/models/User';
 
 beforeAll(async () => {
     await AppDataSource.initialize();

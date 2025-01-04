@@ -48,7 +48,7 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
             return;
         }
 
-        const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '1h' });
+        const token = jwt.sign({ id: user.id, username: user.username, role: user.role, }, JWT_SECRET, { expiresIn: '1h' });
 
         // Set the token as a cookie
         res.cookie('token', token, {

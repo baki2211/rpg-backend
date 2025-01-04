@@ -6,6 +6,9 @@ import authRoutes from './routes/auth.js';
 import { authenticateToken } from './middleware/authMiddleware.js';
 import cookieParser from 'cookie-parser';
 import { AppDataSource } from './data-source.js';
+import userRoutes from './routes/user.js';
+import adminRoutes from './routes/admin.js';
+import protectedRoutes from './routes/protected.js';
 
 dotenv.config();
 
@@ -26,10 +29,9 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 // Routes
 app.use('/api/auth', authRoutes);
-app.get('/api/protected', authenticateToken, (req, res) => {
-    const user = (req as any).user;
-    res.status(200).json({ message: `Welcome, ${user.username}!` });
-});
+app.use('/api/user', userRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/protected', protectedRoutes);
 
 AppDataSource.initialize()
     .then(() => {

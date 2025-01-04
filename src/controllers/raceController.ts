@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { RaceService } from '../services/RaceService';
+import { RaceService } from '../services/RaceService.js';
 
 const raceService = new RaceService();
 

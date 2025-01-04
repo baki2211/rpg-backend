@@ -12,7 +12,7 @@ export class UserService {
         const newUser = this.userRepository.create({
             username,
             password: hashedPassword,
-            role,
+            role: role || 'user',
         });
 
         return this.userRepository.save(newUser); // Save to the database
