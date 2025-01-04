@@ -3,7 +3,6 @@ import cors from 'cors';
 import bodyParser from 'body-parser';
 import dotenv from 'dotenv';
 import authRoutes from './routes/auth.js';
-import router from './routes/home.js';
 import { authenticateToken } from './middleware/authMiddleware.js';
 import cookieParser from 'cookie-parser';
 import { AppDataSource } from './data-source.js';
@@ -26,17 +25,15 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 // Routes
-app.get('/home', router);
 app.use('/api/auth', authRoutes);
 app.get('/api/protected', authenticateToken, (req, res) => {
     const user = (req as any).user;
     res.status(200).json({ message: `Welcome, ${user.username}!` });
 });
 
-// Initialize Data Source and Start Server
 AppDataSource.initialize()
     .then(() => {
-        console.log('Connected to the database!!');
+        console.log('Connected to the database');
         app.listen(PORT, () => {
             console.log(`Server running on http://localhost:${PORT}`);
         });
