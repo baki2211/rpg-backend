@@ -1,4 +1,4 @@
-import { Request, Response } from 'express';
+import { Request, Response, } from 'express';
 import { MapService } from '../services/MapService.js';
 
 const mapService = new MapService();
@@ -10,10 +10,25 @@ export class MapController {
   }
 
   static async createMap(req: Request, res: Response): Promise<void> {
-    const { name, imageUrl } = req.body;
-    const newMap = await mapService.createMap(name, imageUrl);
-    res.status(201).json(newMap);
-  }
+    const { name } = req.body;
+    const file = req.file;
+
+    if (!name || !file) {
+        res.status(400).json({ message: 'Name and image are required' });
+        return;
+    }
+
+    const imageUrl = `/uploads/${file.filename}`; // Save the image URL
+
+    try {
+        const newMap = await mapService.createMap(name, imageUrl);
+        res.status(201).json(newMap);
+    } catch (error) {
+        console.error('Error creating map:', error);
+        res.status(500).json({ message: 'Error creating map', error });
+    }
+}
+
 
   static async updateMap(req: Request, res: Response): Promise<void> {
     const { id } = req.params;

@@ -9,9 +9,13 @@ export class MapService {
   }
 
   async createMap(name: string, imageUrl: string): Promise<Map> {
-    const map = this.mapRepository.create({ name, imageUrl });
-    return this.mapRepository.save(map);
-  }
+    const newMap = this.mapRepository.create({
+        name,
+        imageUrl,
+    });
+    return this.mapRepository.save(newMap);
+}
+
 
   async updateMap(id: number, mapData: Partial<Map>): Promise<Map | null> {
     const map = await this.mapRepository.findOne({ where: { id } });
