@@ -11,6 +11,9 @@ export class Map {
   @Column()
   imageUrl!: string;
 
+  @Column({ type: 'boolean', default: false }) 
+  isMainMap!: boolean;
+
   @CreateDateColumn()
   createdAt!: Date;
 }

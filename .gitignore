@@ -19,6 +19,7 @@ local.properties
 node_modules/
 .env
 src/data-source.ts
+uploads/
 
 # External tool builders
 .externalToolBuilders/

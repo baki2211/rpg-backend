@@ -32,4 +32,15 @@ export class MapService {
         return this.mapRepository.findOne({ where: { id } });
     }
 
+    async getMainMap(): Promise<Map | null> {
+      return this.mapRepository.findOne({ where: { isMainMap: true } });
+    }
+      
+    async setMainMap(id: number): Promise<void> {
+      // Reset isMainMap for all maps
+      await this.mapRepository.update({}, { isMainMap: false });
+      // Set isMainMap for the selected map
+      await this.mapRepository.update({ id }, { isMainMap: true });
+    }
+
 }

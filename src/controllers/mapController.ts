@@ -11,21 +11,20 @@ export class MapController {
 
   static async createMap(req: Request, res: Response): Promise<void> {
     const { name } = req.body;
-    const file = req.file;
 
-    if (!name || !file) {
-        res.status(400).json({ message: 'Name and image are required' });
+    if (!req.file) {
+        res.status(400).json({ message: 'File upload failed. Please upload a valid image.' });
         return;
     }
 
-    const imageUrl = `/uploads/${file.filename}`; // Save the image URL
+    const imageUrl = `/uploads/${req.file.filename}`;
 
     try {
         const newMap = await mapService.createMap(name, imageUrl);
         res.status(201).json(newMap);
     } catch (error) {
-        console.error('Error creating map:', error);
-        res.status(500).json({ message: 'Error creating map', error });
+        const errorMessage = (error as Error).message;
+        res.status(500).json({ message: 'Error creating map', error: errorMessage });
     }
 }
 
@@ -48,13 +47,51 @@ export class MapController {
     }
 
     static async getMapById(req: Request, res: Response): Promise<void> {
-        const { id } = req.params;
+      const { id } = req.params;
+    
+      if (!id || isNaN(Number(id))) {
+        res.status(400).json({ message: 'Invalid map ID' });
+        return;
+      }
+    
+      try {
         const map = await mapService.getMapById(Number(id));
         if (!map) {
-            res.status(404).json({ message: 'Map not found' });
-            return;
+          res.status(404).json({ message: 'Map not found' });
+          return;
         }
         res.status(200).json(map);
+      } catch (error) {
+        const errorMessage = (error as Error).message;
+        res.status(500).json({ message: 'Error fetching map', error: errorMessage });
+      }
+    }
+    
+    static async getMainMap(req: Request, res: Response): Promise<void> {
+      try {
+        const mainMap = await mapService.getMainMap();
+        if (!mainMap) {
+          res.status(404).json({ message: 'Main map not found' });
+          return;
+        }
+        res.status(200).json(mainMap);
+      } catch (error) {
+        console.error('Error fetching main map:', error);
+        res.status(500).json({ message: 'Error fetching main map' });
+      }
+    }
+    
+    
+
+    static async setMainMap(req: Request, res: Response): Promise<void> {
+      const { id } = req.params;
+      try {
+        await mapService.setMainMap(Number(id));
+        res.status(200).json({ message: 'Main map updated successfully' });
+      } catch (error) {
+        const errorMessage = (error as Error).message;
+        res.status(500).json({ message: 'Error updating main map', error: errorMessage });
+      }
     }
 
 
