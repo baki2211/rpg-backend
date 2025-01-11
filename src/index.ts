@@ -12,6 +12,8 @@ import mapRoutes from './routes/map.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { errorHandler } from './middleware/errorHandler.js';
+import locationRoutes from './routes/location.js';
+import chatRoutes from './routes/chat.js';
 
 dotenv.config();
 
@@ -33,7 +35,8 @@ app.use('/api/user', userRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/protected', protectedRoutes);
 app.use('/api/maps', mapRoutes);
-
+app.use('/api/locations', locationRoutes);
+app.use('/api/chat', chatRoutes);
 // Save uploaded files in the 'uploads' folder
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 

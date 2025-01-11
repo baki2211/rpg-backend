@@ -33,9 +33,13 @@ export class MapService {
     }
 
     async getMainMap(): Promise<Map | null> {
-      return this.mapRepository.findOne({ where: { isMainMap: true } });
-    }
-      
+      console.log('Fetching main map from database');
+      return this.mapRepository.findOne({
+        where: { isMainMap: true },
+        select: ['id', 'name', 'imageUrl', 'isMainMap'], 
+      });
+    }     
+
     async setMainMap(id: number): Promise<void> {
       // Reset isMainMap for all maps
       await this.mapRepository.update({}, { isMainMap: false });

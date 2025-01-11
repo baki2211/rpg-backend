@@ -4,8 +4,10 @@ import { Location } from '../models/locationModel.js';
 export class LocationService {
   private locationRepository = AppDataSource.getRepository(Location);
 
-  async getLocationsByMap(mapId: number): Promise<Location[]> {
-    return this.locationRepository.find({ where: { map: { id: mapId } } });
+  async getLocationsByMapId(mapId: number): Promise<Location[]> {
+    return this.locationRepository.find({
+      where: { map: { id: mapId } }, // Fetch locations where the map's ID matches
+    });
   }
 
   async createLocation(mapId: number, locationData: Partial<Location>): Promise<Location> {

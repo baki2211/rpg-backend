@@ -6,16 +6,30 @@ const locationService = new LocationService();
 export class LocationController {
   static async getLocations(req: Request, res: Response): Promise<void> {
     const { mapId } = req.params;
-    const locations = await locationService.getLocationsByMap(Number(mapId));
+    const locations = await locationService.getLocationsByMapId(Number(mapId));
     res.status(200).json(locations);
   }
 
   static async createLocation(req: Request, res: Response): Promise<void> {
     const { mapId } = req.params;
     const locationData = req.body;
-    const newLocation = await locationService.createLocation(Number(mapId), locationData);
-    res.status(201).json(newLocation);
+  
+    if (!mapId || isNaN(Number(mapId))) {
+      res.status(400).json({ message: 'Invalid map ID' });
+      return;
+    }
+  
+    try {
+      const newLocation = await locationService.createLocation(Number(mapId), locationData);
+      console.log('Location created:', newLocation);
+      
+      res.status(201).json(newLocation);
+    } catch (error) {
+      console.error('Error creating location:', error);
+      res.status(500).json({ message: 'Error creating location' });
+    }
   }
+  
 
   static async deleteLocation(req: Request, res: Response): Promise<void> {
     const { locationId } = req.params;

@@ -5,11 +5,12 @@ import { isAdmin } from '../middleware/adminMiddleware.js';
 
 const router = Router();
 
-// Accessible to all logged-in users
-router.get('/:mapId', authenticateToken, LocationController.getLocations);
-
 // Admin-only actions
-router.post('/:mapId/new', authenticateToken, isAdmin, LocationController.createLocation);
+router.post('/:mapId/new', (req, _res, next) => {
+    console.log('Route matched for POST /api/locations/:mapId/new', req.params);
+    next();
+  }, authenticateToken, isAdmin, LocationController.createLocation);
+router.get('/:mapId', authenticateToken, LocationController.getLocations); // Accessible to all logged-in users
 router.put('/:locationId', authenticateToken, isAdmin, LocationController.updateLocation);
 router.delete('/:locationId', authenticateToken, isAdmin, LocationController.deleteLocation);
 
