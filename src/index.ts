@@ -4,6 +4,8 @@ import bodyParser from 'body-parser';
 import dotenv from 'dotenv';
 import authRoutes from './routes/auth.js';
 import cookieParser from 'cookie-parser';
+import http from 'http'; 
+import { WebSocketServer } from 'ws';
 import { AppDataSource } from './data-source.js';
 import userRoutes from './routes/user.js';
 import adminRoutes from './routes/admin.js';
@@ -19,6 +21,8 @@ dotenv.config();
 
 // Initialize Express and other constants
 const app: Application = express();
+const server = http.createServer(app); // Wrap Express in an HTTP server
+const wss = new WebSocketServer({ server });
 const PORT = process.env.PORT || 5001;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -37,11 +41,30 @@ app.use('/api/protected', protectedRoutes);
 app.use('/api/maps', mapRoutes);
 app.use('/api/locations', locationRoutes);
 app.use('/api/chat', chatRoutes);
-// Save uploaded files in the 'uploads' folder
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
-// Error Handling Middleware
+// Other Routes
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 app.use(errorHandler);
+
+// WebSockets
+wss.on('connection', (ws) => {
+    console.log('New WebSocket connection established');
+  
+    ws.on('message', (data) => {
+      console.log('Message received:', data);
+  
+      // Broadcast the message to all connected clients
+      wss.clients.forEach((client) => {
+        if (client.readyState === ws.OPEN) {
+          client.send(data);
+        }
+      });
+    });
+  
+    ws.on('close', () => {
+      console.log('WebSocket connection closed');
+    });
+  });
 
 AppDataSource.initialize()
     .then(() => {
