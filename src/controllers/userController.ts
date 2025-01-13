@@ -23,4 +23,19 @@ export class UserController {
             res.status(500).json({ message: 'Error loading dashboard', error: errorMessage });
         }
     }
+
+    static async getUsers(req: Request, res: Response): Promise<void> {
+        try {
+            // Fetch users from the database
+            const users = [
+                { id: 1, username: 'alice', role: 'admin' },
+                { id: 2, username: 'bob', role: 'user' },
+            ];
+
+            res.status(200).json(users);
+        } catch (error) {
+            const errorMessage = (error as Error).message;
+            res.status(500).json({ message: 'Error fetching users', error: errorMessage });
+        }
+    }
 }

@@ -18,6 +18,12 @@ export class UserService {
         return this.userRepository.save(newUser); // Save to the database
     }
 
+    // Find a user by ID
+    async findById(id: number): Promise<User | undefined> {
+        const user = await this.userRepository.findOne({ where: { id } });
+        return user ?? undefined;
+    }
+
     // Find a user by username
     async findByUsername(username: string): Promise<User | undefined> {
         const user = await this.userRepository.findOne({ where: { username } });

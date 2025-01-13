@@ -30,20 +30,35 @@ export class LocationController {
     }
   }
   
-
   static async deleteLocation(req: Request, res: Response): Promise<void> {
     const { locationId } = req.params;
-    await locationService.deleteLocation(Number(locationId));
-    res.status(200).json({ message: 'Location deleted successfully' });
-  }
-
-    static async updateLocation(req: Request, res: Response): Promise<void> {
-        const { locationId } = req.params;
-        const locationData = req.body;
-        const updatedLocation = await locationService.updateLocation(Number(locationId), locationData);
-        res.status(200).json(updatedLocation);
+  
+    try {
+      await locationService.deleteLocation(Number(locationId));
+      res.status(200).json({ message: 'Location deleted successfully' });
+    } catch (error) {
+      console.error('Error deleting location:', error);
+      res.status(500).json({ message: 'Failed to delete location' });
     }
-
+  }
+  
+  static async updateLocation(req: Request, res: Response): Promise<void> {
+    const { locationId } = req.params;
+    const locationData = req.body;
+  
+    try {
+      const updatedLocation = await locationService.updateLocation(Number(locationId), locationData);
+      if (!updatedLocation) {
+        res.status(404).json({ message: 'Location not found' });
+        return;
+      }
+      res.status(200).json(updatedLocation);
+    } catch (error) {
+      console.error('Error updating location:', error);
+      res.status(500).json({ message: 'Failed to update location' });
+    }
+  }
+  
     static async getLocationById(req: Request, res: Response): Promise<void> {
         const { locationId } = req.params;
         const location = await locationService.getLocationById(Number(locationId));

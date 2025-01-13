@@ -1,4 +1,5 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
+import { Character } from './characterModel.js';
 
 @Entity('races')
 export class Race {
@@ -34,6 +35,10 @@ export class Race {
 
     @Column({ type: 'int', default: 0 })
     armorBonus!: number;
+
+    @OneToMany(() => Character, (character) => character.race)
+    characters!: Character[];
+
 
     @CreateDateColumn({ type: 'timestamp' })
     createdAt!: Date;

@@ -17,6 +17,8 @@ import { errorHandler } from './middleware/errorHandler.js';
 import locationRoutes from './routes/location.js';
 import chatRoutes from './routes/chat.js';
 import { setupWebSocketServer } from './webSocket.js';
+import raceRoutes from './routes/race.js';
+import characterRoutes from './routes/character.js';
 
 dotenv.config();
 
@@ -42,16 +44,18 @@ app.use('/api/protected', protectedRoutes);
 app.use('/api/maps', mapRoutes);
 app.use('/api/locations', locationRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/races', raceRoutes);
+app.use('/api/characters', characterRoutes);
 
 // Other Routes
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 app.use(errorHandler);
-app.use((req, res, next) => {
-  if (req.url.startsWith('/?locationId=')) {
-    return; // Ignore WebSocket connection requests
-  }
-  next();
-});
+// app.use((req, _res, next) => {
+//   if (req.url.startsWith('/?locationId=')) {
+//     return; // Ignore WebSocket connection requests
+//   }
+//   next();
+// });
 
 AppDataSource.initialize()
     .then(() => {

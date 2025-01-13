@@ -1,33 +1,34 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
-
-@Entity('users') // Map to the 'users' table
-export class User {
-    @PrimaryGeneratedColumn('uuid') // Use UUID as the primary key
-    id!: string;
-
-    @Column({
-        type: 'varchar',
-        length: 100,
-        unique: true,
-    })
+import {
+    Entity,
+    PrimaryGeneratedColumn,
+    Column,
+    OneToMany,
+    CreateDateColumn,
+    UpdateDateColumn,
+  } from 'typeorm';
+  import { Character } from './characterModel.js';
+  
+  @Entity('users')
+  export class User {
+    @PrimaryGeneratedColumn()
+    id!: number;
+  
+    @Column({ type: 'varchar', length: 50, unique: true })
     username!: string;
-
-    @Column({
-        type: 'varchar',
-        length: 255,
-    })
+  
+    @Column({ type: 'varchar', length: 255 })
     password!: string;
-
-    @Column({
-        type: 'varchar',
-        length: 50,
-        default: 'user',
-    })
+  
+    @Column({ type: 'varchar', length: 20 })
     role!: string;
-
-    @CreateDateColumn({ type: 'timestamp with time zone' })
+  
+    @OneToMany(() => Character, (character) => character.user, { lazy: true })
+    characters!: Promise<Character[]>; // Use lazy loading to resolve circular dependency
+  
+    @CreateDateColumn()
     createdAt!: Date;
-
-    @UpdateDateColumn({ type: 'timestamp with time zone' })
+  
+    @UpdateDateColumn()
     updatedAt!: Date;
-}
+  }
+  
