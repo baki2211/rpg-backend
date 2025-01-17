@@ -26,13 +26,13 @@ export class UserController {
 
     static async getUsers(req: Request, res: Response): Promise<void> {
         try {
-            // Fetch users from the database
-            const users = [
-                { id: 1, username: 'alice', role: 'admin' },
-                { id: 2, username: 'bob', role: 'user' },
-            ];
+            const user = (req as any).user;
+            if (!user) {
+                res.status(401).json({ message: 'Unauthorized access' });
+                return;
+            }
 
-            res.status(200).json(users);
+            res.status(200).json(user);
         } catch (error) {
             const errorMessage = (error as Error).message;
             res.status(500).json({ message: 'Error fetching users', error: errorMessage });

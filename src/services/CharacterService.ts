@@ -1,17 +1,24 @@
 import { AppDataSource } from '../data-source.js';
 import { Character } from '../models/characterModel.js';
 import { User } from '../models/userModel.js';
+import { Race } from '../models/raceModel.js';
 
 export class CharacterService {
   private characterRepository = AppDataSource.getRepository(Character);
   private userRepository = AppDataSource.getRepository(User);
 
   async createCharacter(data: Partial<Character>, userId: number): Promise<Character> {
-    const user = await this.userRepository.findOneBy({ id: userId });
+    const user = await this.userRepository.findOneBy({ id: (await data.user)?.id || userId });
     if (!user) {
       throw new Error('User not found');
     }
-
+    const raceId = Number(data.race?.id); // Ensure raceId is a number
+    const race = await AppDataSource.getRepository(Race).findOneBy({ id: data.race?.id });
+    //const race = await AppDataSource.getRepository(Race).findOneBy({ id: Number(data.race?.id) });
+    console.log('Race Log:', race);
+    if (!race) {
+      throw new Error('Race not found');
+    }
     // Validate pool of 45 points for stats
     const totalStats = Object.values(data.stats || {}).reduce((sum, val) => sum + val, 0);
     if (totalStats > 45) {
@@ -20,14 +27,19 @@ export class CharacterService {
 
     // Set all other characters for the user as inactive if this one is active
     if (data.isActive) {
-      await this.characterRepository.update({ user: { id: userId } }, { isActive: false });
+      await this.characterRepository.update({ user }, { isActive: false });
     }
 
     // Create the new character, using lazy loading for `user`
     const newCharacter = this.characterRepository.create({
       ...data,
-      user: Promise.resolve(user.id), // Wrap `user` in a `Promise` to satisfy lazy loading
+      user: user,
+      userId: user.id,
+      race,
     });
+
+    console.log('Creating character for user:', user);
+    console.log('Character data:', data);
 
     return this.characterRepository.save(newCharacter);
   }

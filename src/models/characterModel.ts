@@ -15,12 +15,12 @@ export class Character {
   @PrimaryGeneratedColumn()
   id!: number;
 
+  @Column({ type: 'int' })
+  userId!: number;
+
   @ManyToOne(() => User, (user) => user.characters, { lazy: true, onDelete: 'CASCADE', eager: false })
   @JoinColumn({ name: 'userId' })
-  user!: Promise<User>; 
-  
-  @Column()
-  userId!: string;
+  user!: Awaited<User>; 
 
   @Column({ type: 'varchar', length: 50 })
   name!: string;
