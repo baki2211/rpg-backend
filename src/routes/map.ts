@@ -10,7 +10,7 @@ router.post('/new', authenticateToken, isAdmin, upload.single('map'), MapControl
 router.get('/', authenticateToken, MapController.getAllMaps);
 router.get('/main', authenticateToken, MapController.getMainMap); 
 router.get('/:id', authenticateToken, MapController.getMapById);
-router.put('/:id', authenticateToken, isAdmin, upload.single('map'), MapController.updateMap);
+router.put('/:id/main', authenticateToken, isAdmin, upload.single('map'), MapController.setMainMap);
 router.delete('/:id', authenticateToken, isAdmin, MapController.deleteMap);
 router.get('/:id/locations', authenticateToken, MapController.getLocationsByMapId);
 
