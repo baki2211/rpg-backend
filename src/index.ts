@@ -50,13 +50,6 @@ app.use('/api/characters', characterRoutes);
 // Other Routes
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 app.use(errorHandler);
-// app.use((req, _res, next) => {
-//   if (req.url.startsWith('/?locationId=')) {
-//     return; // Ignore WebSocket connection requests
-//   }
-//   next();
-// });
-
 AppDataSource.initialize()
     .then(() => {
         console.log('App connected to the database');
