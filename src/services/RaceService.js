@@ -2,29 +2,29 @@ import { AppDataSource } from '../data-source.js';
 import { Race } from '../models/raceModel.js';
 
 export class RaceService {
-    private raceRepository = AppDataSource.getRepository(Race);
+    raceRepository = AppDataSource.getRepository(Race);
 
-    async getAllRaces(): Promise<Race[]> {
+    async getAllRaces() {
         return this.raceRepository.find();
     }
 
-    async getRaceById(id: number): Promise<Race | null> {
+    async getRaceById(id) {
         return this.raceRepository.findOne({ where: { id } });
     }
 
-    async createRace(raceData: Partial<Race>): Promise<Race> {
+    async createRace(raceData) {
         const race = this.raceRepository.create(raceData);
         return this.raceRepository.save(race);
     }
 
-    async updateRace(id: number, raceData: Partial<Race>): Promise<Race | null> {
+    async updateRace(id, raceData) {
         const race = await this.getRaceById(id);
         if (!race) return null;
         Object.assign(race, raceData); // Update fields dynamically
         return this.raceRepository.save(race);
     }
 
-    async deleteRace(id: number): Promise<void> {
+    async deleteRace(id) {
         const race = await this.getRaceById(id);
         if (!race) throw new Error('Race not found');
         await this.raceRepository.remove(race);

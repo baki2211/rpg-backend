@@ -1,15 +1,11 @@
-import { WebSocketServer, WebSocket } from 'ws';
+import { WebSocketServer } from 'ws';
 import { ChatService } from './services/ChatService.js';
 
-interface CustomWebSocket extends WebSocket {
-  locationId?: string;
-}
-
-export const setupWebSocketServer = (server: any) => {
+export const setupWebSocketServer = (server) => {
   const wss = new WebSocketServer({ server });
   const chatService = new ChatService();
 
-  wss.on('connection', (ws: CustomWebSocket, req) => {
+  wss.on('connection', (ws, req) => {
     const params = new URLSearchParams(req.url?.split('?')[1]);
     const locationId = params.get('locationId');
 
@@ -42,9 +38,8 @@ export const setupWebSocketServer = (server: any) => {
 
         // Broadcast the saved message to all clients in the same location
         wss.clients.forEach((client) => {
-          const customClient = client as CustomWebSocket;
-          if (customClient.readyState === WebSocket.OPEN && customClient.locationId === locationId) {
-            customClient.send(JSON.stringify(savedMessage));
+          if (client.readyState === WebSocket.OPEN && client.locationId === locationId) {
+            client.send(JSON.stringify(savedMessage));
           }
         });
       } catch (error) {

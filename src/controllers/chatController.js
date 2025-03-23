@@ -1,10 +1,9 @@
-import { Request, Response } from 'express';
 import { ChatService } from '../services/ChatService.js';
 
 const chatService = new ChatService();
 
 export class ChatController {
-  static async getMessages(req: Request, res: Response): Promise<void> {
+  static async getMessages(req, res) {
     const { locationId } = req.params;
     try {
       const messages = await chatService.getMessagesByLocation(Number(locationId));
@@ -15,7 +14,7 @@ export class ChatController {
     }
   }
 
-  static async addMessage(req: Request, res: Response): Promise<void> {
+  static async addMessage(req, res) {
     const { locationId } = req.params;
     const { userId, username, message } = req.body;
     try {

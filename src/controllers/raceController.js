@@ -1,20 +1,19 @@
-import { Request, Response } from 'express';
 import { RaceService } from '../services/RaceService.js';
 
 const raceService = new RaceService();
 
 export class RaceController {
-    static async getAllRaces(req: Request, res: Response): Promise<void> {
+    static async getAllRaces(req, res) {
         try {
             const races = await raceService.getAllRaces();
             res.status(200).json(races);
         } catch (error) {
-            const err = error as any;
+            const err = error;
             res.status(500).json({ message: 'Error fetching races', error: err.message });
         }
     }
 
-    static async getRaceById(req: Request, res: Response): Promise<void> {
+    static async getRaceById(req, res) {
         try {
             const race = await raceService.getRaceById(parseInt(req.params.id));
             if (!race) {
@@ -23,22 +22,22 @@ export class RaceController {
             }
             res.status(200).json(race);
         } catch (error) {
-            const err = error as any;
+            const err = error;
             res.status(500).json({ message: 'Error fetching race', error: err.message });
         }
     }
 
-    static async createRace(req: Request, res: Response): Promise<void> {
+    static async createRace(req, res) {
         try {
             const newRace = await raceService.createRace(req.body);
             res.status(201).json(newRace);
         } catch (error) {
-            const err = error as any;
+            const err = error;
             res.status(400).json({ message: 'Error creating race', error: err.message });
         }
     }
 
-    static async updateRace(req: Request, res: Response): Promise<void> {
+    static async updateRace(req, res) {
         try {
             const updatedRace = await raceService.updateRace(parseInt(req.params.id), req.body);
             if (!updatedRace) {
@@ -47,17 +46,17 @@ export class RaceController {
             }
             res.status(200).json(updatedRace);
         } catch (error) {
-            const err = error as any;
+            const err = error;
             res.status(400).json({ message: 'Error updating race', error: err.message });
         }
     }
 
-    static async deleteRace(req: Request, res: Response): Promise<void> {
+    static async deleteRace(req, res) {
         try {
             await raceService.deleteRace(parseInt(req.params.id));
             res.status(204).send();
         } catch (error) {
-            const err = error as any;
+            const err = error;
             res.status(404).json({ message: err.message });
         }
     }

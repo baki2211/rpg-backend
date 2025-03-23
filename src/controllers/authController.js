@@ -1,4 +1,4 @@
-import { Request, Response, Router } from 'express';
+import { Router } from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { User } from '../models/userModel.js'; // Import the new User class
@@ -8,7 +8,7 @@ const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'your_secret_key';
 
 // Register a new user
-export const registerUser = async (req: Request, res: Response): Promise<Response> => {
+export const registerUser = async (req, res) => {
     const { username, password } = req.body;
 
     if (!username || !password) {
@@ -39,7 +39,7 @@ export const registerUser = async (req: Request, res: Response): Promise<Respons
 };
 
 // Log in a user
-export const loginUser = async (req: Request, res: Response): Promise<Response> => {
+export const loginUser = async (req, res) => {
     const { username, password } = req.body;
 
     if (!username || !password) {

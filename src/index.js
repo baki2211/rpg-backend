@@ -1,11 +1,10 @@
-import express, { Application } from 'express';
+import express from 'express';
 import cors from 'cors';
 import bodyParser from 'body-parser';
 import dotenv from 'dotenv';
 import authRoutes from './routes/auth.js';
 import cookieParser from 'cookie-parser';
 import http from 'http'; 
-import { WebSocketServer, WebSocket } from 'ws';
 import { AppDataSource } from './data-source.js';
 import userRoutes from './routes/user.js';
 import adminRoutes from './routes/admin.js';
@@ -23,7 +22,7 @@ import characterRoutes from './routes/character.js';
 dotenv.config();
 
 // Initialize Express and other constants
-const app: Application = express();
+const app = express();
 const server = http.createServer(app);
 const PORT = process.env.PORT || 5001;
 const __filename = fileURLToPath(import.meta.url);

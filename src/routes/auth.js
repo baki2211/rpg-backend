@@ -1,4 +1,4 @@
-import { Request, RequestHandler, Response, Router } from 'express';
+import { Router } from 'express';
 import jwt from 'jsonwebtoken';
 import { UserService } from '../services/UserService.js';
 
@@ -8,7 +8,7 @@ const userService = new UserService();
 const JWT_SECRET = process.env.JWT_SECRET || 'your_secret_key';
 
 // Register route
-router.post('/register', async (req: Request, res: Response): Promise<void> => {
+router.post('/register', async (req, res) => {
     const { username, password } = req.body;
 
     if (!username || !password) {
@@ -32,7 +32,7 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
 });
 
 // Login route
-router.post('/login', async (req: Request, res: Response): Promise<void> => {
+router.post('/login', async (req, res) => {
     const { username, password } = req.body;
 
     try {
@@ -66,7 +66,7 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
 
 
 // Logout route
-router.post('/logout', (req: Request, res: Response): void => {
+router.post('/logout', (req, res) => {
     res.clearCookie('token', {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
@@ -76,7 +76,7 @@ router.post('/logout', (req: Request, res: Response): void => {
 });
 
 // Token verification middleware
-export const authenticateToken: RequestHandler = (req, res, next) => {
+export const authenticateToken = (req, res, next) => {
     const token = req.cookies?.token; // Read the token from cookies
 
     if (!token) {
@@ -86,7 +86,7 @@ export const authenticateToken: RequestHandler = (req, res, next) => {
 
     try {
         const decoded = jwt.verify(token, JWT_SECRET);
-        (req as any).user = decoded; // Attach the decoded token to the req object
+        req.user = decoded; // Attach the decoded token to the req object
         next();
     } catch (err) {
         res.status(403).json({ message: 'Forbidden: Invalid token' });

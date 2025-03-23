@@ -1,14 +1,15 @@
 import { AppDataSource } from '../data-source.js';
 import { Map } from '../models/mapModel.js';
 
-export class MapService {
-  private mapRepository = AppDataSource.getRepository(Map);
 
-  async getAllMaps(): Promise<Map[]> {
+export class MapService {
+  mapRepository = AppDataSource.getRepository(Map);
+
+  async getAllMaps() {
     return this.mapRepository.find();
   }
 
-  async createMap(name: string, imageUrl: string): Promise<Map> {
+  async createMap(name, imageUrl) {
     const newMap = this.mapRepository.create({
         name,
         imageUrl,
@@ -17,22 +18,22 @@ export class MapService {
 }
 
 
-  async updateMap(id: number, mapData: Partial<Map>): Promise<Map | null> {
+  async updateMap(id, mapData) {
     const map = await this.mapRepository.findOne({ where: { id } });
     if (!map) return null;
     Object.assign(map, mapData); // Update fields dynamically
     return this.mapRepository.save(map);
   }
     
-    async deleteMap(id: number): Promise<void> {
+    async deleteMap(id) {
         await this.mapRepository.delete(id);
     }
 
-    async getMapById(id: number): Promise<Map | null> {
+    async getMapById(id) {
         return this.mapRepository.findOne({ where: { id } });
     }
 
-    async getMainMap(): Promise<Map | null> {
+    async getMainMap() {
       console.log('Fetching main map from database');
       return this.mapRepository.findOne({
         where: { isMainMap: true },
@@ -40,7 +41,7 @@ export class MapService {
       });
     }     
 
-    async setMainMap(id: number): Promise<void> {
+    async setMainMap(id) {
       // Reset isMainMap for all maps
       await this.mapRepository.update({}, { isMainMap: false });
       // Set isMainMap for the selected map

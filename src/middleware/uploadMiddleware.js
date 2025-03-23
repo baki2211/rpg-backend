@@ -1,5 +1,4 @@
 import multer from 'multer';
-import path from 'path';
 
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
@@ -11,12 +10,12 @@ const storage = multer.diskStorage({
     },
 });
 
-const fileFilter = (req: any, file: any, cb: any) => {
+const fileFilter = (req, file, cb) => {
     // Validate file type
     const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/jpg'];
     if (!allowedTypes.includes(file.mimetype)) {
         const error = new Error('Invalid file type. Only JPEG, JPG, PNG, and GIF are allowed.');
-        (error as any).statusCode = 400;
+        (error).statusCode = 400;
         cb(error);
     } else {
         cb(null, true);

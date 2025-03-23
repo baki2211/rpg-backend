@@ -3,10 +3,10 @@ import { User } from '../models/userModel.js';
 import bcrypt from 'bcrypt';
 
 export class UserService {
-    private userRepository = AppDataSource.getRepository(User);
+    userRepository = AppDataSource.getRepository(User);
 
     // Register a new user
-    async register(username: string, password: string, role: string = 'user'): Promise<User> {
+    async register(username, password, role = 'user') {
         const hashedPassword = await bcrypt.hash(password, 10);
 
         const newUser = this.userRepository.create({
@@ -19,19 +19,19 @@ export class UserService {
     }
 
     // Find a user by ID
-    async findById(id: number): Promise<User | undefined> {
+    async findById(id) {
         const user = await this.userRepository.findOne({ where: { id } });
         return user ?? undefined;
     }
 
     // Find a user by username
-    async findByUsername(username: string): Promise<User | undefined> {
+    async findByUsername(username) {
         const user = await this.userRepository.findOne({ where: { username } });
         return user ?? undefined;
     }
 
     // Verify the password
-    async verifyPassword(password: string, hashedPassword: string): Promise<boolean> {
+    async verifyPassword(password, hashedPassword) {
         return bcrypt.compare(password, hashedPassword);
     }
 }

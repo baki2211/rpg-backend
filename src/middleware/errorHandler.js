@@ -1,7 +1,6 @@
-import { Request, Response, NextFunction } from 'express';
 import multer from 'multer';
 
-export const errorHandler = (err: any, req: Request, res: Response, next: NextFunction): void => {
+export const errorHandler = (err, req, res) => {
     if (err instanceof multer.MulterError) {
         // Multer-specific errors (e.g., file too large)
         res.status(400).json({ message: err.message });

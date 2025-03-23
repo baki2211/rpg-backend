@@ -1,13 +1,12 @@
 import { AppDataSource } from '../data-source.js';
 import { Character } from '../models/characterModel.js';
 import { User } from '../models/userModel.js';
-import { Race } from '../models/raceModel.js';
 
 export class CharacterService {
-  private characterRepository = AppDataSource.getRepository(Character);
-  private userRepository = AppDataSource.getRepository(User);
+  characterRepository = AppDataSource.getRepository(Character);
+  userRepository = AppDataSource.getRepository(User);
 
-  async createCharacter(data: Partial<Character>, userId: number): Promise<Character> {
+  async createCharacter(data, userId) {
     const user = await this.userRepository.findOneBy({ id: (await data.user)?.id || userId });
     if (!user) {
       throw new Error('User not found');
@@ -43,14 +42,14 @@ export class CharacterService {
     return this.characterRepository.save(newCharacter);
   }
 
-  async getCharactersByUser(userId: number): Promise<Character[]> {
+  async getCharactersByUser(userId) {
     return this.characterRepository.find({
       where: { user: { id: userId } },
       relations: ['race'], // Load the race relation explicitly
     });
   }
 
-  async activateCharacter(characterId: number, userId: number): Promise<void> {
+  async activateCharacter(characterId, userId) {
     // Deactivate all characters first
     await this.characterRepository.update({ user: { id: userId } }, { isActive: false });
 
@@ -61,7 +60,7 @@ export class CharacterService {
     );
   }
 
-  async deleteCharacter(characterId: number, userId: number): Promise<void> {
+  async deleteCharacter(characterId, userId) {
     await this.characterRepository.delete({ id: characterId, user: { id: userId } });
   }
 }

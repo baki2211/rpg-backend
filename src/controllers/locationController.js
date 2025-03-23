@@ -1,16 +1,15 @@
-import { Request, Response } from 'express';
 import { LocationService } from '../services/LocationService.js';
 
 const locationService = new LocationService();
 
 export class LocationController {
-  static async getLocations(req: Request, res: Response): Promise<void> {
+  static async getLocations(req, res) {
     const { mapId } = req.params;
     const locations = await locationService.getLocationsByMapId(Number(mapId));
     res.status(200).json(locations);
   }
 
-  static async createLocation(req: Request, res: Response): Promise<void> {
+  static async createLocation(req, res) {
     const { mapId } = req.params;
     const locationData = req.body;
   
@@ -30,7 +29,7 @@ export class LocationController {
     }
   }
   
-  static async deleteLocation(req: Request, res: Response): Promise<void> {
+  static async deleteLocation(req, res) {
     const { locationId } = req.params;
   
     try {
@@ -42,7 +41,7 @@ export class LocationController {
     }
   }
   
-  static async updateLocation(req: Request, res: Response): Promise<void> {
+  static async updateLocation(req, res) {
     const { locationId } = req.params;
     const locationData = req.body;
   
@@ -59,7 +58,7 @@ export class LocationController {
     }
   }
   
-    static async getLocationById(req: Request, res: Response): Promise<void> {
+    static async getLocationById(req, res) {
         const { locationId } = req.params;
         const location = await locationService.getLocationById(Number(locationId));
         if (!location) {
@@ -69,7 +68,7 @@ export class LocationController {
         res.status(200).json(location);
     }
 
-    static async getLocationByName(req: Request, res: Response): Promise<void> {
+    static async getLocationByName(req, res) {
         const { name } = req.params;
         const location = await locationService.getLocationByName(name);
         if (!location) {

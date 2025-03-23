@@ -1,4 +1,3 @@
-import { Request, Response, } from 'express';
 import { MapService } from '../services/MapService.js';
 import { LocationService } from '../services/LocationService.js';
 
@@ -6,12 +5,12 @@ const locationService = new LocationService();
 const mapService = new MapService();
 
 export class MapController {
-  static async getAllMaps(req: Request, res: Response): Promise<void> {
+  static async getAllMaps(req, res) {
     const maps = await mapService.getAllMaps();
     res.status(200).json(maps);
   }
 
-  static async createMap(req: Request, res: Response): Promise<void> {
+  static async createMap(req, res) {
     const { name } = req.body;
 
     if (!req.file) {
@@ -25,13 +24,13 @@ export class MapController {
         const newMap = await mapService.createMap(name, imageUrl);
         res.status(201).json(newMap);
     } catch (error) {
-        const errorMessage = (error as Error).message;
+        const errorMessage = (error).message;
         res.status(500).json({ message: 'Error creating map', error: errorMessage });
     }
 }
 
 
-  static async updateMap(req: Request, res: Response): Promise<void> {
+  static async updateMap(req, res) {
     const { id } = req.params;
     const mapData = req.body;
     const updatedMap = await mapService.updateMap(Number(id), mapData);
@@ -42,13 +41,13 @@ export class MapController {
     res.status(200).json(updatedMap);
   }
 
-    static async deleteMap(req: Request, res: Response): Promise<void> {
+    static async deleteMap(req, res) {
         const { id } = req.params;
         await mapService.deleteMap(Number(id));
         res.status(204).send();
     }
 
-    static async getMapById(req: Request, res: Response): Promise<void> {
+    static async getMapById(req, res) {
       const { id } = req.params;
       if (!id || isNaN(Number(id))) {
         res.status(400).json({ message: 'Invalid map ID' });
@@ -63,13 +62,13 @@ export class MapController {
         }
         res.status(200).json(map);
       } catch (error) {
-        const errorMessage = (error as Error).message;
+        const errorMessage = (error).message;
         res.status(500).json({ message: 'Error fetching map', error: errorMessage });
       }
     }
 
     //testing getLocationsByMapId
-    static async getLocationsByMapId(req: Request, res: Response): Promise<void> {
+    static async getLocationsByMapId(req, res) {
       const { id } = req.params;
   
       if (!id || isNaN(Number(id))) {
@@ -81,12 +80,12 @@ export class MapController {
         const locations = await locationService.getLocationsByMapId(Number(id));
         res.status(200).json(locations);
       } catch (error) {
-        const errorMessage = (error as Error).message;
+        const errorMessage = (error).message;
         res.status(500).json({ message: 'Error fetching locations', error: errorMessage });
       }
     }
     
-    static async getMainMap(req: Request, res: Response): Promise<void> {
+    static async getMainMap(req, res) {
       try {
         const mainMap = await mapService.getMainMap();
         if (!mainMap) {
@@ -99,17 +98,17 @@ export class MapController {
         res.status(200).json({ ...mainMap, locations });
       } catch (error) {
         console.error('Error fetching main map:', error);
-        res.status(500).json({ message: 'Failed to fetch main map', error: (error as Error).message });
+        res.status(500).json({ message: 'Failed to fetch main map', error: (error).message });
       }
     }
     
-    static async setMainMap(req: Request, res: Response): Promise<void> {
+    static async setMainMap(req, res) {
       const { id } = req.params;
       try {
         await mapService.setMainMap(Number(id));
         res.status(200).json({ message: 'Main map updated successfully' });
       } catch (error) {
-        const errorMessage = (error as Error).message;
+        const errorMessage = (error).message;
         res.status(500).json({ message: 'Error updating main map', error: errorMessage });
       }
     }

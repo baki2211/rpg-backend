@@ -1,9 +1,7 @@
-import { Request, Response } from 'express';
-
 export class UserController {
-    static async getDashboard(req: Request, res: Response): Promise<void> {
+    static async getDashboard(req, res) {
         try {
-            const user = (req as any).user;
+            const user = (req).user;
             if (!user) {
                 res.status(401).json({ message: 'Unauthorized access' });
                 return;
@@ -19,14 +17,14 @@ export class UserController {
                 },
             });
         } catch (error) {
-            const errorMessage = (error as Error).message;
+            const errorMessage = (error).message;
             res.status(500).json({ message: 'Error loading dashboard', error: errorMessage });
         }
     }
 
-    static async getUsers(req: Request, res: Response): Promise<void> {
+    static async getUsers(req, res) {
         try {
-            const user = (req as any).user;
+            const user = (req).user;
             if (!user) {
                 res.status(401).json({ message: 'Unauthorized access' });
                 return;
@@ -34,7 +32,7 @@ export class UserController {
 
             res.status(200).json(user);
         } catch (error) {
-            const errorMessage = (error as Error).message;
+            const errorMessage = (error).message;
             res.status(500).json({ message: 'Error fetching users', error: errorMessage });
         }
     }

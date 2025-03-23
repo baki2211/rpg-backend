@@ -21,7 +21,7 @@ pool.on('error', (err) => {
     console.error('Database error:', err);
 });
 // Function to query the database
-export const query = (text: string, params?: any[]) => {
+export const query = (text, params) => {
     return pool.query(text, params);
 };
 
