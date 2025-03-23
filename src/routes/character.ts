@@ -6,7 +6,7 @@ const router = Router();
 
 router.post('/new', authenticateToken, CharacterController.createCharacter);
 router.get('/', authenticateToken, CharacterController.getCharacters);
-router.put('/:characterId/activate', authenticateToken, CharacterController.activateCharacter);
-router.delete('/:characterId', authenticateToken, CharacterController.deleteCharacter);
+router.put('/:id/activate', authenticateToken, CharacterController.activateCharacter);
+router.delete('/:id/delete', authenticateToken, CharacterController.deleteCharacter);
 
 export default router;

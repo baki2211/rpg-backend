@@ -12,9 +12,8 @@ export class CharacterService {
     if (!user) {
       throw new Error('User not found');
     }
-    const raceId = Number(data.race?.id); // Ensure raceId is a number
+    //const raceId = Number(data.race?.id); // Ensure raceId is a number
     const race = await AppDataSource.getRepository(Race).findOneBy({ id: data.race?.id });
-    //const race = await AppDataSource.getRepository(Race).findOneBy({ id: Number(data.race?.id) });
     console.log('Race Log:', race);
     if (!race) {
       throw new Error('Race not found');
