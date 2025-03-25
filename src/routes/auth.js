@@ -55,6 +55,7 @@ router.post('/login', async (req, res) => {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production', // Set 'secure' only in production
             sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // Use 'none' in production, 'lax' in dev
+            maxAge: 3600000, // 1 hour
         });
 
         res.status(200).json({ message: 'Login successful!' });

@@ -4,7 +4,7 @@ import { authenticateToken } from "../middleware/authMiddleware.js";
 const router = Router();
 
 router.get('/', authenticateToken, (req, res) => {
-    const user = (req).user;
+    const user = req.user;
     res.status(200).json({
         user: {
             id: user.id,
