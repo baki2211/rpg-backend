@@ -1,6 +1,7 @@
 import { AppDataSource } from '../data-source.js';
 import { Character } from '../models/characterModel.js';
 import { User } from '../models/userModel.js';
+import { Race } from '../models/raceModel.js';
 
 export class CharacterService {
   characterRepository = AppDataSource.getRepository(Character);
@@ -11,7 +12,6 @@ export class CharacterService {
     if (!user) {
       throw new Error('User not found');
     }
-    //const raceId = Number(data.race?.id); // Ensure raceId is a number
     const race = await AppDataSource.getRepository(Race).findOneBy({ id: data.race?.id });
     console.log('Race Log:', race);
     if (!race) {

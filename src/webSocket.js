@@ -1,4 +1,4 @@
-import { WebSocketServer } from 'ws';
+import { WebSocketServer, WebSocket } from 'ws';
 import { ChatService } from './services/ChatService.js';
 
 export const setupWebSocketServer = (server) => {

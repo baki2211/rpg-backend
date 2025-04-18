@@ -26,8 +26,13 @@ export class CharacterController {
   static async activateCharacter(req, res) {
     try {
       const userId = req.user.id; // From auth middleware
-      const { characterId } = req.params;
-      await characterService.activateCharacter(Number(characterId), userId);
+      const {characterId} = req.params;
+      const id = Number(characterId);
+      if (isNaN(id)) {
+        return res.status(400).json({ error: 'Invalid characterId provided' });
+      }
+  
+      await characterService.activateCharacter(id, userId);
       res.status(204).send();
     } catch (error) {
       res.status(400).json({ error: (error).message });
