@@ -4,6 +4,9 @@ const characterService = new CharacterService();
 
 export class CharacterController {
   static async createCharacter(req, res) {
+    if (!req.body) {
+      return res.status(400).json({ error: 'No character data provided' });
+    }
     try {
       const userId = req.user.id; // From auth middleware
       const character = await characterService.createCharacter(req.body, userId);

@@ -6,6 +6,11 @@ export const setupWebSocketServer = (server) => {
   const chatService = new ChatService();
 
   wss.on('connection', (ws, req) => {
+    const queryString = req.url?.split('?')[1];
+    if (!queryString) {
+      ws.close(1008, 'Missing query string');
+      return;
+    }
     const params = new URLSearchParams(req.url?.split('?')[1]);
     const locationId = params.get('locationId');
 
@@ -48,14 +53,23 @@ export const setupWebSocketServer = (server) => {
       }
     });
 
-    ws.on('close', () => {
-      console.log(`WebSocket connection closed for location: ${locationId}`);
+    ws.on('close', (code, reason) => {
+      console.log(`WebSocket connection closed:  ${code} for location: ${locationId} - ${reason.toString()}`);
       clearInterval(interval);
     });
 
     ws.on('error', (error) => {
       console.error(`WebSocket error for location ${locationId}:`, error);
     });
+
+    ws.on('ping', () => {
+      console.log(`Received ping from client at location: ${locationId}`);
+    });
+    
+    ws.on('pong', () => {
+      console.log(`Received pong from client at location: ${locationId}`);
+    });
+    
   });
 
   return wss;
