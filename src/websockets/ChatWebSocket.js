@@ -1,8 +1,8 @@
 import { WebSocketServer, WebSocket } from 'ws';
-import { ChatService } from './services/ChatService.js';
+import { ChatService } from '../services/ChatService.js';
 
-export const setupWebSocketServer = (server) => {
-  const wss = new WebSocketServer({ server });
+export const setupWebSocketServer = () => {
+  const wss = new WebSocketServer({ noServer: true }); 
   const chatService = new ChatService();
 
   wss.on('connection', (ws, req) => {
@@ -72,5 +72,15 @@ export const setupWebSocketServer = (server) => {
     
   });
 
-  return wss;
+  return {
+    wss,
+    handleUpgrade: (request, socket, head) => {
+      const pathname = request.url?.split("?")[0];
+      if (pathname === "/ws/chat") {
+        wss.handleUpgrade(request, socket, head, (ws) => {
+          wss.emit("connection", ws, request);
+        });
+      }
+    },
+  };
 };

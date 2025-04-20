@@ -15,7 +15,8 @@ import { fileURLToPath } from 'url';
 import { errorHandler } from './middleware/errorHandler.js';
 import locationRoutes from './routes/location.js';
 import chatRoutes from './routes/chat.js';
-import { setupWebSocketServer } from './webSocket.js';
+import { setupWebSocketServer } from './websockets/ChatWebSocket.js';
+import { setupPresenceWebSocketServer } from './websockets/PresenceWebSocket.js';
 import raceRoutes from './routes/race.js';
 import characterRoutes from './routes/character.js';
 
@@ -27,7 +28,22 @@ const server = http.createServer(app);
 const PORT = process.env.PORT || 5001;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-setupWebSocketServer(server);
+const chatWS = setupWebSocketServer();
+const presenceWS = setupPresenceWebSocketServer();
+
+// Middleware for WebSocket connections
+
+server.on('upgrade', (req, socket, head) => {
+  const pathname = req.url?.split('?')[0];
+
+  if (pathname === '/ws/chat') {
+    chatWS.handleUpgrade(req, socket, head);
+  } else if (pathname === '/ws/presence') {
+    presenceWS.handleUpgrade(req, socket, head);
+  } else {
+    socket.destroy();
+  }
+});
 
 // Middleware
 app.use(cors({origin: 'http://localhost:3000', credentials: true, methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], allowedHeaders: ['Content-Type', 'Authorization'],}));
