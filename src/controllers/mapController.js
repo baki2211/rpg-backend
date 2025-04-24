@@ -5,7 +5,7 @@ const locationService = new LocationService();
 const mapService = new MapService();
 
 export class MapController {
-  static async getAllMaps(res) {
+  static async getAllMaps(req, res) {
     const maps = await mapService.getAllMaps();
     res.status(200).json(maps);
   }

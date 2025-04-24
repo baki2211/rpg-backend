@@ -72,6 +72,18 @@ npx typeorm migration:revert -d ./dist/data-source.js
 
 ---
 
+## Docker
+
+This project has a docker-compose.yml for a quick start.
+
+docker compose create
+
+Go into data-source.js and change `synchronize` to `true`
+
+run the container and let the db sync. 
+
+Set  `synchronize` back to `false`
+
 ## Testing
 
 ### Run Unit Tests
