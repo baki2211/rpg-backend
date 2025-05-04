@@ -1,5 +1,7 @@
 import 'reflect-metadata';
 import { DataSource } from 'typeorm';
+import dotenv from 'dotenv';
+dotenv.config();
 
 export const AppDataSource = new DataSource({
   type: 'postgres',
@@ -8,7 +10,7 @@ export const AppDataSource = new DataSource({
   username: process.env.DB_USER || 'postgres',
   password: process.env.DB_PASSWORD || 'postgres',
   database: process.env.DB_NAME || 'rpg',
-  synchronize: false, // Auto-sync database schema (set to false in production!)
+  synchronize: true, // Auto-sync database schema (set to false in production!)
   logging: true,
   entities: ['./src/models/*.js'], 
   migrations: ['./src/migrations/*.js'],

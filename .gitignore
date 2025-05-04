@@ -18,7 +18,9 @@ local.properties
 .idea/
 node_modules/
 .env
-src/data-source.ts
+src/tsconfig.json
+src/uploads/
+src/data-source.js
 
 # External tool builders
 .externalToolBuilders/
