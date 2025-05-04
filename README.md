@@ -84,6 +84,10 @@ run the container and let the db sync.
 
 Set  `synchronize` back to `false`
 
+It will try to populate the db with the `src/seed.js` at first start.
+If it fails or prefer manual, comment the last line in `Dockerfile` and launch it manual with:
+`docker-compose run --rm app npm run seed`
+
 ## Testing
 
 ### Run Unit Tests
