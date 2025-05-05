@@ -1,5 +1,7 @@
 import { MapService } from '../services/MapService.js';
 import { LocationService } from '../services/LocationService.js';
+import fs from 'fs';
+import path from 'path';
 
 const locationService = new LocationService();
 const mapService = new MapService();
@@ -33,18 +35,49 @@ export class MapController {
   static async updateMap(req, res) {
     const { id } = req.params;
     const mapData = req.body;
-    const updatedMap = await mapService.updateMap(Number(id), mapData);
-    if (!updatedMap) {
-      res.status(404).json({ message: 'Map not found' });
-      return;
+  // const updatedMap = await mapService.updateMap(Number(id), mapData);
+  //   if (!updatedMap) {
+  //     res.status(404).json({ message: 'Map not found' });
+  //     return;
+  //   }
+  //   res.status(200).json(updatedMap);
+  try {
+    const existingMap = await mapService.getMapById(Number(id));
+    if (!existingMap) {
+      return res.status(404).json({ message: 'Map not found' });
     }
+
+    const updatedFields = { name };
+
+    if (req.file) {
+      // Delete old image file if it exists and is local (basic protection)
+      if (existingMap.imageUrl && existingMap.imageUrl.startsWith('/uploads/')) {
+        const oldImagePath = path.join(process.cwd(), existingMap.imageUrl);
+        fs.unlink(oldImagePath, (err) => {
+          if (err) console.warn('⚠️ Failed to delete old image:', err.message);
+          else console.log('🗑️ Old image deleted:', oldImagePath);
+        });
+      }
+     // Add new image path
+     updatedFields.imageUrl = `/uploads/${req.file.filename}`;
+    }
+
+    const updatedMap = await mapService.updateMap(Number(id), updatedFields);
     res.status(200).json(updatedMap);
+  } catch (error) {
+    console.error('Error updating map:', error);
+    res.status(500).json({ message: 'Failed to update map', error: error.message });
   }
+}
 
     static async deleteMap(req, res) {
         const { id } = req.params;
-        await mapService.deleteMap(Number(id));
-        res.status(204).send();
+        try {
+          await mapService.deleteMap(Number(id));
+          res.status(204).send();
+        } catch (error) {
+          res.status(400).json({ message: error.message });
+        }
     }
 
     static async getMapById(req, res) {

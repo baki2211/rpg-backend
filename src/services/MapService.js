@@ -1,5 +1,7 @@
 import { AppDataSource } from '../data-source.js';
 import { Map } from '../models/mapModel.js';
+import fs from 'fs';
+import path from 'path';
 
 
 export class MapService {
@@ -25,9 +27,25 @@ export class MapService {
     return this.mapRepository.save(map);
   }
     
-    async deleteMap(id) {
-        await this.mapRepository.delete(id);
+  async deleteMap(id) {
+    const map = await this.mapRepository.findOne({ where: { id } });
+    if (!map) throw new Error('Map not found');
+    if (map.isMainMap) {
+      throw new Error('Cannot delete the main map');
     }
+    const count = await this.mapRepository.count();
+    if (count <= 1) {
+      throw new Error('Cannot delete the only map');
+    }
+    if (map.imageUrl && map.imageUrl.startsWith('/uploads/')) {
+      const imagePath = path.join(process.cwd(), map.imageUrl);
+      fs.unlink(imagePath, (err) => {
+        if (err) console.warn('Failed to delete image file:', err.message);
+        else console.log('Deleted map image:', imagePath);
+      });
+    }
+    return this.mapRepository.delete(id);
+  }
 
     async getMapById(id) {
         return this.mapRepository.findOne({ where: { id } });

@@ -39,9 +39,9 @@ Replace `<username>`, `<password>`, `<host>`, `<port>`, and `<database>` with yo
 
 ---
 
-## Running the Application
+## Running the Application (2 options):
 
-### Start the Development Server
+### 1 - Start the Development Server
 To start the app in development mode:
 ```bash
 npm run dev
@@ -49,6 +49,22 @@ npm run dev
 The server will run on `http://localhost:<PORT>` (default is `5001`).
 
 ---
+## 2 - Docker
+This project has a `docker-compose.yml` for a quick start. Run:
+
+`docker compose create`
+
+Go into data-source.js and change `synchronize` to `true`
+
+run the container and let the db sync. 
+
+Set  `synchronize` back to `false`
+
+It will try to populate the db with the `src/seed.js` at first start with some Admin and normal user, a map and a location to avoid fetching error.
+
+If it fails or prefer manual, comment the last line in `Dockerfile` and launch it manual with:
+`docker-compose run --rm app npm run seed`
+
 
 ## Database Management
 
@@ -71,22 +87,6 @@ npx typeorm migration:revert -d ./dist/data-source.js
 ```
 
 ---
-
-## Docker
-
-This project has a docker-compose.yml for a quick start.
-
-docker compose create
-
-Go into data-source.js and change `synchronize` to `true`
-
-run the container and let the db sync. 
-
-Set  `synchronize` back to `false`
-
-It will try to populate the db with the `src/seed.js` at first start.
-If it fails or prefer manual, comment the last line in `Dockerfile` and launch it manual with:
-`docker-compose run --rm app npm run seed`
 
 ## Testing
 
