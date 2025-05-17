@@ -22,16 +22,32 @@ export class ChatService {
       throw new Error('No active character found for this user.');
     }
 
+    // Initialize experience points to 0 if not set
+    if (character.experience === undefined || character.experience === null) {
+      character.experience = 0;
+    }
+    // Increment character's experience points by 0.5
+    character.experience += 0.5;
+    
     const chatMessage = this.chatRepository.create({
       location: { id: locationId },
       userId,
       characterId: character.id,
       message,
-      senderName: character.name,
-      username: character.name,
+      senderName: character.name || 'Unknown',
+      username: character.name || 'Unknown',
       createdAt: new Date(),
       updatedAt: new Date()
     });
-    return this.chatRepository.save(chatMessage);
+
+    // Use a transaction to ensure atomicity
+    return await AppDataSource.transaction(async (transactionalEntityManager) => {
+      const characterRepository = transactionalEntityManager.getRepository(Character);
+      const chatRepository = transactionalEntityManager.getRepository(ChatMessage);
+      
+      await characterRepository.save(character);
+     
+      return await chatRepository.save(chatMessage);
+    });
   }
 }

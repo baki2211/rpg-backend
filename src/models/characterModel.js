@@ -59,7 +59,7 @@ export const Character = new EntitySchema({
       updateDate: true,
     },
     experience: {
-      type: 'int',
+      type: 'float',
       nullable: false,
       default: 0
     }
