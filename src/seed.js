@@ -150,7 +150,8 @@ async function seed() {
       stats: { STR: 10, DEX: 10, RES: 10, MN: 10, CHA: 10 },
       isActive: true,
       background: 'A brave adventurer starting their journey.',
-      location: location
+      location: location,
+      experience: 0
     }));
 
     // Assign skills to the character

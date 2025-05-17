@@ -58,6 +58,11 @@ export const Character = new EntitySchema({
       type: 'timestamp',
       updateDate: true,
     },
+    experience: {
+      type: 'int',
+      nullable: false,
+      default: 0
+    }
   },
   relations: {
     user: {
