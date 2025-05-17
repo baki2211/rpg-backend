@@ -7,7 +7,7 @@ export class CharacterService {
   characterRepository = AppDataSource.getRepository(Character);
   userRepository = AppDataSource.getRepository(User);
 
-  async createCharacter(data, userId) {
+  async createCharacter(data, userId, imageUrl) {
     const user = await this.userRepository.findOneBy({ id: (await data.user)?.id || userId });
     if (!user) {
       throw new Error('User not found');
@@ -34,6 +34,7 @@ export class CharacterService {
       user: user,
       userId: user.id,
       race,
+      imageUrl: imageUrl,
     });
 
     console.log('Creating character for user:', user);
@@ -48,6 +49,21 @@ export class CharacterService {
       relations: ['race'], // Load the race relation explicitly
     });
   }
+
+  async getCharacterById(characterId, userId) {
+    return this.characterRepository.findOne({
+      where: { id: characterId, user: { id: userId } }
+    });
+  }
+  
+  async updateCharacterImage(characterId, userId, imagePath) {
+    await this.characterRepository.update(
+      { id: characterId, user: { id: userId } },
+      { imagePath }
+    );
+    return this.getCharacterById(characterId, userId);
+  }
+  
 
   async activateCharacter(characterId, userId) {
     // Deactivate all characters first

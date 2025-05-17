@@ -22,11 +22,11 @@ export const Character = new EntitySchema({
       type: 'varchar',
       length: 50,
     },
-    // imageUrl: {
-    //   type: 'varchar',
-    //   length: 255,
-    //   nullable: true,
-    // },
+    imageUrl: {
+      type: 'varchar',
+      length: 255,
+      nullable: true,
+    },
     age: {
       type: 'int',
     },
