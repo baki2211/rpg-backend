@@ -63,8 +63,8 @@ Set  `synchronize` back to `false`
 It will try to populate the db with the `src/seed.js` at first start with some Admin and normal user, a map and a location to avoid fetching error.
 
 If it fails or prefer manual, comment the last line in `Dockerfile` and launch it manual with:
-`docker-compose run --rm app npm run seed`
 
+`docker compose exec app node src/seed.js`
 
 ## Database Management
 

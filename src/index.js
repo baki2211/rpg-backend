@@ -20,6 +20,8 @@ import { setupPresenceWebSocketServer } from './websockets/PresenceWebSocket.js'
 import raceRoutes from './routes/race.js';
 import characterRoutes from './routes/character.js';
 import skillRoutes from './routes/skill.js';
+import skillBranchRoutes from './routes/skillBranch.js';
+import skillTypeRoutes from './routes/skillType.js';
 
 dotenv.config();
 
@@ -63,6 +65,8 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/races', raceRoutes);
 app.use('/api/characters', characterRoutes);
 app.use('/api/skills', skillRoutes);
+app.use('/api/skill-branches', skillBranchRoutes);
+app.use('/api/skill-types', skillTypeRoutes);
 
 // Other Routes
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));

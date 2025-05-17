@@ -8,6 +8,8 @@ import { Location } from './models/locationModel.js';
 import { Skill } from './models/skillModel.js';
 import { Character } from './models/characterModel.js';
 import { CharacterSkill } from './models/characterSkillModel.js';
+import { SkillBranch } from './models/skillBranchModel.js';
+import { SkillType } from './models/skillTypeModel.js';
 
 async function seed() {
   try {
@@ -20,6 +22,8 @@ async function seed() {
     const skillRepo = AppDataSource.getRepository(Skill);
     const characterRepo = AppDataSource.getRepository(Character);
     const characterSkillRepo = AppDataSource.getRepository(CharacterSkill);
+    const skillBranchRepo = AppDataSource.getRepository(SkillBranch);
+    const skillTypeRepo = AppDataSource.getRepository(SkillType);
 
     const userCount = await userRepo.count();
     if (userCount > 0) {
@@ -38,7 +42,7 @@ async function seed() {
     // Create race
     const race = await raceRepo.save(raceRepo.create({
       name: 'Human',
-      description: 'Balanced default race.',
+      description: 'A versatile race with balanced stats.',
       healthBonus: 5,
       manaBonus: 5,
       strengthBonus: 2,
@@ -50,60 +54,86 @@ async function seed() {
 
     // Create map and location
     const map = await mapRepo.save(mapRepo.create({
-      name: 'Main',
+      name: 'Main Map',
+      description: 'The main map of the game.',
       imageUrl: '/uploads/1746351601017-486054461-1745352337710-226738127-v2hg7xy9ty811.jpg',
       isMainMap: true
     }));
 
     const location = await locationRepo.save(locationRepo.create({
       name: 'Starting Village',
-      description: 'The place where all adventures begin.',
+      description: 'A peaceful village where adventurers begin their journey.',
       xCoordinate: 55,
       yCoordinate: 35,
-      map: 1 
+      map: map
+    }));
+
+    // Create skill branches
+    const pyromancyBranch = await skillBranchRepo.save(skillBranchRepo.create({
+      name: 'Pyromancy',
+      description: 'The art of fire magic.'
+    }));
+    const cryomancyBranch = await skillBranchRepo.save(skillBranchRepo.create({
+      name: 'Cryomancy',
+      description: 'The art of ice magic.'
+    }));
+    const chronomancyBranch = await skillBranchRepo.save(skillBranchRepo.create({
+      name: 'Chronomancy',
+      description: 'The art of time magic.'
+    }));
+
+    // Create skill types
+    const attackType = await skillTypeRepo.save(skillTypeRepo.create({
+      name: 'Attack',
+      description: 'Skills that deal damage.'
+    }));
+    const defenseType = await skillTypeRepo.save(skillTypeRepo.create({
+      name: 'Defense',
+      description: 'Skills that provide protection.'
+    }));
+    const supportType = await skillTypeRepo.save(skillTypeRepo.create({
+      name: 'Support',
+      description: 'Skills that aid allies.'
     }));
 
     // Create skills
     const skills = await skillRepo.save([
-      // Pyromancy skills
       skillRepo.create({
         name: 'Fireball',
-        description: 'A basic fire attack that deals damage to a single target.',
-        branch: 'Pyromancy',
-        type: 'Attack',
-        basePower: 15,
+        description: 'A basic fire attack.',
+        branch: pyromancyBranch,
+        type: attackType,
+        basePower: 10,
         duration: 0,
-        activation: 'FullAction',
-        requiredStats: { STR: 0, DEX: 0, RES: 0, MN: 5, CHA: 0 },
-        aetherCost: 10,
+        activation: 'BonusAction',
+        requiredStats: { STR: 0, DEX: 0, RES: 0, MN: 0, CHA: 0 },
+        aetherCost: 5,
         rank: 1,
         isPassive: false
       }),
-      // Cryomancy skills
       skillRepo.create({
         name: 'Ice Shield',
-        description: 'Creates a protective barrier of ice that reduces incoming damage.',
-        branch: 'Cryomancy',
-        type: 'Defense',
-        basePower: 10,
-        duration: 2,
-        activation: 'BonusAction',
-        requiredStats: { STR: 0, DEX: 0, RES: 5, MN: 0, CHA: 0 },
-        aetherCost: 15,
+        description: 'A defensive ice barrier.',
+        branch: cryomancyBranch,
+        type: defenseType,
+        basePower: 5,
+        duration: 3,
+        activation: 'FullAction',
+        requiredStats: { STR: 0, DEX: 0, RES: 0, MN: 0, CHA: 0 },
+        aetherCost: 8,
         rank: 1,
         isPassive: false
       }),
-      // Chronomancy skills
       skillRepo.create({
         name: 'Time Warp',
-        description: 'Temporarily increases the caster\'s speed.',
-        branch: 'Chronomancy',
-        type: 'Mobility',
-        basePower: 20,
-        duration: 1,
-        activation: 'BonusAction',
-        requiredStats: { STR: 0, DEX: 5, RES: 0, MN: 0, CHA: 0 },
-        aetherCost: 20,
+        description: 'A support skill that manipulates time.',
+        branch: chronomancyBranch,
+        type: supportType,
+        basePower: 0,
+        duration: 2,
+        activation: 'TwoTurns',
+        requiredStats: { STR: 0, DEX: 0, RES: 0, MN: 0, CHA: 0 },
+        aetherCost: 12,
         rank: 1,
         isPassive: false
       })
@@ -112,14 +142,15 @@ async function seed() {
     // Create a character for the admin user
     const character = await characterRepo.save(characterRepo.create({
       userId: admin.id,
-      name: 'Hero',
+      name: 'Admin Character',
       surname: 'Adventurer',
       age: 25,
       gender: 'Male',
       raceId: race.id,
       stats: { STR: 10, DEX: 10, RES: 10, MN: 10, CHA: 10 },
       isActive: true,
-      background: 'A brave adventurer starting their journey.'
+      background: 'A brave adventurer starting their journey.',
+      location: location
     }));
 
     // Assign skills to the character

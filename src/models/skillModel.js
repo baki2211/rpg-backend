@@ -12,45 +12,45 @@ export const Skill = new EntitySchema({
     },
     name: {
       type: 'varchar',
-      length: 100
+      length: 255,
+      nullable: false
     },
     description: {
-      type: 'text'
+      type: 'text',
+      nullable: true
     },
-    branch: {
-      type: 'enum',
-      enum: ['Pyromancy', 'Cryomancy', 'Chronomancy']
+    branchId: {
+      type: 'int',
+      nullable: false
     },
-    type: {
-      type: 'enum',
-      enum: ['Attack', 'Defense', 'Support', 'Mobility', 'Utility']
+    typeId: {
+      type: 'int',
+      nullable: false
     },
     basePower: {
-      type: 'float'
+      type: 'int',
+      nullable: false
     },
     duration: {
-      type: 'int'
+      type: 'int',
+      nullable: false
     },
     activation: {
-      type: 'enum',
-      enum: ['BonusAction', 'FullAction', 'TwoTurns']
+      type: 'varchar',
+      length: 255,
+      nullable: false
     },
     requiredStats: {
       type: 'json',
-      default: {
-        STR: 0,
-        DEX: 0,
-        RES: 0,
-        MN: 0,
-        CHA: 0
-      }
+      nullable: true
     },
     aetherCost: {
-      type: 'int'
+      type: 'int',
+      nullable: false
     },
     rank: {
       type: 'int',
-      default: 1
+      nullable: false
     },
     parentSkillId: {
       type: 'int',
@@ -58,7 +58,7 @@ export const Skill = new EntitySchema({
     },
     isPassive: {
       type: 'boolean',
-      default: false
+      nullable: false
     },
     unlockConditions: {
       type: 'json',
@@ -104,6 +104,20 @@ export const Skill = new EntitySchema({
         name: 'character_skills',
         joinColumn: { name: 'skillId' },
         inverseJoinColumn: { name: 'characterId' }
+      }
+    },
+    branch: {
+      type: 'many-to-one',
+      target: 'SkillBranch',
+      joinColumn: {
+        name: 'branchId'
+      }
+    },
+    type: {
+      type: 'many-to-one',
+      target: 'SkillType',
+      joinColumn: {
+        name: 'typeId'
       }
     }
   }
