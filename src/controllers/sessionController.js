@@ -11,70 +11,68 @@ export class SessionController {
       const session = await this.sessionService.createSession(name, locationId);
       res.json(session);
     } catch (error) {
-      console.error('Error creating session:', error);
-      res.status(500).json({ error: 'Failed to create session' });
+      res.status(500).json({ error: error.message });
     }
   }
 
   async getSession(req, res) {
     try {
-      const { sessionId } = req.params;
-      const session = await this.sessionService.getSession(sessionId);
+      const session = await this.sessionService.getSession(req.params.id);
       if (!session) {
         return res.status(404).json({ error: 'Session not found' });
       }
       res.json(session);
     } catch (error) {
-      console.error('Error getting session:', error);
-      res.status(500).json({ error: 'Failed to get session' });
+      res.status(500).json({ error: error.message });
     }
   }
 
   async getSessionByLocation(req, res) {
     try {
-      const { locationId } = req.params;
-      const session = await this.sessionService.getSessionByLocation(locationId);
+      const session = await this.sessionService.getSessionByLocation(req.params.locationId);
       if (!session) {
         return res.status(404).json({ error: 'Session not found' });
       }
       res.json(session);
     } catch (error) {
-      console.error('Error getting session by location:', error);
-      res.status(500).json({ error: 'Failed to get session' });
+      res.status(500).json({ error: error.message });
     }
   }
 
   async addParticipant(req, res) {
     try {
-      const { sessionId } = req.params;
       const { characterId } = req.body;
-      const participant = await this.sessionService.addParticipant(sessionId, characterId);
+      const participant = await this.sessionService.addParticipant(req.params.sessionId, characterId);
       res.json(participant);
     } catch (error) {
-      console.error('Error adding participant:', error);
-      res.status(500).json({ error: 'Failed to add participant' });
+      res.status(500).json({ error: error.message });
     }
   }
 
   async removeParticipant(req, res) {
     try {
-      const { sessionId, characterId } = req.params;
-      await this.sessionService.removeParticipant(sessionId, characterId);
+      await this.sessionService.removeParticipant(req.params.sessionId, req.params.characterId);
       res.status(204).send();
     } catch (error) {
-      console.error('Error removing participant:', error);
-      res.status(500).json({ error: 'Failed to remove participant' });
+      res.status(500).json({ error: error.message });
     }
   }
 
   async getParticipants(req, res) {
     try {
-      const { sessionId } = req.params;
-      const participants = await this.sessionService.getParticipants(sessionId);
+      const participants = await this.sessionService.getParticipants(req.params.sessionId);
       res.json(participants);
     } catch (error) {
-      console.error('Error getting participants:', error);
-      res.status(500).json({ error: 'Failed to get participants' });
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  async getAllSessions(req, res) {
+    try {
+      const sessions = await this.sessionService.getAllSessions();
+      res.json(sessions);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
     }
   }
 } 

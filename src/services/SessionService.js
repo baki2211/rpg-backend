@@ -70,4 +70,10 @@ export class SessionService {
     const session = await this.getSession(sessionId);
     return session?.participants || [];
   }
+
+  async getAllSessions() {
+    return await this.sessionRepository.find({
+      relations: ['participants', 'participants.character', 'messages']
+    });
+  }
 } 

@@ -22,6 +22,7 @@ import characterRoutes from './routes/character.js';
 import skillRoutes from './routes/skill.js';
 import skillBranchRoutes from './routes/skillBranch.js';
 import skillTypeRoutes from './routes/skillType.js';
+import sessionRoutes from './routes/session.js';
 
 dotenv.config();
 
@@ -67,6 +68,7 @@ app.use('/api/characters', characterRoutes);
 app.use('/api/skills', skillRoutes);
 app.use('/api/skill-branches', skillBranchRoutes);
 app.use('/api/skill-types', skillTypeRoutes);
+app.use('/api/sessions', sessionRoutes);
 
 // Other Routes
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));

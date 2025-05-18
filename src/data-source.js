@@ -11,6 +11,8 @@ import { Skill } from './models/skillModel.js';
 import { CharacterSkill } from './models/characterSkillModel.js';
 import { SkillBranch } from './models/skillBranchModel.js';
 import { SkillType } from './models/skillTypeModel.js';
+import { Session } from './models/sessionModel.js';
+import { SessionParticipant } from './models/sessionParticipantModel.js';
 
 dotenv.config();
 
@@ -23,6 +25,19 @@ export const AppDataSource = new DataSource({
   database: process.env.DB_NAME || 'rpg',
   synchronize: true, // Auto-sync database schema (set to false in production!)
   logging: true,
-  entities: [User, Character, Race, Location, Map, ChatMessage, Skill, CharacterSkill, SkillBranch, SkillType],
+  entities: [
+    User, 
+    Character, 
+    Race, 
+    Location, 
+    Map, 
+    ChatMessage, 
+    Skill, 
+    CharacterSkill, 
+    SkillBranch, 
+    SkillType, 
+    Session, 
+    SessionParticipant
+  ],
   migrations: ['./src/migrations/*.js'],
 });
