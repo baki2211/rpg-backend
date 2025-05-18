@@ -23,6 +23,7 @@ import skillRoutes from './routes/skill.js';
 import skillBranchRoutes from './routes/skillBranch.js';
 import skillTypeRoutes from './routes/skillType.js';
 import sessionRoutes from './routes/session.js';
+import { SessionExpirationJob } from './jobs/sessionExpiration.js';
 
 dotenv.config();
 
@@ -34,7 +35,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const chatWS = setupWebSocketServer();
 const presenceWS = setupPresenceWebSocketServer();
-
+const sessionExpirationInterval = SessionExpirationJob.startJob();
 // Middleware for WebSocket connections
 
 server.on('upgrade', (req, socket, head) => {
@@ -83,3 +84,6 @@ AppDataSource.initialize()
     .catch((error) => {
         console.error('Error during Data Source initialization:', error);
     });
+process.on('SIGTERM', () => {
+  clearInterval(sessionExpirationInterval);
+});

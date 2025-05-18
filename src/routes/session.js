@@ -5,7 +5,7 @@ const router = express.Router();
 const sessionController = new SessionController();
 
 // Get all sessions
-router.get('/', sessionController.getAllSessions.bind(sessionController));
+router.get('/active', sessionController.getAllSessions.bind(sessionController));
 
 // Create a new session
 router.post('/', sessionController.createSession.bind(sessionController));

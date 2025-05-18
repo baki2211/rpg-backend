@@ -64,7 +64,7 @@ It will try to populate the db with the `src/seed.js` at first start with some A
 
 If it fails or prefer manual, comment the last line in `Dockerfile` and launch it manual with:
 
-`docker compose exec app node src/seed.js`
+`docker compose exec app node src/jobs/seed.js`
 
 ## Database Management
 

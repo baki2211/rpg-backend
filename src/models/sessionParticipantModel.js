@@ -24,13 +24,18 @@ export const SessionParticipant = new EntitySchema({
     session: {
       type: 'many-to-one',
       target: 'Session',
-      joinColumn: { name: 'sessionId' },
-      inverseSide: 'participants'
+      joinColumn: {
+        name: 'sessionId',
+        referencedColumnName: 'id'
+      }
     },
     character: {
       type: 'many-to-one',
       target: 'Character',
-      joinColumn: { name: 'characterId' }
+      joinColumn: {
+        name: 'characterId',
+        referencedColumnName: 'id'
+      }
     }
   }
-}); 
+});

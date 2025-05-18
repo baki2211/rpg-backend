@@ -1,9 +1,12 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { ChatService } from '../services/ChatService.js';
+import { SessionService } from '../services/SessionService.js';
 
 export const setupWebSocketServer = () => {
   const wss = new WebSocketServer({ noServer: true }); 
   const chatService = new ChatService();
+  const sessionService = new SessionService();
+  const locationSessions = new Map(); // Map to track active sessions by location
 
   wss.on('connection', (ws, req) => {
     const queryString = req.url?.split('?')[1];
@@ -11,7 +14,8 @@ export const setupWebSocketServer = () => {
       ws.close(1008, 'Missing query string');
       return;
     }
-    const params = new URLSearchParams(req.url?.split('?')[1]);
+    
+    const params = new URLSearchParams(queryString);
     const locationId = params.get('locationId');
 
     if (!locationId) {
@@ -22,7 +26,7 @@ export const setupWebSocketServer = () => {
     ws.locationId = locationId;
     console.log(`WebSocket connection established for location: ${locationId}`);
 
-    // Ping-pong to keep the connection alive
+    // Keep-alive ping
     const interval = setInterval(() => {
       if (ws.readyState === WebSocket.OPEN) {
         ws.ping();
@@ -32,8 +36,8 @@ export const setupWebSocketServer = () => {
     ws.on('message', async (message) => {
       try {
         const parsedMessage = JSON.parse(message.toString());
-
-        // Save the message to the database
+        
+        // Save the message and handle session management
         const savedMessage = await chatService.addMessage(
           Number(locationId),
           parsedMessage.userId,
@@ -41,12 +45,12 @@ export const setupWebSocketServer = () => {
           parsedMessage.message
         );
 
-        // Broadcast the saved message to all clients in the same location
-        wss.clients.forEach((client) => {
-          if (client.readyState === WebSocket.OPEN && client.locationId === locationId) {
-            client.send(JSON.stringify(savedMessage));
-          }
-        });
+        // Handle session if needed
+        const session = await handlePaidAction(locationId, parsedMessage.userId);
+        savedMessage.sessionId = session.id;
+
+        // Single broadcast to all clients in the location
+        broadcastToLocation(locationId, savedMessage);
       } catch (error) {
         console.error('Error processing message:', error);
         ws.send(JSON.stringify({ error: 'Invalid message format' }));
@@ -61,16 +65,36 @@ export const setupWebSocketServer = () => {
     ws.on('error', (error) => {
       console.error(`WebSocket error for location ${locationId}:`, error);
     });
-
-    ws.on('ping', () => {
-      console.log(`Received ping from client at location: ${locationId}`);
-    });
-    
-    ws.on('pong', () => {
-      console.log(`Received pong from client at location: ${locationId}`);
-    });
-    
   });
+
+  const handlePaidAction = async (locationId, userId) => {
+    let session = await sessionService.getActiveSessionByLocation(locationId);
+    
+    if (!session) {
+      // Create new session if none exists
+      session = await sessionService.createSession(
+        `Session-${locationId}-${Date.now()}`,
+        locationId
+      );
+      locationSessions.set(locationId, session);
+    }
+
+    // Add user to session participants if not already present
+    await sessionService.addParticipantIfNotExists(session.id, userId);
+    
+    // Update session expiration time
+    await sessionService.updateSessionExpiration(session.id);
+
+    return session;
+  };
+
+  const broadcastToLocation = (locationId, message) => {
+    wss.clients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN && client.locationId === locationId) {
+        client.send(JSON.stringify(message));
+      }
+    });
+  };
 
   return {
     wss,

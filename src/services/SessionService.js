@@ -21,14 +21,14 @@ export class SessionService {
   async getSession(sessionId) {
     return await this.sessionRepository.findOne({
       where: { id: sessionId },
-      relations: ['participants', 'participants.character', 'messages']
+      relations: ['participants', 'participants.character'] 
     });
   }
 
   async getSessionByLocation(locationId) {
     return await this.sessionRepository.findOne({
       where: { locationId },
-      relations: ['participants', 'participants.character', 'messages']
+      relations: ['participants', 'participants.character']
     });
   }
 
@@ -72,8 +72,52 @@ export class SessionService {
   }
 
   async getAllSessions() {
-    return await this.sessionRepository.find({
-      relations: ['participants', 'participants.character', 'messages']
+    try {
+      const sessions = await this.sessionRepository.find({
+        relations: ['participants', 'participants.character']
+      });
+      
+      return sessions.map(session => ({
+        ...session,
+        participantCount: session.participants?.length || 0
+      }));
+    } catch (error) {
+      console.error('Error in getAllSessions:', error);
+      throw error;
+    }
+  }
+  async getActiveSessionByLocation(locationId) {
+    return await this.sessionRepository.findOne({
+      where: { 
+        locationId,
+        isActive: true 
+      },
+      relations: ['participants']
     });
   }
-} 
+
+  async addParticipantIfNotExists(sessionId, userId) {
+    const existingParticipant = await this.participantRepository.findOne({
+      where: { 
+        sessionId,
+        characterId: userId
+      }
+    });
+
+    if (!existingParticipant) {
+      return await this.addParticipant(sessionId, userId);
+    }
+    return existingParticipant;
+  }
+
+  async updateSessionExpiration(sessionId) {
+    const expirationTime = new Date(Date.now() + 2 * 60 * 60 * 1000); // 2 hours
+    await this.sessionRepository.update(
+      { id: sessionId },
+      { 
+        expirationTime,
+        updatedAt: new Date()
+      }
+    );
+  }
+}

@@ -11,6 +11,7 @@ export class SessionController {
       const session = await this.sessionService.createSession(name, locationId);
       res.json(session);
     } catch (error) {
+      console.error('Error in createSession:', error);
       res.status(500).json({ error: error.message });
     }
   }
@@ -23,6 +24,7 @@ export class SessionController {
       }
       res.json(session);
     } catch (error) {
+      console.error('Error in getSession:', error);
       res.status(500).json({ error: error.message });
     }
   }
@@ -35,6 +37,7 @@ export class SessionController {
       }
       res.json(session);
     } catch (error) {
+      console.error('Error in getSessionByLocation:', error);
       res.status(500).json({ error: error.message });
     }
   }
@@ -45,6 +48,7 @@ export class SessionController {
       const participant = await this.sessionService.addParticipant(req.params.sessionId, characterId);
       res.json(participant);
     } catch (error) {
+      console.error('Error in addParticipant:', error);
       res.status(500).json({ error: error.message });
     }
   }
@@ -54,6 +58,7 @@ export class SessionController {
       await this.sessionService.removeParticipant(req.params.sessionId, req.params.characterId);
       res.status(204).send();
     } catch (error) {
+      console.error('Error in removeParticipant:', error);
       res.status(500).json({ error: error.message });
     }
   }
@@ -63,16 +68,20 @@ export class SessionController {
       const participants = await this.sessionService.getParticipants(req.params.sessionId);
       res.json(participants);
     } catch (error) {
+      console.error('Error in getParticipants:', error);
       res.status(500).json({ error: error.message });
     }
   }
 
   async getAllSessions(req, res) {
     try {
+      console.log('Getting all sessions');
       const sessions = await this.sessionService.getAllSessions();
+      console.log(`Found ${sessions.length} sessions`);
       res.json(sessions);
     } catch (error) {
+      console.error('Error in getAllSessions:', error);
       res.status(500).json({ error: error.message });
     }
   }
-} 
+}

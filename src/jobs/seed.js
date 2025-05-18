@@ -1,15 +1,15 @@
 import 'reflect-metadata';
 import bcrypt from 'bcrypt';
-import { AppDataSource } from './data-source.js';
-import { User } from './models/userModel.js';
-import { Race } from './models/raceModel.js';
-import { Map } from './models/mapModel.js';
-import { Location } from './models/locationModel.js';
-import { Skill } from './models/skillModel.js';
-import { Character } from './models/characterModel.js';
-import { CharacterSkill } from './models/characterSkillModel.js';
-import { SkillBranch } from './models/skillBranchModel.js';
-import { SkillType } from './models/skillTypeModel.js';
+import { AppDataSource } from '../data-source.js';
+import { User } from '../models/userModel.js';
+import { Race } from '../models/raceModel.js';
+import { Map } from '../models/mapModel.js';
+import { Location } from '../models/locationModel.js';
+import { Skill } from '../models/skillModel.js';
+import { Character } from '../models/characterModel.js';
+import { CharacterSkill } from '../models/characterSkillModel.js';
+import { SkillBranch } from '../models/skillBranchModel.js';
+import { SkillType } from '../models/skillTypeModel.js';
 
 async function seed() {
   try {

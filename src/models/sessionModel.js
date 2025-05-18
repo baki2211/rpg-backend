@@ -23,6 +23,14 @@ export const Session = new EntitySchema({
     updatedAt: {
       type: 'timestamp',
       updateDate: true,
+    },
+     isActive: {
+      type: 'boolean',
+      default: true
+    },
+    expirationTime: {
+      type: 'timestamp',
+      nullable: true
     }
   },
   relations: {
@@ -37,4 +45,4 @@ export const Session = new EntitySchema({
       inverseSide: 'session'
     }
   }
-}); 
+});
