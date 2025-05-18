@@ -9,7 +9,7 @@ export class ChatService {
 
   async getMessagesByLocation(locationId) {
     // Fetch messages from the past 5 hours
-    const fiveHoursAgo = new Date(Date.now() - 0.5 * 60 * 60 * 1000);
+    const fiveHoursAgo = new Date(Date.now() - 5 * 60 * 60 * 1000);
     return this.chatRepository.find({
       where: { location: { id: locationId }, createdAt: MoreThan(fiveHoursAgo) },
       order: { createdAt: 'ASC' },
