@@ -36,21 +36,44 @@ export const setupWebSocketServer = () => {
     ws.on('message', async (message) => {
       try {
         const parsedMessage = JSON.parse(message.toString());
+        console.log('Received WebSocket message:', parsedMessage);
+        console.log('Skill data in received message:', parsedMessage.skill);
         
         // Save the message and handle session management
         const savedMessage = await chatService.addMessage(
           Number(locationId),
           parsedMessage.userId,
           parsedMessage.username,
-          parsedMessage.message
+          parsedMessage.message,
+          parsedMessage.skill // Pass the skill data
         );
+
+        console.log('Saved message with skill:', savedMessage);
+        console.log('Skill data in saved message:', {
+          skillId: savedMessage.skillId,
+          skillName: savedMessage.skillName,
+          skillBranch: savedMessage.skillBranch,
+          skillType: savedMessage.skillType
+        });
 
         // Handle session if needed
         const session = await handlePaidAction(locationId, parsedMessage.userId);
         savedMessage.sessionId = session.id;
 
         // Single broadcast to all clients in the location
-        broadcastToLocation(locationId, savedMessage);
+        const messageToBroadcast = {
+          ...savedMessage,
+          skill: savedMessage.skillId ? {
+            id: savedMessage.skillId,
+            name: savedMessage.skillName,
+            branch: savedMessage.skillBranch,
+            type: savedMessage.skillType
+          } : null
+        };
+        
+        console.log('Broadcasting message:', messageToBroadcast);
+        console.log('Skill data in broadcast message:', messageToBroadcast.skill);
+        broadcastToLocation(locationId, messageToBroadcast);
       } catch (error) {
         console.error('Error processing message:', error);
         ws.send(JSON.stringify({ error: 'Invalid message format' }));

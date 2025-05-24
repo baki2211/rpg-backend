@@ -23,6 +23,25 @@ export const ChatMessage = new EntitySchema({
       type: 'timestamp',
       createDate: true,
     },
+    skillId: {
+      type: 'int',
+      nullable: true,
+    },
+    skillName: {
+      type: 'varchar',
+      length: 100,
+      nullable: true,
+    },
+    skillBranch: {
+      type: 'varchar',
+      length: 100,
+      nullable: true,
+    },
+    skillType: {
+      type: 'varchar',
+      length: 100,
+      nullable: true,
+    },
   },
   relations: {
     location: {
