@@ -48,6 +48,11 @@ export const Skill = new EntitySchema({
       type: 'int',
       nullable: false
     },
+    skillPointCost: {
+      type: 'int',
+      nullable: false,
+      default: 1  // Default cost for skills
+    },
     rank: {
       type: 'int',
       nullable: false

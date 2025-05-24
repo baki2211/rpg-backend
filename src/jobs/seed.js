@@ -108,6 +108,7 @@ async function seed() {
         activation: 'BonusAction',
         requiredStats: { STR: 0, DEX: 0, RES: 0, MN: 0, CHA: 0 },
         aetherCost: 5,
+        skillPointCost: 1,
         rank: 1,
         isPassive: false
       }),
@@ -121,6 +122,7 @@ async function seed() {
         activation: 'FullAction',
         requiredStats: { STR: 0, DEX: 0, RES: 0, MN: 0, CHA: 0 },
         aetherCost: 8,
+        skillPointCost: 2,
         rank: 1,
         isPassive: false
       }),
@@ -134,6 +136,7 @@ async function seed() {
         activation: 'TwoTurns',
         requiredStats: { STR: 0, DEX: 0, RES: 0, MN: 0, CHA: 0 },
         aetherCost: 12,
+        skillPointCost: 3,
         rank: 1,
         isPassive: false
       })
@@ -151,7 +154,8 @@ async function seed() {
       isActive: true,
       background: 'A brave adventurer starting their journey.',
       location: location,
-      experience: 0
+      experience: 0,
+      skillPoints: 5 // Starting skill points
     }));
 
     // Assign skills to the character

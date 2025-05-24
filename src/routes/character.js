@@ -11,5 +11,10 @@ router.delete('/characters/:characterId/image', CharacterController.deleteCharac
 router.get('/', authenticateToken, CharacterController.getCharacters);
 router.put('/:characterId/activate', authenticateToken, CharacterController.activateCharacter);
 router.delete('/:id/delete', authenticateToken, CharacterController.deleteCharacter);
+router.post('/characters', upload.single('image'), CharacterController.createCharacter);
+router.get('/characters', CharacterController.getCharacters);
+router.post('/characters/:id/activate', CharacterController.activateCharacter);
+router.delete('/characters/:id', CharacterController.deleteCharacter);
+router.post('/characters/skills/:skillId', authenticateToken, CharacterController.acquireSkill);
 
 export default router;

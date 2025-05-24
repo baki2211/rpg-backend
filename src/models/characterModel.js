@@ -62,6 +62,11 @@ export const Character = new EntitySchema({
       type: 'float',
       nullable: false,
       default: 0
+    },
+    skillPoints: {
+      type: 'int',
+      nullable: false,
+      default: 5  // Starting skill points for new characters
     }
   },
   relations: {

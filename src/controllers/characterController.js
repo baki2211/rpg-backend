@@ -95,4 +95,15 @@ export class CharacterController {
     }
   }
 
+  static async acquireSkill(req, res) {
+    try {
+      const userId = req.user.id; // From auth middleware
+      const { skillId } = req.params;
+      const character = await characterService.acquireSkill(Number(skillId), userId);
+      res.status(200).json(character);
+    } catch (error) {
+      res.status(400).json({ error: error.message });
+    }
+  }
+
 }

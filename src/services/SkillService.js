@@ -13,11 +13,23 @@ export const SkillService = {
   },
 
   async createSkill(skillData) {
+    // Validate skillPointCost
+    if (typeof skillData.skillPointCost !== 'number' || skillData.skillPointCost < 1) {
+      throw new Error('Skill point cost must be a positive number');
+    }
+
     const skill = skillRepository.create(skillData);
     return await skillRepository.save(skill);
   },
 
   async updateSkill(id, skillData) {
+    // Validate skillPointCost if it's being updated
+    if (skillData.skillPointCost !== undefined) {
+      if (typeof skillData.skillPointCost !== 'number' || skillData.skillPointCost < 1) {
+        throw new Error('Skill point cost must be a positive number');
+      }
+    }
+
     await skillRepository.update(id, skillData);
     return await skillRepository.findOne({ where: { id } });
   },

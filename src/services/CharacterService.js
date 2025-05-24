@@ -79,4 +79,53 @@ export class CharacterService {
   async deleteCharacter(characterId, userId) {
     await this.characterRepository.delete({ id: characterId, user: { id: userId } });
   }
+
+  async getActiveCharacter(userId) {
+    return this.characterRepository.findOne({
+      where: { user: { id: userId }, isActive: true },
+      relations: ['skills', 'race'] // Load both skills and race relations
+    });
+  }
+
+  async acquireSkill(skillId, userId) {
+    const character = await this.getActiveCharacter(userId);
+    if (!character) {
+      throw new Error('No active character found');
+    }
+
+    const skill = await AppDataSource.getRepository('Skill').findOne({
+      where: { id: skillId }
+    });
+
+    if (!skill) {
+      throw new Error('Skill not found');
+    }
+
+    // Check if character already has the skill
+    const hasSkill = character.skills?.some(s => s.id === skillId);
+    if (hasSkill) {
+      throw new Error('Character already has this skill');
+    }
+
+    // Check if character has enough skill points
+    if (character.skillPoints < skill.skillPointCost) {
+      throw new Error('Not enough skill points');
+    }
+
+    // Create the many-to-many relationship
+    await AppDataSource
+      .createQueryBuilder()
+      .relation(Character, "skills")
+      .of(character)
+      .add(skill);
+
+    // Update skill points
+    await this.characterRepository.update(
+      { id: character.id },
+      { skillPoints: character.skillPoints - skill.skillPointCost }
+    );
+
+    // Return updated character with skills
+    return await this.getActiveCharacter(userId);
+  }
 }
