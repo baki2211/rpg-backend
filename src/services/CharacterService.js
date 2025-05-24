@@ -2,6 +2,7 @@ import { AppDataSource } from '../data-source.js';
 import { Character } from '../models/characterModel.js';
 import { User } from '../models/userModel.js';
 import { Race } from '../models/raceModel.js';
+import { Skill } from '../models/skillModel.js';
 
 export class CharacterService {
   characterRepository = AppDataSource.getRepository(Character);
@@ -52,7 +53,8 @@ export class CharacterService {
 
   async getCharacterById(characterId, userId) {
     return this.characterRepository.findOne({
-      where: { id: characterId, user: { id: userId } }
+      where: { id: characterId, user: { id: userId } },
+      relations: ['skills', 'skills.branch', 'skills.type']
     });
   }
   
@@ -127,5 +129,33 @@ export class CharacterService {
 
     // Return updated character with skills
     return await this.getActiveCharacter(userId);
+  }
+
+  async getAvailableSkills(characterId, userId) {
+    const character = await this.getCharacterById(characterId, userId);
+    if (!character) {
+      throw new Error('Character not found');
+    }
+
+    const allSkills = await AppDataSource.getRepository(Skill).find({
+      relations: ['branch', 'type']
+    });
+
+    // Filter out skills that the character already has
+    const availableSkills = allSkills.filter(skill => 
+      !character.skills?.some(characterSkill => characterSkill.id === skill.id)
+    );
+
+    return availableSkills;
+  }
+
+  async getAcquiredSkills(characterId, userId) {
+    const character = await this.getCharacterById(characterId, userId);
+    if (!character) {
+      throw new Error('Character not found');
+    }
+
+    // Return the character's skills with their relations
+    return character.skills;
   }
 }

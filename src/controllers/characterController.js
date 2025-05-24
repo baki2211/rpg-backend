@@ -106,4 +106,14 @@ export class CharacterController {
     }
   }
 
+  static async getAvailableSkills(req, res) {
+    try {
+      const userId = req.user.id; // From auth middleware
+      const { characterId } = req.params;
+      const availableSkills = await characterService.getAvailableSkills(Number(characterId), userId);
+      res.status(200).json(availableSkills);
+    } catch (error) {
+      res.status(400).json({ error: error.message });
+    }
+  }
 }

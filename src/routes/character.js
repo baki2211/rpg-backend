@@ -16,5 +16,6 @@ router.get('/characters', CharacterController.getCharacters);
 router.post('/characters/:id/activate', CharacterController.activateCharacter);
 router.delete('/characters/:id', CharacterController.deleteCharacter);
 router.post('/characters/skills/:skillId', authenticateToken, CharacterController.acquireSkill);
+router.get('/characters/:characterId/available-skills', authenticateToken, CharacterController.getAvailableSkills);
 
 export default router;

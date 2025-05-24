@@ -23,6 +23,7 @@ import skillRoutes from './routes/skill.js';
 import skillBranchRoutes from './routes/skillBranch.js';
 import skillTypeRoutes from './routes/skillType.js';
 import sessionRoutes from './routes/session.js';
+import characterSkillsRoutes from './routes/characterSkills.js';
 import { SessionExpirationJob } from './jobs/sessionExpiration.js';
 
 dotenv.config();
@@ -66,6 +67,7 @@ app.use('/api/locations', locationRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/races', raceRoutes);
 app.use('/api/characters', characterRoutes);
+app.use('/api/character-skills', characterSkillsRoutes);
 app.use('/api/skills', skillRoutes);
 app.use('/api/skill-branches', skillBranchRoutes);
 app.use('/api/skill-types', skillTypeRoutes);
