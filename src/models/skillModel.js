@@ -44,6 +44,15 @@ export const Skill = new EntitySchema({
       type: 'json',
       nullable: true
     },
+    scalingStat: {
+      type: 'varchar',
+      length: 255,
+      nullable: true
+    },
+    scalingFactor: {
+      type: 'float',
+      nullable: true
+    },
     aetherCost: {
       type: 'int',
       nullable: false
