@@ -44,10 +44,11 @@ export const Skill = new EntitySchema({
       type: 'json',
       nullable: true
     },
-    scalingStat: {
-      type: 'varchar',
-      length: 255,
-      nullable: true
+    // Valid scaling stats: FOC (Focus), CON (Control), RES (Resilience), INS (Instinct), PRE (Presence), FOR (Force)
+    scalingStats: {
+      type: 'json',
+      nullable: true,
+      default: []  // Array of up to 3 scaling stats
     },
     scalingFactor: {
       type: 'float',

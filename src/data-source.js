@@ -23,7 +23,7 @@ export const AppDataSource = new DataSource({
   username: process.env.DB_USER || 'postgres',
   password: process.env.DB_PASSWORD || 'postgres',
   database: process.env.DB_NAME || 'rpg',
-  synchronize: true, // Auto-sync database schema (set to false in production!)
+  synchronize: false, // Disable auto-sync since we're using migrations
   logging: true,
   entities: [
     User, 
@@ -40,4 +40,5 @@ export const AppDataSource = new DataSource({
     SessionParticipant
   ],
   migrations: ['./src/migrations/*.js'],
+  migrationsTableName: 'migrations'
 });
