@@ -160,11 +160,102 @@ export class SessionService {
   }
 
   async updateSessionStatus(sessionId, status) {
+    // If freezing the session, save the current chat state
+    if (status === 'frozen') {
+      await this.freezeSession(sessionId);
+    } else if (status === 'open') {
+      // If unfreezing, restore the saved chat state
+      await this.unfreezeSession(sessionId);
+    }
+    
     await this.sessionRepository.update(
       { id: sessionId },
       { status, updatedAt: new Date() }
     );
     return await this.getSession(sessionId);
+  }
+
+  async freezeSession(sessionId) {
+    const session = await this.getSession(sessionId);
+    if (!session) {
+      throw new Error('Session not found');
+    }
+
+    // Get current chat messages for this location
+    const { ChatMessage } = await import('../models/chatMessageModel.js');
+    const chatRepository = AppDataSource.getRepository(ChatMessage);
+    
+    const currentMessages = await chatRepository.find({
+      where: { location: { id: session.locationId } },
+      order: { createdAt: 'ASC' }
+    });
+
+    // Save the session state
+    const sessionState = {
+      messages: currentMessages,
+      participants: session.participants,
+      frozenAt: new Date(),
+      locationId: session.locationId
+    };
+
+    // Store the frozen state in the session
+    await this.sessionRepository.update(
+      { id: sessionId },
+      { 
+        frozenState: JSON.stringify(sessionState),
+        updatedAt: new Date()
+      }
+    );
+
+    // Clear current chat messages (they're now frozen)
+    await chatRepository.delete({ location: { id: session.locationId } });
+    
+    console.log(`📦 Session ${sessionId} frozen with ${currentMessages.length} messages saved`);
+  }
+
+  async unfreezeSession(sessionId) {
+    const session = await this.getSession(sessionId);
+    if (!session || !session.frozenState) {
+      console.log(`❄️ Session ${sessionId} has no frozen state to restore`);
+      return;
+    }
+
+    try {
+      const sessionState = JSON.parse(session.frozenState);
+      
+      // Restore chat messages
+      const { ChatMessage } = await import('../models/chatMessageModel.js');
+      const chatRepository = AppDataSource.getRepository(ChatMessage);
+      
+      // Clear any current messages first
+      await chatRepository.delete({ location: { id: session.locationId } });
+      
+      // Restore the frozen messages
+      for (const message of sessionState.messages) {
+        const restoredMessage = chatRepository.create({
+          ...message,
+          id: undefined, // Let the database assign new IDs
+          location: { id: session.locationId },
+          createdAt: message.createdAt,
+          updatedAt: new Date()
+        });
+        await chatRepository.save(restoredMessage);
+      }
+
+      // Clear the frozen state
+      await this.sessionRepository.update(
+        { id: sessionId },
+        { 
+          frozenState: null,
+          updatedAt: new Date()
+        }
+      );
+      
+      console.log(`🔥 Session ${sessionId} unfrozen with ${sessionState.messages.length} messages restored`);
+    } catch (error) {
+      console.error('Error unfreezing session:', error);
+      throw new Error('Failed to restore frozen session state');
+    }
   }
 
   async updateSessionActive(sessionId, isActive) {
