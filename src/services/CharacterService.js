@@ -29,7 +29,7 @@ export class CharacterService {
       await this.characterRepository.update({ user }, { isActive: false });
     }
 
-    // Create the new character, using lazy loading for `user`
+    // Create the new character, using lazy loading for the `user`
     const newCharacter = this.characterRepository.create({
       ...data,
       user: user,
