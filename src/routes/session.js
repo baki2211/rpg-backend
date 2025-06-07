@@ -13,6 +13,9 @@ router.post('/', sessionController.createSession.bind(sessionController));
 // Get session by location
 router.get('/location/:locationId', sessionController.getSessionByLocation.bind(sessionController));
 
+// Get participants by location
+router.get('/location/:locationId/participants', sessionController.getLocationParticipants.bind(sessionController));
+
 // Get all participants in a session
 router.get('/:sessionId/participants', sessionController.getParticipants.bind(sessionController));
 

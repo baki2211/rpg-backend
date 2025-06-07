@@ -84,4 +84,15 @@ export class SessionController {
       res.status(500).json({ error: error.message });
     }
   }
+
+  async getLocationParticipants(req, res) {
+    try {
+      const { locationId } = req.params;
+      const participants = await this.sessionService.getLocationParticipants(locationId);
+      res.json(participants);
+    } catch (error) {
+      console.error('Error in getLocationParticipants:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
 }

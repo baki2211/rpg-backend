@@ -120,4 +120,23 @@ export class SessionService {
       }
     );
   }
+
+  async getLocationParticipants(locationId) {
+    try {
+      const session = await this.getSessionByLocation(locationId);
+      if (!session) {
+        return [];
+      }
+
+      // Return participants with character information formatted for chat users
+      return session.participants?.map(participant => ({
+        userId: participant.character?.userId || participant.characterId,
+        username: participant.character?.name || 'Unknown',
+        characterName: participant.character?.name
+      })) || [];
+    } catch (error) {
+      console.error('Error in getLocationParticipants:', error);
+      return [];
+    }
+  }
 }

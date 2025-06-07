@@ -8,8 +8,12 @@ import { Location } from '../models/locationModel.js';
 import { Skill } from '../models/skillModel.js';
 import { Character } from '../models/characterModel.js';
 import { CharacterSkill } from '../models/characterSkillModel.js';
+import { CharacterSkillBranch } from '../models/characterSkillBranchModel.js';
 import { SkillBranch } from '../models/skillBranchModel.js';
 import { SkillType } from '../models/skillTypeModel.js';
+import { Session } from '../models/sessionModel.js';
+import { SessionParticipant } from '../models/sessionParticipantModel.js';
+import { ChatMessage } from '../models/chatMessageModel.js';
 
 async function seed() {
   try {
@@ -22,8 +26,12 @@ async function seed() {
     const skillRepo = AppDataSource.getRepository(Skill);
     const characterRepo = AppDataSource.getRepository(Character);
     const characterSkillRepo = AppDataSource.getRepository(CharacterSkill);
+    const characterSkillBranchRepo = AppDataSource.getRepository(CharacterSkillBranch);
     const skillBranchRepo = AppDataSource.getRepository(SkillBranch);
     const skillTypeRepo = AppDataSource.getRepository(SkillType);
+    const sessionRepo = AppDataSource.getRepository(Session);
+    const sessionParticipantRepo = AppDataSource.getRepository(SessionParticipant);
+    const chatMessageRepo = AppDataSource.getRepository(ChatMessage);
 
     const userCount = await userRepo.count();
     if (userCount > 0) {
@@ -31,12 +39,13 @@ async function seed() {
       return;
     }
 
-    const passwordHash = await bcrypt.hash('password123', 10);
+    // Create users with specified credentials
+    const adminPasswordHash = await bcrypt.hash('admin', 10);
+    const userPasswordHash = await bcrypt.hash('user', 10);
 
-    // Create users
     const [admin, user] = await userRepo.save([
-      userRepo.create({ username: 'admin', password: passwordHash, role: 'admin' }),
-      userRepo.create({ username: 'user', password: passwordHash, role: 'user' })
+      userRepo.create({ username: 'admin', password: adminPasswordHash, role: 'admin' }),
+      userRepo.create({ username: 'user', password: userPasswordHash, role: 'user' })
     ]);
 
     // Create race
@@ -96,77 +105,166 @@ async function seed() {
       description: 'Skills that aid allies.'
     }));
 
-    // Create skills
+    // Create skills with updated structure
     const skills = await skillRepo.save([
       skillRepo.create({
         name: 'Fireball',
-        description: 'A basic fire attack.',
-        branch: pyromancyBranch,
-        type: attackType,
+        description: 'A basic fire attack that hurls a ball of flame at the target.',
+        branchId: pyromancyBranch.id,
+        typeId: attackType.id,
         basePower: 10,
         duration: 0,
         activation: 'BonusAction',
-        requiredStats: { STR: 0, DEX: 0, RES: 0, MN: 0, CHA: 0 },
+        requiredStats: { FOC: 0, CON: 0, RES: 0, INS: 0, PRE: 0, FOR: 0 },
+        scalingStats: ['FOR', 'FOC'],
         aetherCost: 5,
         skillPointCost: 1,
+        target: 'other',
         rank: 1,
         isPassive: false
       }),
       skillRepo.create({
         name: 'Ice Shield',
-        description: 'A defensive ice barrier.',
-        branch: cryomancyBranch,
-        type: defenseType,
+        description: 'A defensive ice barrier that protects the caster.',
+        branchId: cryomancyBranch.id,
+        typeId: defenseType.id,
         basePower: 5,
         duration: 3,
         activation: 'FullAction',
-        requiredStats: { STR: 0, DEX: 0, RES: 0, MN: 0, CHA: 0 },
+        requiredStats: { FOC: 0, CON: 0, RES: 0, INS: 0, PRE: 0, FOR: 0 },
+        scalingStats: ['CON', 'RES'],
         aetherCost: 8,
         skillPointCost: 2,
+        target: 'self',
         rank: 1,
         isPassive: false
       }),
       skillRepo.create({
         name: 'Time Warp',
-        description: 'A support skill that manipulates time.',
-        branch: chronomancyBranch,
-        type: supportType,
+        description: 'A support skill that manipulates the flow of time around allies.',
+        branchId: chronomancyBranch.id,
+        typeId: supportType.id,
         basePower: 0,
         duration: 2,
         activation: 'TwoTurns',
-        requiredStats: { STR: 0, DEX: 0, RES: 0, MN: 0, CHA: 0 },
+        requiredStats: { FOC: 0, CON: 0, RES: 0, INS: 0, PRE: 0, FOR: 0 },
+        scalingStats: ['FOC', 'PRE', 'CON'],
         aetherCost: 12,
         skillPointCost: 3,
+        target: 'none',
         rank: 1,
         isPassive: false
       })
     ]);
 
-    // Create a character for the admin user
-    const character = await characterRepo.save(characterRepo.create({
+    // Create characters for both users
+    const adminCharacter = await characterRepo.save(characterRepo.create({
       userId: admin.id,
-      name: 'Admin Character',
-      surname: 'Adventurer',
+      name: 'Admin',
+      surname: 'Character',
       age: 25,
-      gender: 'Male',
+      gender: 'Non-binary',
       raceId: race.id,
-      stats: { STR: 10, DEX: 10, RES: 10, MN: 10, CHA: 10 },
+      stats: { FOC: 10, CON: 8, RES: 7, INS: 9, PRE: 8, FOR: 8 },
       isActive: true,
-      background: 'A brave adventurer starting their journey.',
-      location: location,
+      background: 'An administrator with access to powerful abilities.',
+      experience: 0,
+      skillPoints: 10 // Extra skill points for admin
+    }));
+
+    const userCharacter = await characterRepo.save(characterRepo.create({
+      userId: user.id,
+      name: 'User',
+      surname: 'Character',
+      age: 22,
+      gender: 'Female',
+      raceId: race.id,
+      stats: { FOC: 8, CON: 7, RES: 9, INS: 8, PRE: 10, FOR: 8 },
+      isActive: true,
+      background: 'A regular user exploring the world.',
       experience: 0,
       skillPoints: 5 // Starting skill points
     }));
 
-    // Assign skills to the character
+    // Assign skills to admin character
     await characterSkillRepo.save(
       skills.map(skill => characterSkillRepo.create({
-        characterId: character.id,
+        characterId: adminCharacter.id,
         skillId: skill.id,
         uses: 0,
         rank: 1
       }))
     );
+
+    // Assign basic skill to user character
+    await characterSkillRepo.save([
+      characterSkillRepo.create({
+        characterId: userCharacter.id,
+        skillId: skills[0].id, // Fireball skill
+        uses: 0,
+        rank: 1
+      })
+    ]);
+
+    // Create initial skill branch usage records
+    await characterSkillBranchRepo.save([
+      characterSkillBranchRepo.create({
+        characterId: adminCharacter.id,
+        branchId: pyromancyBranch.id,
+        uses: 0,
+        rank: 1
+      }),
+      characterSkillBranchRepo.create({
+        characterId: adminCharacter.id,
+        branchId: cryomancyBranch.id,
+        uses: 0,
+        rank: 1
+      }),
+      characterSkillBranchRepo.create({
+        characterId: adminCharacter.id,
+        branchId: chronomancyBranch.id,
+        uses: 0,
+        rank: 1
+      }),
+      characterSkillBranchRepo.create({
+        characterId: userCharacter.id,
+        branchId: pyromancyBranch.id,
+        uses: 0,
+        rank: 1
+      })
+    ]);
+
+    // Create a session for the starting location
+    const session = await sessionRepo.save(sessionRepo.create({
+      name: 'Starting Village Session',
+      locationId: location.id,
+      isActive: true,
+      expirationTime: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours from now
+    }));
+
+    // Add both characters as participants
+    await sessionParticipantRepo.save([
+      sessionParticipantRepo.create({
+        sessionId: session.id,
+        characterId: adminCharacter.id
+      }),
+      sessionParticipantRepo.create({
+        sessionId: session.id,
+        characterId: userCharacter.id
+      })
+    ]);
+
+    // Create a welcome message
+    await chatMessageRepo.save(chatMessageRepo.create({
+      location: { id: location.id },
+      userId: admin.id,
+      characterId: adminCharacter.id,
+      message: 'Welcome to the RPG world! This is the starting village where your adventure begins.',
+      senderName: 'Admin Character',
+      username: 'Admin Character',
+      createdAt: new Date(),
+      updatedAt: new Date()
+    }));
 
     console.log('Seed data inserted successfully.');
   } catch (err) {

@@ -34,4 +34,37 @@ export class UserService {
     async verifyPassword(password, hashedPassword) {
         return bcrypt.compare(password, hashedPassword);
     }
+
+    // Get all users with their roles
+    async getAllUsers() {
+        return this.userRepository.find({
+            select: ['id', 'username', 'role', 'createdAt'],
+            order: { username: 'ASC' }
+        });
+    }
+
+    // Update user role
+    async updateUserRole(userId, newRole) {
+        const validRoles = ['user', 'staffer', 'master', 'admin'];
+        if (!validRoles.includes(newRole.toLowerCase())) {
+            throw new Error('Invalid role. Must be one of: user, staffer, master, admin');
+        }
+
+        const user = await this.findById(userId);
+        if (!user) {
+            throw new Error('User not found');
+        }
+
+        await this.userRepository.update(userId, { role: newRole.toLowerCase() });
+        return this.findById(userId);
+    }
+
+    // Get users by role
+    async getUsersByRole(role) {
+        return this.userRepository.find({
+            where: { role: role.toLowerCase() },
+            select: ['id', 'username', 'role', 'createdAt'],
+            order: { username: 'ASC' }
+        });
+    }
 }
