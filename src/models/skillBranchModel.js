@@ -17,6 +17,11 @@ export const SkillBranch = new EntitySchema({
     description: {
       type: 'text',
       nullable: true
+    },
+    uses: {
+      type: 'int',
+      default: 0,
+      nullable: false
     }
   }
 }); 

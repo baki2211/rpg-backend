@@ -24,6 +24,7 @@ import skillBranchRoutes from './routes/skillBranch.js';
 import skillTypeRoutes from './routes/skillType.js';
 import sessionRoutes from './routes/session.js';
 import characterSkillsRoutes from './routes/characterSkills.js';
+import pvpRoutes from './routes/pvpRoutes.js';
 import { SessionExpirationJob } from './jobs/sessionExpiration.js';
 
 dotenv.config();
@@ -72,6 +73,7 @@ app.use('/api/skills', skillRoutes);
 app.use('/api/skill-branches', skillBranchRoutes);
 app.use('/api/skill-types', skillTypeRoutes);
 app.use('/api/sessions', sessionRoutes);
+app.use('/api/pvp', pvpRoutes);
 
 // Other Routes
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));

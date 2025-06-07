@@ -2,6 +2,7 @@ import { AppDataSource } from '../data-source.js';
 import { ChatMessage } from '../models/chatMessageModel.js';
 import { MoreThan } from 'typeorm';
 import { Character } from '../models/characterModel.js';
+import { SkillUsageService } from './SkillUsageService.js';
 
 export class ChatService {
   chatRepository = AppDataSource.getRepository(ChatMessage);
@@ -53,28 +54,24 @@ export class ChatService {
         // Increment character's experience points by 0.5
         character.experience += 0.5;
         console.log(`Updated experience points for character ${character.id}: ${character.experience}`);
-        // If a skill is used, increment its usage counter
-        if (skill) {
-          const skillRepository = AppDataSource.getRepository('Skill');
-          const characterSkill = await skillRepository.findOne({
-            where: { id: skill.id },
-            relations: ['characters']
-          });
-
-          if (characterSkill) {
-            // Initialize usage to 0 if not set
-            if (characterSkill.usage === undefined || characterSkill.usage === null) {
-              characterSkill.usage = 0;
-            }
-            characterSkill.usage += 1;
-            console.log(`Updated skill usage for ${skill.name}: ${characterSkill.usage}`);
-            await skillRepository.save(characterSkill);
+        
+        // If a skill is used, increment its usage counter and branch usage
+        if (skill && skill.id && skill.branchId) {
+          try {
+            const usageResult = await SkillUsageService.incrementSkillUsage(
+              character.id, 
+              skill.id, 
+              skill.branchId
+            );
+            console.log(`Updated skill usage for ${skill.name}: ${usageResult.skillUses} uses`);
+            console.log(`Updated branch usage for branch ${skill.branchId}: ${usageResult.branchUses} uses`);
+          } catch (error) {
+            console.error('Error updating skill usage:', error);
           }
         }
       }
     }
 
-    
     const chatMessage = this.chatRepository.create({
       location: { id: locationId },
       userId,

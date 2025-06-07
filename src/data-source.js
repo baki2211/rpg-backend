@@ -9,6 +9,7 @@ import { Map } from './models/mapModel.js';
 import { ChatMessage } from './models/chatMessageModel.js';
 import { Skill } from './models/skillModel.js';
 import { CharacterSkill } from './models/characterSkillModel.js';
+import { CharacterSkillBranch } from './models/characterSkillBranchModel.js';
 import { SkillBranch } from './models/skillBranchModel.js';
 import { SkillType } from './models/skillTypeModel.js';
 import { Session } from './models/sessionModel.js';
@@ -34,6 +35,7 @@ export const AppDataSource = new DataSource({
     ChatMessage, 
     Skill, 
     CharacterSkill, 
+    CharacterSkillBranch,
     SkillBranch, 
     SkillType, 
     Session, 

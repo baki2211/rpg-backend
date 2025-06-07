@@ -1,5 +1,8 @@
 import { Character } from '../models/characterModel.js';
 import { Skill } from '../models/skillModel.js';
+import { CharacterSkill } from '../models/characterSkillModel.js';
+import { CharacterSkillBranch } from '../models/characterSkillBranchModel.js';
+import { AppDataSource } from '../data-source.js';
 
 export class ClashResult {
     constructor(winner, damage, effects) {
@@ -16,52 +19,163 @@ export class SkillEngine {
     }
 
     /**
+     * Calculate skill rank multiplier based on uses
+     * @param {number} uses - Number of times the skill has been used
+     * @returns {number} The skill rank multiplier
+     */
+    calculateSkillRankMultiplier(uses) {
+        if (uses < 20) return 1.0;        // Rank I
+        if (uses < 35) return 1.3;        // Rank II
+        if (uses < 60) return 1.7;        // Rank III
+        if (uses < 100) return 2.2;       // Rank IV
+        return 2.8;                       // Rank V
+    }
+
+    /**
+     * Calculate branch rank multiplier based on total branch uses
+     * @param {number} branchUses - Total uses for the branch
+     * @returns {number} The branch rank multiplier
+     */
+    calculateBranchRankMultiplier(branchUses) {
+        if (branchUses < 75) return 1.0;     // Rank I
+        if (branchUses < 150) return 1.05;   // Rank II
+        if (branchUses < 250) return 1.1;    // Rank III
+        if (branchUses < 375) return 1.15;   // Rank IV
+        if (branchUses < 525) return 1.2;    // Rank V
+        if (branchUses < 700) return 1.25;   // Rank VI
+        if (branchUses < 900) return 1.3;    // Rank VII
+        if (branchUses < 1125) return 1.35;  // Rank VIII
+        if (branchUses < 1375) return 1.4;   // Rank IX
+        return 1.5;                          // Rank X
+    }
+
+    /**
+     * Get skill uses for this character and skill
+     * @returns {Promise<number>} Number of uses
+     */
+    async getSkillUses() {
+        const characterSkillRepo = AppDataSource.getRepository(CharacterSkill);
+        const characterSkill = await characterSkillRepo.findOne({
+            where: { 
+                characterId: this.character.id, 
+                skillId: this.skill.id 
+            }
+        });
+        return characterSkill?.uses || 0;
+    }
+
+    /**
+     * Get branch uses for this character and skill's branch
+     * @returns {Promise<number>} Number of branch uses
+     */
+    async getBranchUses() {
+        const characterSkillBranchRepo = AppDataSource.getRepository(CharacterSkillBranch);
+        const characterSkillBranch = await characterSkillBranchRepo.findOne({
+            where: { 
+                characterId: this.character.id, 
+                branchId: this.skill.branchId 
+            }
+        });
+        return characterSkillBranch?.uses || 0;
+    }
+
+    /**
      * Calculate the base impact of the skill based on character stats and skill properties
      * @returns {number} The calculated impact value
      */
     calculateImpact() {
         let impact = this.skill.basePower;
 
-        // Apply scaling from character stats
+        // Apply scaling from character stats with weighted formula
         if (this.skill.scalingStats && this.skill.scalingStats.length > 0) {
-            this.skill.scalingStats.forEach(stat => {
-                const statValue = this.character.stats[stat] || 0;
-                // Each stat contributes 20% of its value to the impact
-                impact += Math.floor(statValue * 0.2);
-            });
+            const statValues = this.skill.scalingStats.map(stat => ({
+                stat: stat,
+                value: this.character.stats[stat] || 0
+            }));
+
+            // Sort stats by value in descending order for weight assignment
+            statValues.sort((a, b) => b.value - a.value);
+
+            // Define weights based on number of stats
+            let weights;
+            switch (statValues.length) {
+                case 1:
+                    weights = [1.0]; // 100%
+                    break;
+                case 2:
+                    weights = [0.7, 0.3]; // 70%, 30%
+                    break;
+                case 3:
+                default:
+                    weights = [0.6, 0.25, 0.15]; // 60%, 25%, 15%
+                    break;
+            }
+
+            // Apply weighted stat contributions
+            for (let i = 0; i < Math.min(statValues.length, weights.length); i++) {
+                const statContribution = statValues[i].value * weights[i];
+                impact += Math.floor(statContribution);
+            }
         }
 
         return impact;
     }
 
     /**
-     * Roll for the outcome of the skill usage
-     * @returns {number} A random number between 0.8 and 1.2 representing the roll outcome
+     * Roll for the outcome of the skill usage using d20 system
+     * @returns {number} A multiplier based on the roll outcome (0.6, 1.0, or 1.4)
      */
     rollOutcome() {
-        // Generate a random number between 0.8 and 1.2
-        return 0.8 + Math.random() * 0.4;
+        // Roll a d20 (1-20)
+        const roll = Math.floor(Math.random() * 20) + 1;
+        
+        // Determine outcome based on roll ranges
+        if (roll >= 1 && roll <= 3) {
+            // Poor Success (15% chance)
+            return 0.6;
+        } else if (roll >= 4 && roll <= 17) {
+            // Standard Success (70% chance)
+            return 1.0;
+        } else if (roll >= 18 && roll <= 20) {
+            // Critical Success (15% chance)
+            return 1.4;
+        }
+        
+        // Fallback (should never reach here)
+        return 1.0;
     }
 
     /**
      * Compute the final output of the skill
-     * @returns {number} The final calculated output value
+     * @returns {Promise<number>} The final calculated output value
      */
-    computeFinalOutput() {
+    async computeFinalOutput() {
         const impact = this.calculateImpact();
-        const roll = this.rollOutcome();
-        return Math.floor(impact * roll);
+        const outcomeMultiplier = this.rollOutcome();
+        
+        // Get skill and branch uses
+        const skillUses = await this.getSkillUses();
+        const branchUses = await this.getBranchUses();
+        
+        // Calculate multipliers
+        const skillRankMultiplier = this.calculateSkillRankMultiplier(skillUses);
+        const branchRankMultiplier = this.calculateBranchRankMultiplier(branchUses);
+        
+        // Apply the formula: Final Output = IMP × (RankMultiplier + BranchMultiplier) × OutcomeMultiplier | Change if needed
+        const finalOutput = impact * (skillRankMultiplier + branchRankMultiplier) * outcomeMultiplier;
+        
+        return Math.floor(finalOutput);
     }
 
     /**
      * Resolve a clash between two skills
      * @param {Character} target - The target character
      * @param {Skill} targetSkill - The skill used by the target
-     * @returns {ClashResult} The result of the clash
+     * @returns {Promise<ClashResult>} The result of the clash
      */
-    resolveClash(target, targetSkill) {
-        const attackerOutput = this.computeFinalOutput();
-        const defenderOutput = new SkillEngine(target, targetSkill).computeFinalOutput();
+    async resolveClash(target, targetSkill) {
+        const attackerOutput = await this.computeFinalOutput();
+        const defenderOutput = await new SkillEngine(target, targetSkill).computeFinalOutput();
 
         // Determine winner and calculate damage
         let winner, damage;

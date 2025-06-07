@@ -63,6 +63,12 @@ export const Skill = new EntitySchema({
       nullable: false,
       default: 1  // Default cost for skills
     },
+    target: {
+      type: 'varchar',
+      length: 10,
+      nullable: false,
+      default: 'other'  // Values: 'self', 'other', 'none'
+    },
     rank: {
       type: 'int',
       nullable: false

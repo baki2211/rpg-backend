@@ -18,6 +18,11 @@ export const SkillService = {
       throw new Error('Skill point cost must be a positive number');
     }
 
+    // Validate target field
+    if (skillData.target && !['self', 'other', 'none'].includes(skillData.target)) {
+      throw new Error('Target must be one of: self, other, none');
+    }
+
     const skill = skillRepository.create(skillData);
     return await skillRepository.save(skill);
   },
@@ -28,6 +33,11 @@ export const SkillService = {
       if (typeof skillData.skillPointCost !== 'number' || skillData.skillPointCost < 1) {
         throw new Error('Skill point cost must be a positive number');
       }
+    }
+
+    // Validate target field if it's being updated
+    if (skillData.target !== undefined && !['self', 'other', 'none'].includes(skillData.target)) {
+      throw new Error('Target must be one of: self, other, none');
     }
 
     await skillRepository.update(id, skillData);
