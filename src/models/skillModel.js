@@ -50,10 +50,6 @@ export const Skill = new EntitySchema({
       nullable: true,
       default: []  // Array of up to 3 scaling stats
     },
-    scalingFactor: {
-      type: 'float',
-      nullable: true
-    },
     aetherCost: {
       type: 'int',
       nullable: false
