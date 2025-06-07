@@ -2,6 +2,7 @@ import { AppDataSource } from '../data-source.js';
 import { Session } from '../models/sessionModel.js';
 import { SessionParticipant } from '../models/sessionParticipantModel.js';
 import { Character } from '../models/characterModel.js';
+import { Location } from '../models/locationModel.js';
 
 export class SessionService {
   constructor() {
@@ -74,12 +75,30 @@ export class SessionService {
   async getAllSessions() {
     try {
       const sessions = await this.sessionRepository.find({
+        where: [
+          { status: 'open' },
+          { status: 'frozen' }
+        ],
         relations: ['participants', 'participants.character']
       });
       
+      // Get all unique location IDs
+      const locationIds = [...new Set(sessions.map(session => session.locationId))];
+      
+      // Fetch location data
+      const locationRepository = AppDataSource.getRepository(Location);
+      const locations = await locationRepository.findByIds(locationIds);
+      const locationMap = new Map(locations.map(loc => [loc.id, loc]));
+      
       return sessions.map(session => ({
         ...session,
-        participantCount: session.participants?.length || 0
+        location: locationMap.get(session.locationId),
+        participantCount: session.participants?.length || 0,
+        participants: session.participants?.map(participant => ({
+          id: participant.id,
+          characterName: participant.character?.name || 'Unknown',
+          joinedAt: participant.joinedAt
+        })) || []
       }));
     } catch (error) {
       console.error('Error in getAllSessions:', error);
@@ -137,6 +156,54 @@ export class SessionService {
     } catch (error) {
       console.error('Error in getLocationParticipants:', error);
       return [];
+    }
+  }
+
+  async updateSessionStatus(sessionId, status) {
+    await this.sessionRepository.update(
+      { id: sessionId },
+      { status, updatedAt: new Date() }
+    );
+    return await this.getSession(sessionId);
+  }
+
+  async updateSessionActive(sessionId, isActive) {
+    await this.sessionRepository.update(
+      { id: sessionId },
+      { isActive, updatedAt: new Date() }
+    );
+    return await this.getSession(sessionId);
+  }
+
+  async getClosedSessions() {
+    try {
+      const sessions = await this.sessionRepository.find({
+        where: { status: 'closed' },
+        relations: ['participants', 'participants.character'],
+        order: { updatedAt: 'DESC' }
+      });
+      
+      // Get all unique location IDs
+      const locationIds = [...new Set(sessions.map(session => session.locationId))];
+      
+      // Fetch location data
+      const locationRepository = AppDataSource.getRepository(Location);
+      const locations = await locationRepository.findByIds(locationIds);
+      const locationMap = new Map(locations.map(loc => [loc.id, loc]));
+      
+      return sessions.map(session => ({
+        ...session,
+        location: locationMap.get(session.locationId),
+        participantCount: session.participants?.length || 0,
+        participants: session.participants?.map(participant => ({
+          id: participant.id,
+          characterName: participant.character?.name || 'Unknown',
+          joinedAt: participant.joinedAt
+        })) || []
+      }));
+    } catch (error) {
+      console.error('Error in getClosedSessions:', error);
+      throw error;
     }
   }
 }

@@ -95,4 +95,50 @@ export class SessionController {
       res.status(500).json({ error: error.message });
     }
   }
+
+  async updateSessionStatus(req, res) {
+    try {
+      const { sessionId } = req.params;
+      const { status } = req.body;
+      
+      if (!['open', 'closed', 'frozen'].includes(status)) {
+        return res.status(400).json({ error: 'Invalid status. Must be open, closed, or frozen' });
+      }
+      
+      const session = await this.sessionService.updateSessionStatus(sessionId, status);
+      res.json(session);
+    } catch (error) {
+      console.error('Error in updateSessionStatus:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  async updateSessionActive(req, res) {
+    try {
+      const { sessionId } = req.params;
+      const { isActive } = req.body;
+      
+      if (typeof isActive !== 'boolean') {
+        return res.status(400).json({ error: 'isActive must be a boolean' });
+      }
+      
+      const session = await this.sessionService.updateSessionActive(sessionId, isActive);
+      res.json(session);
+    } catch (error) {
+      console.error('Error in updateSessionActive:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  async getClosedSessions(req, res) {
+    try {
+      console.log('Getting closed sessions');
+      const sessions = await this.sessionService.getClosedSessions();
+      console.log(`Found ${sessions.length} closed sessions`);
+      res.json(sessions);
+    } catch (error) {
+      console.error('Error in getClosedSessions:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
 }

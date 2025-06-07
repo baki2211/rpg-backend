@@ -7,6 +7,9 @@ const sessionController = new SessionController();
 // Get all sessions
 router.get('/active', sessionController.getAllSessions.bind(sessionController));
 
+// Get closed sessions
+router.get('/closed', sessionController.getClosedSessions.bind(sessionController));
+
 // Create a new session
 router.post('/', sessionController.createSession.bind(sessionController));
 
@@ -24,6 +27,12 @@ router.post('/:sessionId/participants', sessionController.addParticipant.bind(se
 
 // Remove participant from session
 router.delete('/:sessionId/participants/:characterId', sessionController.removeParticipant.bind(sessionController));
+
+// Update session status (freeze/unfreeze)
+router.put('/:sessionId/status', sessionController.updateSessionStatus.bind(sessionController));
+
+// Update session active state (open/close)
+router.put('/:sessionId/active', sessionController.updateSessionActive.bind(sessionController));
 
 // Get a specific session
 router.get('/:id', sessionController.getSession.bind(sessionController));

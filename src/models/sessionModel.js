@@ -28,6 +28,11 @@ export const Session = new EntitySchema({
       type: 'boolean',
       default: true
     },
+    status: {
+      type: 'varchar',
+      length: 20,
+      default: 'open'  // open, closed, frozen
+    },
     expirationTime: {
       type: 'timestamp',
       nullable: true
