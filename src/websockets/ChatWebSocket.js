@@ -1,11 +1,13 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { ChatService } from '../services/ChatService.js';
 import { SessionService } from '../services/SessionService.js';
+import { CharacterService } from '../services/CharacterService.js';
 
 export const setupWebSocketServer = () => {
   const wss = new WebSocketServer({ noServer: true }); 
   const chatService = new ChatService();
   const sessionService = new SessionService();
+  const characterService = new CharacterService();
   const locationSessions = new Map(); // Map to track active sessions by location
 
   wss.on('connection', (ws, req) => {
@@ -56,7 +58,7 @@ export const setupWebSocketServer = () => {
           skillType: savedMessage.skillType
         });
 
-        // Handle session if needed
+        // Handle session with proper character ID
         const session = await handlePaidAction(locationId, parsedMessage.userId);
         savedMessage.sessionId = session.id;
 
@@ -102,8 +104,12 @@ export const setupWebSocketServer = () => {
       locationSessions.set(locationId, session);
     }
 
-    // Add user to session participants if not already present
-    await sessionService.addParticipantIfNotExists(session.id, userId);
+    // Get the user's active character
+    const activeCharacter = await characterService.getActiveCharacter(userId);
+    if (activeCharacter) {
+      // Add character to session participants if not already present
+      await sessionService.addParticipantIfNotExists(session.id, activeCharacter.id);
+    }
     
     // Update session expiration time
     await sessionService.updateSessionExpiration(session.id);

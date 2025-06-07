@@ -115,16 +115,42 @@ export class SessionService {
     });
   }
 
-  async addParticipantIfNotExists(sessionId, userId) {
+  async addParticipantIfNotExists(sessionId, characterId) {
+    // Get the character and its user to handle potential duplicates
+    const character = await this.characterRepository.findOne({
+      where: { id: characterId },
+      relations: ['user']
+    });
+    
+    if (!character) {
+      throw new Error('Character not found');
+    }
+
+    // Remove any existing participants for this user in this session
+    // This handles the case where a user switched characters
+    const existingUserParticipants = await this.participantRepository.find({
+      where: { sessionId },
+      relations: ['character']
+    });
+
+    for (const participant of existingUserParticipants) {
+      if (participant.character?.userId === character.userId && participant.characterId !== characterId) {
+        console.log(`Removing old participant entry for user ${character.userId}, character ${participant.characterId}`);
+        await this.participantRepository.remove(participant);
+      }
+    }
+
+    // Check if current character is already a participant
     const existingParticipant = await this.participantRepository.findOne({
       where: { 
         sessionId,
-        characterId: userId
+        characterId: characterId
       }
     });
 
     if (!existingParticipant) {
-      return await this.addParticipant(sessionId, userId);
+      console.log(`Adding new participant: user ${character.userId}, character ${characterId}`);
+      return await this.addParticipant(sessionId, characterId);
     }
     return existingParticipant;
   }
