@@ -5,17 +5,23 @@ import upload from '../middleware/uploadMiddleware.js';
 
 const router = Router();
 
+// Character creation
 router.post('/new', authenticateToken, upload.single('image'), CharacterController.createCharacter);
-router.post('/characters/:characterId/image', upload.single('image'), CharacterController.uploadCharacterImage);
-router.delete('/characters/:characterId/image', CharacterController.deleteCharacterImage);
+router.post('/', authenticateToken, upload.single('image'), CharacterController.createCharacter);
+
+// Character image management
+router.post('/:characterId/image', authenticateToken, upload.single('image'), CharacterController.uploadCharacterImage);
+router.delete('/:characterId/image', authenticateToken, CharacterController.deleteCharacterImage);
+
+// Character management
 router.get('/', authenticateToken, CharacterController.getCharacters);
 router.put('/:characterId/activate', authenticateToken, CharacterController.activateCharacter);
+router.post('/:id/activate', authenticateToken, CharacterController.activateCharacter);
 router.delete('/:id/delete', authenticateToken, CharacterController.deleteCharacter);
-router.post('/characters', upload.single('image'), CharacterController.createCharacter);
-router.get('/characters', CharacterController.getCharacters);
-router.post('/characters/:id/activate', CharacterController.activateCharacter);
-router.delete('/characters/:id', CharacterController.deleteCharacter);
-router.post('/characters/skills/:skillId', authenticateToken, CharacterController.acquireSkill);
-router.get('/characters/:characterId/available-skills', authenticateToken, CharacterController.getAvailableSkills);
+router.delete('/:id', authenticateToken, CharacterController.deleteCharacter);
+
+// Character skills
+router.post('/skills/:skillId', authenticateToken, CharacterController.acquireSkill);
+router.get('/:characterId/available-skills', authenticateToken, CharacterController.getAvailableSkills);
 
 export default router;

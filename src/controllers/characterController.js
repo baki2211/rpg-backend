@@ -48,11 +48,23 @@ export class CharacterController {
   static async deleteCharacter(req, res) {
     try {
       const userId = req.user.id; // From auth middleware
-      const { id } = req.params;
-      await characterService.deleteCharacter(Number(id), userId);
+      // Handle both :id and :characterId parameter formats
+      const characterId = req.params.id || req.params.characterId;
+      
+      if (!characterId) {
+        return res.status(400).json({ error: 'Character ID is required' });
+      }
+
+      const id = Number(characterId);
+      if (isNaN(id)) {
+        return res.status(400).json({ error: 'Invalid character ID provided' });
+      }
+
+      await characterService.deleteCharacter(id, userId);
       res.status(204).send();
     } catch (error) {
-      res.status(400).json({ error: (error).message });
+      console.error('Delete character error:', error);
+      res.status(400).json({ error: error.message });
     }
   }
 

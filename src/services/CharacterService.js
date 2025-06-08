@@ -78,7 +78,66 @@ export class CharacterService {
   }
 
   async deleteCharacter(characterId, userId) {
-    await this.characterRepository.delete({ id: characterId, user: { id: userId } });
+    return await AppDataSource.transaction(async (manager) => {
+      // First check if the character exists and belongs to the user
+      const characterRepo = manager.getRepository(Character);
+      const character = await characterRepo.findOne({
+        where: { id: characterId, user: { id: userId } }
+      });
+
+      if (!character) {
+        throw new Error('Character not found or you do not have permission to delete this character');
+      }
+
+      logger.character(`Deleting character ${character.name} (ID: ${characterId}) for user ${userId}`);
+
+      // Clean up related data before deleting the character
+      
+      // 1. Remove from session participants
+      const { SessionParticipant } = await import('../models/sessionParticipantModel.js');
+      const sessionParticipantRepo = manager.getRepository(SessionParticipant);
+      await sessionParticipantRepo.delete({ characterId });
+      logger.character(`Removed character ${characterId} from all sessions`);
+
+      // 2. Remove character skills relationships
+      const { CharacterSkill } = await import('../models/characterSkillModel.js');
+      const characterSkillRepo = manager.getRepository(CharacterSkill);
+      await characterSkillRepo.delete({ characterId });
+      logger.character(`Removed skill relationships for character ${characterId}`);
+
+      // 3. Remove character skill branch usage tracking
+      const { CharacterSkillBranch } = await import('../models/characterSkillBranchModel.js');
+      const characterSkillBranchRepo = manager.getRepository(CharacterSkillBranch);
+      await characterSkillBranchRepo.delete({ characterId });
+      logger.character(`Removed skill branch usage for character ${characterId}`);
+
+      // 4. Update any chat messages to remove character references (optional - we could keep these for history)
+      // For now, we'll keep chat messages but they'll just show the character name without being linked
+
+      // 5. Remove from any combat actions (if in active combat)
+      try {
+        const { CombatAction } = await import('../models/combatActionModel.js');
+        const combatActionRepo = manager.getRepository(CombatAction);
+        await combatActionRepo.delete({ characterId });
+        logger.character(`Removed combat actions for character ${characterId}`);
+      } catch (error) {
+        // Combat module might not exist, that's ok
+        logger.character(`Combat cleanup skipped for character ${characterId}`);
+      }
+
+      // Now delete the character
+      const result = await characterRepo.delete({ 
+        id: characterId, 
+        user: { id: userId } 
+      });
+
+      if (result.affected === 0) {
+        throw new Error('Failed to delete character');
+      }
+
+      logger.character(`Successfully deleted character ${character.name} (ID: ${characterId})`);
+      return { success: true, deletedCharacterId: characterId };
+    });
   }
 
   async getActiveCharacter(userId) {
