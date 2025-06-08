@@ -13,6 +13,48 @@ export class EventService {
     }
 
     /**
+     * Ensure there's an active session for the given location
+     * @param {number} locationId - The location ID
+     * @param {Object} manager - Database transaction manager (optional)
+     * @returns {Promise<Object>} The session object
+     */
+    async ensureSessionForLocation(locationId, manager = null) {
+        const sessionRepo = manager ? manager.getRepository(Session) : this.sessionRepository;
+        
+        console.log(`🏁 SESSION ENSURE: Checking for active session at location ${locationId}`);
+        
+        // Try to find existing active session that is also open (not closed/frozen)
+        let session = await sessionRepo.findOne({
+            where: { 
+                locationId, 
+                isActive: true,
+                status: 'open'  // Only find open sessions, not closed or frozen ones
+            }
+        });
+
+        if (session) {
+            console.log(`🏁 SESSION ENSURE: Found existing session ${session.id} at location ${locationId}`);
+            return session;
+        }
+
+        // No active open session found, create one
+        console.log(`🏁 SESSION ENSURE: No active open session found, creating new session for location ${locationId}`);
+        
+        session = sessionRepo.create({
+            name: `Free Role - Location ${locationId}`,
+            locationId,
+            isEvent: false,
+            isActive: true,
+            status: 'open'
+        });
+
+        const savedSession = await sessionRepo.save(session);
+        console.log(`🏁 SESSION ENSURE: Created new session ${savedSession.id} for location ${locationId}`);
+        
+        return savedSession;
+    }
+
+    /**
      * Create a new event and transform existing session
      * @param {string} title - The event title
      * @param {string} type - The event type (lore, duel, quest)
@@ -41,24 +83,21 @@ export class EventService {
             const eventRepo = manager.getRepository(Event);
             const sessionRepo = manager.getRepository(Session);
 
-            // Get or create session for this location
-            let session = await sessionRepo.findOne({
-                where: { locationId, isActive: true }
-            });
+            console.log(`🎪 EVENT: Creating event "${title}" at location ${locationId}`);
 
-            if (!session) {
-                // Create new session if none exists
-                session = sessionRepo.create({
-                    name: `Free Role - Location ${locationId}`,
-                    locationId,
-                    isEvent: false,
-                    isActive: true,
-                    status: 'open'
-                });
-                session = await sessionRepo.save(session);
+            // Ensure there's an active session for this location
+            console.log(`🎪 EVENT: Ensuring session exists for location ${locationId}`);
+            let session;
+            try {
+                session = await this.ensureSessionForLocation(locationId, manager);
+                console.log(`🎪 EVENT: Session ensured - ID: ${session.id}, isEvent: ${session.isEvent}, status: ${session.status}`);
+            } catch (sessionError) {
+                console.error(`🎪 EVENT: Failed to ensure session:`, sessionError);
+                throw new Error(`Failed to ensure session for location ${locationId}: ${sessionError.message}`);
             }
 
             // Create the event
+            console.log(`🎪 EVENT: Creating event entity`);
             const event = eventRepo.create({
                 title,
                 type: type.toLowerCase(),
@@ -69,23 +108,41 @@ export class EventService {
                 status: 'active'
             });
 
-            const savedEvent = await eventRepo.save(event);
+            let savedEvent;
+            try {
+                savedEvent = await eventRepo.save(event);
+                console.log(`🎪 EVENT: Created event ${savedEvent.id}`);
+            } catch (eventError) {
+                console.error(`🎪 EVENT: Failed to create event:`, eventError);
+                throw new Error(`Failed to create event: ${eventError.message}`);
+            }
 
             // Transform session to event role
-            await sessionRepo.update(session.id, { 
-                name: `Event: ${title}`,
-                isEvent: true,
-                eventId: savedEvent.id
-            });
+            console.log(`🎪 EVENT: Transforming session ${session.id} to event mode`);
+            try {
+                await sessionRepo.update(session.id, { 
+                    name: `Event: ${title}`,
+                    isEvent: true,
+                    eventId: savedEvent.id
+                });
 
-            // Get updated session
-            const updatedSession = await sessionRepo.findOne({ where: { id: session.id } });
+                // Get updated session to verify transformation
+                const updatedSession = await sessionRepo.findOne({ where: { id: session.id } });
+                if (!updatedSession) {
+                    throw new Error(`Failed to retrieve updated session ${session.id}`);
+                }
+                
+                console.log(`🎪 EVENT: Session transformed - isEvent: ${updatedSession.isEvent}, eventId: ${updatedSession.eventId}, isActive: ${updatedSession.isActive}`);
 
-            return {
-                event: savedEvent,
-                session: updatedSession,
-                transformation: 'free_role_to_event'
-            };
+                return {
+                    event: savedEvent,
+                    session: updatedSession,
+                    transformation: 'free_role_to_event'
+                };
+            } catch (transformError) {
+                console.error(`🎪 EVENT: Failed to transform session:`, transformError);
+                throw new Error(`Failed to transform session to event mode: ${transformError.message}`);
+            }
         });
     }
 
@@ -137,7 +194,9 @@ export class EventService {
                 await sessionRepo.update(event.sessionId, { 
                     name: `Free Role - Location ${event.locationId}`,
                     isEvent: false,
-                    eventId: null
+                    eventId: null,
+                    isActive: false,  // Deactivate the session when closing the event
+                    status: 'closed'  // Mark session as closed
                 });
             }
 

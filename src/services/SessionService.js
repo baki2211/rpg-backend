@@ -15,9 +15,13 @@ export class SessionService {
   async createSession(name, locationId) {
     const session = this.sessionRepository.create({
       name,
-      locationId
+      locationId,
+      isActive: true,  // Explicitly set as active
+      status: 'open'   // Explicitly set status
     });
-    return await this.sessionRepository.save(session);
+    const savedSession = await this.sessionRepository.save(session);
+    console.log(`🏁 SESSION: Created session ${savedSession.id} for location ${locationId}`);
+    return savedSession;
   }
 
   async getSession(sessionId) {
@@ -113,13 +117,28 @@ export class SessionService {
     }
   }
   async getActiveSessionByLocation(locationId) {
-    return await this.sessionRepository.findOne({
+    const session = await this.sessionRepository.findOne({
       where: { 
         locationId,
-        isActive: true 
+        isActive: true,
+        status: 'open'  // Only find open sessions, not closed or frozen ones
       },
       relations: ['participants']
     });
+    
+    if (!session) {
+      // Only log if we need to debug session issues
+      const allSessions = await this.sessionRepository.find({ where: { locationId } });
+      if (allSessions.length === 0) {
+        console.log(`🔍 SESSION: No sessions exist for location ${locationId}`);
+      } else {
+        const activeSessions = allSessions.filter(s => s.isActive);
+        const openSessions = allSessions.filter(s => s.status === 'open');
+        console.log(`🔍 SESSION: Found ${allSessions.length} total sessions (${activeSessions.length} active, ${openSessions.length} open) for location ${locationId}`);
+      }
+    }
+    
+    return session;
   }
 
   async addParticipantIfNotExists(sessionId, characterId) {

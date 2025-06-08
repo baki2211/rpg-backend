@@ -6,6 +6,7 @@ import { Skill } from '../models/skillModel.js';
 import { SkillEngine } from './SkillEngine.js';
 import { PvPResolutionService } from './PvPResolutionService.js';
 import { SkillUsageService } from './SkillUsageService.js';
+import { EngineLogService } from './EngineLogService.js';
 
 export class CombatService {
     constructor() {
@@ -13,6 +14,7 @@ export class CombatService {
         this.actionRepository = AppDataSource.getRepository(CombatAction);
         this.characterRepository = AppDataSource.getRepository(Character);
         this.skillRepository = AppDataSource.getRepository(Skill);
+        this.engineLogService = new EngineLogService();
     }
 
     /**
@@ -24,6 +26,33 @@ export class CombatService {
      * @returns {Promise<Object>} The created combat round
      */
     async createRound(locationId, createdBy, sessionId = null, eventId = null) {
+        console.log(`⚔️ ROUND: Creating combat round at location ${locationId}, sessionId: ${sessionId}, eventId: ${eventId}`);
+        
+        // Ensure there's always an active session for engine logging
+        if (!sessionId) {
+            console.log(`⚔️ ROUND: No sessionId provided, looking for active session`);
+            const { SessionService } = await import('./SessionService.js');
+            const sessionService = new SessionService();
+            
+            let activeSession = await sessionService.getActiveSessionByLocation(locationId);
+            
+            if (!activeSession) {
+                console.log(`⚔️ ROUND: No active session found, creating new session for location ${locationId}`);
+                // Create a session for this location if none exists
+                activeSession = await sessionService.createSession(
+                    `Auto-created for Location ${locationId}`,
+                    locationId
+                );
+                console.log(`⚔️ ROUND: Created new session ${activeSession.id} for location ${locationId} to support combat round`);
+            } else {
+                console.log(`⚔️ ROUND: Found active session ${activeSession.id} for location ${locationId}`);
+            }
+            
+            sessionId = activeSession.id;
+        }
+
+        console.log(`⚔️ ROUND: Using sessionId ${sessionId} for combat round`);
+
         // Get the next round number for this location
         const lastRound = await this.roundRepository.findOne({
             where: { locationId },
@@ -31,6 +60,7 @@ export class CombatService {
         });
 
         const roundNumber = lastRound ? lastRound.roundNumber + 1 : 1;
+        console.log(`⚔️ ROUND: Creating round ${roundNumber} for location ${locationId}`);
 
         const round = this.roundRepository.create({
             roundNumber,
@@ -41,7 +71,9 @@ export class CombatService {
             status: 'active'
         });
 
-        return await this.roundRepository.save(round);
+        const savedRound = await this.roundRepository.save(round);
+        console.log(`⚔️ ROUND: Created combat round ${savedRound.id} (Round ${roundNumber}) successfully`);
+        return savedRound;
     }
 
     /**
@@ -166,71 +198,149 @@ export class CombatService {
      * @returns {Promise<Object>} Resolution result
      */
     async resolveRound(roundId, resolvedBy) {
-        return await AppDataSource.transaction(async (manager) => {
-            const roundRepo = manager.getRepository(CombatRound);
-            const actionRepo = manager.getRepository(CombatAction);
+        console.log(`⚔️ RESOLVE: Starting round ${roundId} resolution`);
+        
+        try {
+            return await AppDataSource.transaction(async (manager) => {
+                const roundRepo = manager.getRepository(CombatRound);
+                const actionRepo = manager.getRepository(CombatAction);
 
-            // Get the round and its actions
-            const round = await roundRepo.findOne({
-                where: { id: roundId, status: 'active' },
-                relations: ['actions', 'actions.character', 'actions.skill', 'actions.target']
+                // Get the round and its actions
+                const round = await roundRepo.findOne({
+                    where: { id: roundId, status: 'active' },
+                    relations: ['actions', 'actions.character', 'actions.skill', 'actions.target']
+                });
+
+                if (!round) {
+                    throw new Error('Combat round not found or not active');
+                }
+
+                const actions = round.actions || [];
+                if (actions.length === 0) {
+                    throw new Error('No actions to resolve');
+                }
+
+                console.log(`⚔️ RESOLVE: Processing ${actions.length} actions in round ${round.roundNumber}`);
+
+                // Group actions for clash resolution
+                const { clashes, independentActions } = this.identifyClashes(actions);
+                
+                const resolutionResults = {
+                    roundId,
+                    roundNumber: round.roundNumber,
+                    clashes: [],
+                    independentActions: [],
+                    summary: {
+                        totalActions: actions.length,
+                        clashCount: clashes.length,
+                        independentCount: independentActions.length
+                    }
+                };
+
+                // Resolve clashes
+                for (let i = 0; i < clashes.length; i++) {
+                    try {
+                        const clashResult = await this.resolveClash(clashes[i], manager);
+                        resolutionResults.clashes.push(clashResult);
+                    } catch (clashError) {
+                        throw new Error(`Failed to resolve clash ${i + 1}: ${clashError.message}`);
+                    }
+                }
+
+                // Process independent actions
+                for (let i = 0; i < independentActions.length; i++) {
+                    try {
+                        const independentResult = this.processIndependentAction(independentActions[i]);
+                        resolutionResults.independentActions.push(independentResult);
+                    } catch (independentError) {
+                        throw new Error(`Failed to process independent action ${i + 1}: ${independentError.message}`);
+                    }
+                }
+
+                // Mark actions as processed
+                await actionRepo.update(
+                    { roundId },
+                    { processed: true }
+                );
+
+                // Update round status
+                await roundRepo.update(
+                    { id: roundId },
+                    {
+                        status: 'resolved',
+                        resolvedBy,
+                        resolvedAt: new Date(),
+                        resolutionData: resolutionResults
+                    }
+                );
+
+                console.log(`⚔️ RESOLVE: Round ${round.roundNumber} resolved - ${clashes.length} clashes, ${independentActions.length} independent`);
+                return resolutionResults;
+            }).then(async (results) => {
+                // Create engine logs after successful transaction
+                try {
+                    const round = await this.roundRepository.findOne({ 
+                        where: { id: roundId },
+                        relations: ['actions']
+                    });
+
+                    if (round) {
+                        console.log(`📝 ENGINE LOGS: Creating logs for round ${round.roundNumber}`);
+                        
+                        // Create initial round resolution log
+                        await this.engineLogService.createEngineLog(
+                            round.locationId,
+                            'effect',
+                            'System',
+                            null,
+                            null,
+                            null,
+                            [`Round ${round.roundNumber} Resolution`, `${results.summary.totalActions} actions`],
+                            `Combat Round ${round.roundNumber} resolution started with ${results.summary.totalActions} submitted actions`,
+                            { roundId, roundNumber: round.roundNumber, totalActions: results.summary.totalActions }
+                        );
+
+                        // Log clash results
+                        for (const clashResult of results.clashes) {
+                            await this.logClashResult(round.locationId, clashResult);
+                        }
+
+                        // Log independent actions
+                        for (const independentResult of results.independentActions) {
+                            await this.logIndependentAction(round.locationId, independentResult);
+                        }
+
+                        // Create final resolution summary log
+                        await this.engineLogService.createEngineLog(
+                            round.locationId,
+                            'effect',
+                            'System',
+                            null,
+                            null,
+                            null,
+                            [`Round Complete`, `${results.clashes.length} clashes`, `${results.independentActions.length} independent`],
+                            `Combat Round ${round.roundNumber} resolved: ${results.clashes.length} clashes, ${results.independentActions.length} independent actions`,
+                            results
+                        );
+                        
+                        console.log(`📝 ENGINE LOGS: Created logs for round ${round.roundNumber}`);
+                    }
+                } catch (logError) {
+                    console.error(`📝 ENGINE LOGS: Failed to create logs for round ${roundId}:`, logError.message);
+                    // Don't fail the entire operation if logging fails
+                }
+
+                return results;
             });
-
-            if (!round) {
-                throw new Error('Combat round not found or not active');
-            }
-
-            const actions = round.actions || [];
-            if (actions.length === 0) {
-                throw new Error('No actions to resolve');
-            }
-
-            // Group actions for clash resolution
-            const { clashes, independentActions } = this.identifyClashes(actions);
-            
-            const resolutionResults = {
+        } catch (mainError) {
+            console.error(`🎯 COMBAT RESOLUTION: CRITICAL ERROR in resolveRound:`, {
+                message: mainError.message,
+                stack: mainError.stack,
                 roundId,
-                roundNumber: round.roundNumber,
-                clashes: [],
-                independentActions: [],
-                summary: {
-                    totalActions: actions.length,
-                    clashCount: clashes.length,
-                    independentCount: independentActions.length
-                }
-            };
-
-            // Resolve clashes
-            for (const clash of clashes) {
-                const clashResult = await this.resolveClash(clash, manager);
-                resolutionResults.clashes.push(clashResult);
-            }
-
-            // Process independent actions
-            for (const action of independentActions) {
-                const independentResult = this.processIndependentAction(action);
-                resolutionResults.independentActions.push(independentResult);
-            }
-
-            // Mark actions as processed
-            await actionRepo.update(
-                { roundId },
-                { processed: true }
-            );
-
-            // Update round status
-            await roundRepo.update(
-                { id: roundId },
-                {
-                    status: 'resolved',
-                    resolvedBy,
-                    resolvedAt: new Date(),
-                    resolutionData: resolutionResults
-                }
-            );
-
-            return resolutionResults;
-        });
+                resolvedBy
+            });
+            throw mainError; // Re-throw to let the controller handle the response
+        }
     }
 
     /**
@@ -415,5 +525,75 @@ export class CombatService {
         );
 
         return await this.roundRepository.findOne({ where: { id: roundId } });
+    }
+
+    /**
+     * Log a clash result to the engine logs
+     * @param {number} locationId - The location ID
+     * @param {Object} clashResult - The clash result to log
+     */
+    async logClashResult(locationId, clashResult) {
+        const participant1 = clashResult.participants[0];
+        const participant2 = clashResult.participants[1];
+        
+        let details;
+        let effects = ['Clash Resolution'];
+        
+        if (clashResult.winner === 'attacker') {
+            details = `CLASH: ${participant1.character} (${participant1.skill}: ${participant1.finalOutput}) defeated ${participant2.character} (${participant2.skill}: ${participant2.finalOutput}). Damage: ${clashResult.damage}`;
+            effects.push(`Winner: ${participant1.character}`, `Damage: ${clashResult.damage}`);
+        } else if (clashResult.winner === 'defender') {
+            details = `CLASH: ${participant2.character} (${participant2.skill}: ${participant2.finalOutput}) defeated ${participant1.character} (${participant1.skill}: ${participant1.finalOutput}). Damage: ${clashResult.damage}`;
+            effects.push(`Winner: ${participant2.character}`, `Damage: ${clashResult.damage}`);
+        } else {
+            details = `CLASH: ${participant1.character} (${participant1.skill}: ${participant1.finalOutput}) vs ${participant2.character} (${participant2.skill}: ${participant2.finalOutput}) - TIE! Both take ${clashResult.damage} damage`;
+            effects.push('Result: Tie', `Both take ${clashResult.damage} damage`);
+        }
+
+        // Add roll qualities to effects
+        effects.push(`${participant1.character}: ${participant1.rollQuality} roll`);
+        effects.push(`${participant2.character}: ${participant2.rollQuality} roll`);
+
+        await this.engineLogService.createEngineLog(
+            locationId,
+            'clash',
+            participant1.character,
+            participant2.character,
+            `${participant1.skill} vs ${participant2.skill}`,
+            clashResult.damage,
+            effects,
+            details,
+            clashResult
+        );
+    }
+
+    /**
+     * Log an independent action to the engine logs
+     * @param {number} locationId - The location ID
+     * @param {Object} actionResult - The independent action result to log
+     */
+    async logIndependentAction(locationId, actionResult) {
+        const effects = [
+            `Output: ${actionResult.finalOutput}`,
+            `Roll: ${actionResult.rollQuality}`,
+            `Type: ${actionResult.skillType}`
+        ];
+
+        await this.engineLogService.createEngineLog(
+            locationId,
+            'skill_use',
+            actionResult.character,
+            actionResult.target !== 'Self' && actionResult.target !== 'Area' ? actionResult.target : null,
+            actionResult.skill,
+            null,
+            effects,
+            actionResult.details,
+            {
+                finalOutput: actionResult.finalOutput,
+                rollQuality: actionResult.rollQuality,
+                skillType: actionResult.skillType,
+                target: actionResult.target
+            }
+        );
     }
 } 

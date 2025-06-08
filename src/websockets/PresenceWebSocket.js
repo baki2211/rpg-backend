@@ -21,9 +21,6 @@ export const setupPresenceWebSocketServer = (server) => {
       ws.close(1008, 'Missing userId');
       return;
     }
-
-    logger.websocket(`User ${userId} (${username}) connected to presence WebSocket`);
-
     // Get user's active character
     let activeCharacter = null;
     try {
@@ -70,9 +67,6 @@ export const setupPresenceWebSocketServer = (server) => {
           const oldLocation = user.location;
           user.location = msg.location;
           user.lastSeen = new Date();
-          
-          logger.debug(`User ${userId} moved from ${oldLocation} to ${msg.location}`);
-          
           // Update character info when location changes (in case user switched characters)
           try {
             const activeCharacter = await characterService.getActiveCharacter(userId);
@@ -103,8 +97,6 @@ export const setupPresenceWebSocketServer = (server) => {
         }));
         const payload = JSON.stringify({ type: 'onlineUsers', users });
         
-        logger.debug(`Manual getOnlineUsers request from ${userId}, sending ${users.length} users`);
-        
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(payload);
         }
@@ -133,8 +125,6 @@ export const setupPresenceWebSocketServer = (server) => {
             user.characterName = activeCharacter?.name || null;
             user.lastSeen = new Date();
             
-            logger.debug(`Character refresh for user ${userId}: ${oldCharacterName} → ${user.characterName}`);
-            
             // Always broadcast after character refresh to ensure all clients get updates
             broadcastOnlineUsers();
           } catch (error) {
@@ -158,7 +148,6 @@ export const setupPresenceWebSocketServer = (server) => {
     }, 30000);
 
     ws.on('close', () => {
-      logger.websocket(`User ${userId} disconnected from presence`);
       onlineUsers.delete(userId);
       broadcastOnlineUsers();
       clearInterval(pingInterval);
@@ -195,8 +184,6 @@ export const setupPresenceWebSocketServer = (server) => {
     }));
     
     const payload = JSON.stringify({ type: 'onlineUsers', users });
-    logger.debug(`Broadcasting to ${onlineUsers.size} clients:`, { userSummary: users.map(u => `${u.username} at ${u.location}`) });
-
     let broadcastCount = 0;
     for (const { ws } of onlineUsers.values()) {
       if (ws.readyState === WebSocket.OPEN) {
@@ -204,7 +191,6 @@ export const setupPresenceWebSocketServer = (server) => {
         broadcastCount++;
       }
     }
-    logger.debug(`Successfully broadcast to ${broadcastCount} clients`);
   };
 
   const cleanup = () => {

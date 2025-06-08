@@ -22,27 +22,38 @@ export class EngineLogService {
      * @returns {Promise<Object>} The created engine log
      */
     async createEngineLog(locationId, type, actor, target = null, skill = null, damage = null, effects = null, details, engineData = null) {
-        // Get the active session for this location
-        const activeSession = await this.sessionService.getActiveSessionByLocation(locationId);
-        
-        if (!activeSession) {
-            throw new Error('No active session found for this location');
+        try {
+            // Get the active session for this location
+            let activeSession = await this.sessionService.getActiveSessionByLocation(locationId);
+            
+            if (!activeSession) {
+                console.warn(`📝 ENGINE LOG: No session for location ${locationId}, creating one`);
+                // Create a session if none exists
+                activeSession = await this.sessionService.createSession(
+                    `Auto-created for Location ${locationId}`,
+                    locationId
+                );
+            }
+
+            const engineLog = this.engineLogRepository.create({
+                sessionId: activeSession.id,
+                locationId,
+                type,
+                actor,
+                target,
+                skill,
+                damage,
+                effects,
+                details,
+                engineData
+            });
+
+            const savedLog = await this.engineLogRepository.save(engineLog);
+            return savedLog;
+        } catch (error) {
+            console.error(`📝 ENGINE LOG: Failed to create ${type} log for ${actor}:`, error.message);
+            throw error;
         }
-
-        const engineLog = this.engineLogRepository.create({
-            sessionId: activeSession.id,
-            locationId,
-            type,
-            actor,
-            target,
-            skill,
-            damage,
-            effects,
-            details,
-            engineData
-        });
-
-        return await this.engineLogRepository.save(engineLog);
     }
 
     /**

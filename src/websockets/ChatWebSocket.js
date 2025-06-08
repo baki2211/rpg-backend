@@ -37,12 +37,8 @@ export const setupWebSocketServer = () => {
       ws.close(1011, 'Server error');
       return;
     }
-
-    logger.websocket(`Chat WebSocket connection established for location: ${locationId}, user: ${username || 'unknown'}`);
-
     // Trigger presence broadcast when user joins
     if (presenceBroadcaster && userId) {
-      logger.debug(`Triggering presence broadcast for user ${userId} joining chat location ${locationId}`);
       presenceBroadcaster();
     }
 
@@ -106,8 +102,6 @@ export const setupWebSocketServer = () => {
     });
 
     ws.on('close', (code, reason) => {
-      logger.websocket(`Chat WebSocket connection closed: ${code} for location: ${locationId}, user: ${username || 'unknown'} - ${reason.toString()}`);
-      
       // Remove from location connections
       const connections = locationConnections.get(locationId);
       if (connections) {
@@ -119,7 +113,6 @@ export const setupWebSocketServer = () => {
 
       // Trigger presence broadcast when user leaves
       if (presenceBroadcaster && userId) {
-        logger.debug(`Triggering presence broadcast for user ${userId} leaving chat location ${locationId}`);
         presenceBroadcaster();
       }
     });

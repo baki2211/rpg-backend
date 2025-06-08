@@ -52,7 +52,6 @@ export class MapService {
     }
 
     async getMainMap() {
-      console.log('Fetching main map from database');
       return this.mapRepository.findOne({
         where: { isMainMap: true },
         select: ['id', 'name', 'imageUrl', 'isMainMap'], 
