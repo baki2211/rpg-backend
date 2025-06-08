@@ -14,6 +14,9 @@ import { SkillBranch } from './models/skillBranchModel.js';
 import { SkillType } from './models/skillTypeModel.js';
 import { Session } from './models/sessionModel.js';
 import { SessionParticipant } from './models/sessionParticipantModel.js';
+import { CombatRound } from './models/combatRoundModel.js';
+import { CombatAction } from './models/combatActionModel.js';
+import { Event } from './models/eventModel.js';
 
 dotenv.config();
 
@@ -39,7 +42,10 @@ export const AppDataSource = new DataSource({
     SkillBranch, 
     SkillType, 
     Session, 
-    SessionParticipant
+    SessionParticipant,
+    CombatRound,
+    CombatAction,
+    Event
   ],
   migrations: ['./src/migrations/*.js'],
   migrationsTableName: 'migrations'
