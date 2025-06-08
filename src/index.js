@@ -40,6 +40,9 @@ const __dirname = path.dirname(__filename);
 const chatWS = setupWebSocketServer();
 const presenceWS = setupPresenceWebSocketServer();
 const sessionExpirationInterval = SessionExpirationJob.startJob();
+
+// Connect chat and presence WebSockets for real-time updates
+chatWS.setPresenceBroadcaster(presenceWS.broadcastOnlineUsers);
 // Middleware for WebSocket connections
 
 server.on('upgrade', (req, socket, head) => {

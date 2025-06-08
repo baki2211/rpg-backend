@@ -13,6 +13,14 @@ export const setupWebSocketServer = () => {
   const characterService = new CharacterService();
   const userService = new UserService();
   const locationSessions = new Map(); // Map to track active sessions by location
+  
+  // Store reference to presence broadcaster function
+  let presenceBroadcaster = null;
+
+  // Function to set the presence broadcaster (called from main server setup)
+  const setPresenceBroadcaster = (broadcaster) => {
+    presenceBroadcaster = broadcaster;
+  };
 
   wss.on('connection', (ws, req) => {
     const queryString = req.url?.split('?')[1];
@@ -23,6 +31,8 @@ export const setupWebSocketServer = () => {
     
     const params = new URLSearchParams(queryString);
     const locationId = params.get('locationId');
+    const userId = params.get('userId');
+    const username = params.get('username');
 
     if (!locationId) {
       ws.close(1008, 'Missing locationId');
@@ -30,7 +40,17 @@ export const setupWebSocketServer = () => {
     }
 
     ws.locationId = locationId;
-    console.log(`WebSocket connection established for location: ${locationId}`);
+    ws.userId = userId;
+    ws.username = username;
+    console.log(`Chat WebSocket connection established for location: ${locationId}, user: ${username || 'unknown'}`);
+
+    // Trigger presence update when user joins chat
+    if (presenceBroadcaster && userId) {
+      console.log(`Triggering presence broadcast for user ${userId} joining chat location ${locationId}`);
+      setTimeout(() => {
+        presenceBroadcaster();
+      }, 1000); // Small delay to ensure presence is updated
+    }
 
     // Keep-alive ping
     const interval = setInterval(() => {
@@ -88,6 +108,13 @@ export const setupWebSocketServer = () => {
         if (skillEngineLog) {
           broadcastSkillEngineLogToMasters(locationId, skillEngineLog);
         }
+
+        // Trigger presence update after message (in case character info changed)
+        if (presenceBroadcaster) {
+          setTimeout(() => {
+            presenceBroadcaster();
+          }, 500);
+        }
       } catch (error) {
         console.error('Error processing message:', error);
         ws.send(JSON.stringify({ error: 'Invalid message format' }));
@@ -95,12 +122,20 @@ export const setupWebSocketServer = () => {
     });
 
     ws.on('close', (code, reason) => {
-      console.log(`WebSocket connection closed:  ${code} for location: ${locationId} - ${reason.toString()}`);
+      console.log(`Chat WebSocket connection closed: ${code} for location: ${locationId}, user: ${username || 'unknown'} - ${reason.toString()}`);
       clearInterval(interval);
+      
+      // Trigger presence update when user leaves chat
+      if (presenceBroadcaster && userId) {
+        console.log(`Triggering presence broadcast for user ${userId} leaving chat location ${locationId}`);
+        setTimeout(() => {
+          presenceBroadcaster();
+        }, 1000); // Small delay to ensure presence is updated
+      }
     });
 
     ws.on('error', (error) => {
-      console.error(`WebSocket error for location ${locationId}:`, error);
+      console.error(`Chat WebSocket error for location ${locationId}:`, error);
     });
   });
 
@@ -239,6 +274,7 @@ export const setupWebSocketServer = () => {
 
   return {
     wss,
+    setPresenceBroadcaster,
     handleUpgrade: (request, socket, head) => {
       const pathname = request.url?.split("?")[0];
       if (pathname === "/ws/chat") {
