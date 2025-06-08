@@ -26,32 +26,23 @@ export class CombatService {
      * @returns {Promise<Object>} The created combat round
      */
     async createRound(locationId, createdBy, sessionId = null, eventId = null) {
-        console.log(`⚔️ ROUND: Creating combat round at location ${locationId}, sessionId: ${sessionId}, eventId: ${eventId}`);
-        
         // Ensure there's always an active session for engine logging
         if (!sessionId) {
-            console.log(`⚔️ ROUND: No sessionId provided, looking for active session`);
             const { SessionService } = await import('./SessionService.js');
             const sessionService = new SessionService();
             
             let activeSession = await sessionService.getActiveSessionByLocation(locationId);
             
             if (!activeSession) {
-                console.log(`⚔️ ROUND: No active session found, creating new session for location ${locationId}`);
                 // Create a session for this location if none exists
                 activeSession = await sessionService.createSession(
                     `Auto-created for Location ${locationId}`,
                     locationId
                 );
-                console.log(`⚔️ ROUND: Created new session ${activeSession.id} for location ${locationId} to support combat round`);
-            } else {
-                console.log(`⚔️ ROUND: Found active session ${activeSession.id} for location ${locationId}`);
             }
             
             sessionId = activeSession.id;
         }
-
-        console.log(`⚔️ ROUND: Using sessionId ${sessionId} for combat round`);
 
         // Get the next round number for this location
         const lastRound = await this.roundRepository.findOne({
@@ -60,7 +51,6 @@ export class CombatService {
         });
 
         const roundNumber = lastRound ? lastRound.roundNumber + 1 : 1;
-        console.log(`⚔️ ROUND: Creating round ${roundNumber} for location ${locationId}`);
 
         const round = this.roundRepository.create({
             roundNumber,
@@ -72,7 +62,6 @@ export class CombatService {
         });
 
         const savedRound = await this.roundRepository.save(round);
-        console.log(`⚔️ ROUND: Created combat round ${savedRound.id} (Round ${roundNumber}) successfully`);
         return savedRound;
     }
 
@@ -198,8 +187,6 @@ export class CombatService {
      * @returns {Promise<Object>} Resolution result
      */
     async resolveRound(roundId, resolvedBy) {
-        console.log(`⚔️ RESOLVE: Starting round ${roundId} resolution`);
-        
         try {
             return await AppDataSource.transaction(async (manager) => {
                 const roundRepo = manager.getRepository(CombatRound);
@@ -219,8 +206,6 @@ export class CombatService {
                 if (actions.length === 0) {
                     throw new Error('No actions to resolve');
                 }
-
-                console.log(`⚔️ RESOLVE: Processing ${actions.length} actions in round ${round.roundNumber}`);
 
                 // Group actions for clash resolution
                 const { clashes, independentActions } = this.identifyClashes(actions);
@@ -274,7 +259,6 @@ export class CombatService {
                     }
                 );
 
-                console.log(`⚔️ RESOLVE: Round ${round.roundNumber} resolved - ${clashes.length} clashes, ${independentActions.length} independent`);
                 return resolutionResults;
             }).then(async (results) => {
                 // Create engine logs after successful transaction
@@ -285,8 +269,6 @@ export class CombatService {
                     });
 
                     if (round) {
-                        console.log(`📝 ENGINE LOGS: Creating logs for round ${round.roundNumber}`);
-                        
                         // Create initial round resolution log
                         await this.engineLogService.createEngineLog(
                             round.locationId,
@@ -322,23 +304,14 @@ export class CombatService {
                             `Combat Round ${round.roundNumber} resolved: ${results.clashes.length} clashes, ${results.independentActions.length} independent actions`,
                             results
                         );
-                        
-                        console.log(`📝 ENGINE LOGS: Created logs for round ${round.roundNumber}`);
                     }
                 } catch (logError) {
-                    console.error(`📝 ENGINE LOGS: Failed to create logs for round ${roundId}:`, logError.message);
                     // Don't fail the entire operation if logging fails
                 }
 
                 return results;
             });
         } catch (mainError) {
-            console.error(`🎯 COMBAT RESOLUTION: CRITICAL ERROR in resolveRound:`, {
-                message: mainError.message,
-                stack: mainError.stack,
-                roundId,
-                resolvedBy
-            });
             throw mainError; // Re-throw to let the controller handle the response
         }
     }

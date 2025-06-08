@@ -21,8 +21,6 @@ export class EventService {
     async ensureSessionForLocation(locationId, manager = null) {
         const sessionRepo = manager ? manager.getRepository(Session) : this.sessionRepository;
         
-        console.log(`🏁 SESSION ENSURE: Checking for active session at location ${locationId}`);
-        
         // Try to find existing active session that is also open (not closed/frozen)
         let session = await sessionRepo.findOne({
             where: { 
@@ -33,13 +31,10 @@ export class EventService {
         });
 
         if (session) {
-            console.log(`🏁 SESSION ENSURE: Found existing session ${session.id} at location ${locationId}`);
             return session;
         }
 
         // No active open session found, create one
-        console.log(`🏁 SESSION ENSURE: No active open session found, creating new session for location ${locationId}`);
-        
         session = sessionRepo.create({
             name: `Free Role - Location ${locationId}`,
             locationId,
@@ -49,8 +44,6 @@ export class EventService {
         });
 
         const savedSession = await sessionRepo.save(session);
-        console.log(`🏁 SESSION ENSURE: Created new session ${savedSession.id} for location ${locationId}`);
-        
         return savedSession;
     }
 
@@ -83,21 +76,15 @@ export class EventService {
             const eventRepo = manager.getRepository(Event);
             const sessionRepo = manager.getRepository(Session);
 
-            console.log(`🎪 EVENT: Creating event "${title}" at location ${locationId}`);
-
             // Ensure there's an active session for this location
-            console.log(`🎪 EVENT: Ensuring session exists for location ${locationId}`);
             let session;
             try {
                 session = await this.ensureSessionForLocation(locationId, manager);
-                console.log(`🎪 EVENT: Session ensured - ID: ${session.id}, isEvent: ${session.isEvent}, status: ${session.status}`);
             } catch (sessionError) {
-                console.error(`🎪 EVENT: Failed to ensure session:`, sessionError);
                 throw new Error(`Failed to ensure session for location ${locationId}: ${sessionError.message}`);
             }
 
             // Create the event
-            console.log(`🎪 EVENT: Creating event entity`);
             const event = eventRepo.create({
                 title,
                 type: type.toLowerCase(),
@@ -111,14 +98,11 @@ export class EventService {
             let savedEvent;
             try {
                 savedEvent = await eventRepo.save(event);
-                console.log(`🎪 EVENT: Created event ${savedEvent.id}`);
             } catch (eventError) {
-                console.error(`🎪 EVENT: Failed to create event:`, eventError);
                 throw new Error(`Failed to create event: ${eventError.message}`);
             }
 
             // Transform session to event role
-            console.log(`🎪 EVENT: Transforming session ${session.id} to event mode`);
             try {
                 await sessionRepo.update(session.id, { 
                     name: `Event: ${title}`,
@@ -131,8 +115,6 @@ export class EventService {
                 if (!updatedSession) {
                     throw new Error(`Failed to retrieve updated session ${session.id}`);
                 }
-                
-                console.log(`🎪 EVENT: Session transformed - isEvent: ${updatedSession.isEvent}, eventId: ${updatedSession.eventId}, isActive: ${updatedSession.isActive}`);
 
                 return {
                     event: savedEvent,
@@ -140,7 +122,6 @@ export class EventService {
                     transformation: 'free_role_to_event'
                 };
             } catch (transformError) {
-                console.error(`🎪 EVENT: Failed to transform session:`, transformError);
                 throw new Error(`Failed to transform session to event mode: ${transformError.message}`);
             }
         });

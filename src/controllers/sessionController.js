@@ -75,13 +75,11 @@ export class SessionController {
 
   async getAllSessions(req, res) {
     try {
-      console.log('Getting all sessions');
       const sessions = await this.sessionService.getAllSessions();
-      console.log(`Found ${sessions.length} sessions`);
       res.json(sessions);
     } catch (error) {
       console.error('Error in getAllSessions:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: 'Failed to retrieve sessions' });
     }
   }
 

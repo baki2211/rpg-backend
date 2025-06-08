@@ -4,6 +4,11 @@ import { LessThan } from 'typeorm';
 
 export class SessionExpirationJob {
   static async checkExpiredSessions() {
+    // Safety check: ensure data source is initialized
+    if (!AppDataSource.isInitialized) {
+      return;
+    }
+
     const sessionRepository = AppDataSource.getRepository(Session);
 
     try {

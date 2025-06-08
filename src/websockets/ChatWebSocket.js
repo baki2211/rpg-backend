@@ -51,7 +51,6 @@ export const setupWebSocketServer = () => {
     ws.on('message', async (data) => {
       try {
         const parsedMessage = JSON.parse(data);
-        logger.debug('Received WebSocket message:', { type: parsedMessage.type, hasSkill: !!parsedMessage.skill });
         
         const chatService = new ChatService();
         
@@ -63,8 +62,6 @@ export const setupWebSocketServer = () => {
           parsedMessage.message,
           parsedMessage.skill
         );
-
-        logger.debug('Saved message with skill:', { messageId: savedMessage.id, hasSkill: !!savedMessage.skillId });
 
         // Format message for broadcasting with skill data
         const messageToBroadcast = JSON.stringify({
@@ -78,8 +75,6 @@ export const setupWebSocketServer = () => {
             type: savedMessage.skillType
           } : null
         });
-
-        logger.debug('Broadcasting message:', { hasSkill: !!savedMessage.skillId, recipientCount: locationConnections.get(locationId)?.size || 0 });
 
         // Broadcast to all clients in this location
         const connections = locationConnections.get(locationId);
@@ -177,11 +172,6 @@ export const setupWebSocketServer = () => {
           masters.push(ws);
         }
       }
-
-      logger.debug(`Broadcasting skill engine log to ${masters.length} clients:`, { 
-        actor: skillEngineLog.actor, 
-        skill: skillEngineLog.skill 
-      });
 
       masters.forEach((masterWs) => {
         if (masterWs.readyState === WebSocket.OPEN) {

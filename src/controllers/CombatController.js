@@ -1,11 +1,13 @@
 import { CombatService } from '../services/CombatService.js';
 import { SessionService } from '../services/SessionService.js';
 import { CharacterService } from '../services/CharacterService.js';
+import { EventService } from '../services/EventService.js';
 
 export class CombatController {
     static combatService = new CombatService();
     static sessionService = new SessionService();
     static characterService = new CharacterService();
+    static eventService = new EventService();
 
     /**
      * Create a new combat round
@@ -13,53 +15,56 @@ export class CombatController {
      */
     static async createRound(req, res) {
         try {
-            const { locationId, eventId } = req.body;  // Accept eventId from request
+            const { locationId, eventId } = req.body;
             const userId = req.user.id;
-
-            console.log(`⚔️ CONTROLLER: Creating round for location ${locationId}, eventId: ${eventId}`);
-
-            // Verify user has master permissions
-            if (!['master', 'admin'].includes(req.user.role)) {
-                return res.status(403).json({ error: 'Insufficient permissions' });
-            }
 
             if (!locationId) {
                 return res.status(400).json({ error: 'Location ID is required' });
             }
 
-            // Get session for this location (or let CombatService create one)
-            const session = await CombatController.sessionService.getActiveSessionByLocation(locationId);
-            const sessionId = session?.id || null;
-            console.log(`⚔️ CONTROLLER: Found session ${sessionId} for location ${locationId}`);
+            // Find session for this location
+            const sessionService = new SessionService();
+            const session = await sessionService.getActiveSessionByLocation(locationId);
+            let sessionId = session?.id || null;
 
-            // Use provided eventId, or fall back to looking up active event
+            if (session) {
+                sessionId = session.id;
+            }
+
+            // Try to get eventId from request, or look up active event
             let finalEventId = eventId;
             if (!finalEventId) {
-                console.log(`⚔️ CONTROLLER: No eventId provided, looking up active event`);
-                const { EventService } = await import('../services/EventService.js');
-                const eventService = new EventService();
-                const activeEvent = await eventService.getActiveEvent(locationId);
-                finalEventId = activeEvent?.id || null;
+                try {
+                    const activeEvent = await CombatController.eventService.getActiveEvent(locationId);
+                    finalEventId = activeEvent?.id || null;
+                } catch (eventError) {
+                    // If event lookup fails, continue without event
+                    finalEventId = null;
+                }
             }
-            console.log(`⚔️ CONTROLLER: Using eventId ${finalEventId} for round creation`);
 
             const round = await CombatController.combatService.createRound(
-                locationId, 
-                userId, 
+                parseInt(locationId),
+                userId,
                 sessionId,
                 finalEventId
             );
 
-            console.log(`⚔️ CONTROLLER: Successfully created round ${round.id}`);
-
             res.status(201).json({
                 success: true,
-                message: 'Combat round created successfully',
-                round
+                round: {
+                    id: round.id,
+                    roundNumber: round.roundNumber,
+                    status: round.status,
+                    sessionId: round.sessionId,
+                    eventId: round.eventId,
+                    createdAt: round.createdAt
+                }
             });
         } catch (error) {
-            console.error('⚔️ CONTROLLER: Error creating combat round:', error);
-            res.status(500).json({ error: 'Failed to create combat round' });
+            res.status(500).json({ 
+                error: error.message || 'Failed to create combat round' 
+            });
         }
     }
 
@@ -156,90 +161,28 @@ export class CombatController {
             const { roundId } = req.params;
             const userId = req.user.id;
 
-            console.log(`⚔️ CONTROLLER: Resolving round ${roundId} by user ${userId}`);
-
             // Verify user has master permissions
             if (!['master', 'admin'].includes(req.user.role)) {
-                console.log(`⚔️ CONTROLLER: User ${userId} lacks permissions (role: ${req.user.role})`);
-                return res.status(403).json({ 
-                    success: false, 
-                    error: 'Insufficient permissions. Only masters and admins can resolve combat rounds.' 
-                });
+                return res.status(403).json({ error: 'Insufficient permissions' });
             }
 
-            if (!roundId || isNaN(parseInt(roundId))) {
-                console.log(`⚔️ CONTROLLER: Invalid round ID: ${roundId}`);
-                return res.status(400).json({ 
-                    success: false, 
-                    error: 'Invalid round ID provided' 
-                });
-            }
-
+            // Validate roundId
             const roundIdInt = parseInt(roundId);
-            console.log(`⚔️ CONTROLLER: Calling CombatService.resolveRound for round ${roundIdInt}`);
+            if (!roundIdInt || roundIdInt <= 0) {
+                return res.status(400).json({ error: 'Invalid round ID' });
+            }
 
+            // Resolve the round
             const result = await CombatController.combatService.resolveRound(roundIdInt, userId);
-            
-            console.log(`⚔️ CONTROLLER: Round ${roundIdInt} resolved successfully`);
-            res.json({ 
-                success: true, 
-                resolution: result,
-                message: `Combat round ${result.roundNumber} resolved successfully`
+
+            res.status(200).json({
+                success: true,
+                message: `Combat round ${result.roundNumber} resolved successfully`,
+                result
             });
         } catch (error) {
-            console.error('⚔️ CONTROLLER: Error in resolveRound:', {
-                message: error.message,
-                stack: error.stack,
-                roundId: req.params.roundId,
-                userId: req.user?.id
-            });
-
-            // Handle specific error types
-            if (error.message.includes('not found') || error.message.includes('not active')) {
-                return res.status(404).json({ 
-                    success: false, 
-                    error: 'Combat round not found or not active',
-                    details: error.message
-                });
-            }
-
-            if (error.message.includes('No actions')) {
-                return res.status(400).json({ 
-                    success: false, 
-                    error: 'No actions submitted for this round',
-                    details: error.message
-                });
-            }
-
-            if (error.message.includes('Failed to resolve clash')) {
-                return res.status(500).json({ 
-                    success: false, 
-                    error: 'Error during clash resolution',
-                    details: error.message
-                });
-            }
-
-            if (error.message.includes('Failed to process independent action')) {
-                return res.status(500).json({ 
-                    success: false, 
-                    error: 'Error processing independent actions',
-                    details: error.message
-                });
-            }
-
-            if (error.message.includes('Failed to mark actions') || error.message.includes('Failed to update round')) {
-                return res.status(500).json({ 
-                    success: false, 
-                    error: 'Database error during round resolution',
-                    details: error.message
-                });
-            }
-
-            // Generic server error for unhandled cases
             res.status(500).json({ 
-                success: false, 
-                error: 'Internal server error during combat resolution',
-                details: process.env.NODE_ENV === 'development' ? error.message : 'An unexpected error occurred'
+                error: error.message || 'Failed to resolve combat round' 
             });
         }
     }

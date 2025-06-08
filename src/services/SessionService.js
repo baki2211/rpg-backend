@@ -20,7 +20,6 @@ export class SessionService {
       status: 'open'   // Explicitly set status
     });
     const savedSession = await this.sessionRepository.save(session);
-    console.log(`🏁 SESSION: Created session ${savedSession.id} for location ${locationId}`);
     return savedSession;
   }
 
@@ -125,18 +124,6 @@ export class SessionService {
       },
       relations: ['participants']
     });
-    
-    if (!session) {
-      // Only log if we need to debug session issues
-      const allSessions = await this.sessionRepository.find({ where: { locationId } });
-      if (allSessions.length === 0) {
-        console.log(`🔍 SESSION: No sessions exist for location ${locationId}`);
-      } else {
-        const activeSessions = allSessions.filter(s => s.isActive);
-        const openSessions = allSessions.filter(s => s.status === 'open');
-        console.log(`🔍 SESSION: Found ${allSessions.length} total sessions (${activeSessions.length} active, ${openSessions.length} open) for location ${locationId}`);
-      }
-    }
     
     return session;
   }

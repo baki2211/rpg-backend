@@ -41,7 +41,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const chatWS = setupWebSocketServer();
 const presenceWS = setupPresenceWebSocketServer();
-const sessionExpirationInterval = SessionExpirationJob.startJob();
+let sessionExpirationInterval; // Declare but don't start yet
 
 // Connect chat and presence WebSockets for real-time updates
 chatWS.setPresenceBroadcaster(presenceWS.broadcastOnlineUsers);
@@ -96,6 +96,10 @@ app.use(errorHandler);
 AppDataSource.initialize()
   .then(() => {
     logger.startup('App connected to the database');
+    
+    // Start session expiration job after database is ready
+    sessionExpirationInterval = SessionExpirationJob.startJob();
+    
     server.listen(PORT, () => {
       logger.startup(`App Server running on http://localhost:${PORT}`);
     });

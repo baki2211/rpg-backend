@@ -27,7 +27,6 @@ export class EngineLogService {
             let activeSession = await this.sessionService.getActiveSessionByLocation(locationId);
             
             if (!activeSession) {
-                console.warn(`📝 ENGINE LOG: No session for location ${locationId}, creating one`);
                 // Create a session if none exists
                 activeSession = await this.sessionService.createSession(
                     `Auto-created for Location ${locationId}`,
@@ -51,7 +50,6 @@ export class EngineLogService {
             const savedLog = await this.engineLogRepository.save(engineLog);
             return savedLog;
         } catch (error) {
-            console.error(`📝 ENGINE LOG: Failed to create ${type} log for ${actor}:`, error.message);
             throw error;
         }
     }
