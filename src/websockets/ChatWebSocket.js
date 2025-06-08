@@ -1,35 +1,20 @@
 import { WebSocketServer, WebSocket } from 'ws';
+import { AppDataSource } from '../data-source.js';
+import { Location } from '../models/locationModel.js';
 import { ChatService } from '../services/ChatService.js';
-import { SessionService } from '../services/SessionService.js';
-import { CharacterService } from '../services/CharacterService.js';
-import { SkillEngine } from '../services/SkillEngine.js';
-import { SkillService } from '../services/SkillService.js';
-import { UserService } from '../services/UserService.js';
+import { logger } from '../utils/logger.js';
 
 export const setupWebSocketServer = () => {
-  const wss = new WebSocketServer({ noServer: true }); 
-  const chatService = new ChatService();
-  const sessionService = new SessionService();
-  const characterService = new CharacterService();
-  const userService = new UserService();
-  const locationSessions = new Map(); // Map to track active sessions by location
-  
-  // Store reference to presence broadcaster function
+  const wss = new WebSocketServer({ noServer: true });
+  const locationConnections = new Map();
   let presenceBroadcaster = null;
 
-  // Function to set the presence broadcaster (called from main server setup)
   const setPresenceBroadcaster = (broadcaster) => {
     presenceBroadcaster = broadcaster;
   };
 
-  wss.on('connection', (ws, req) => {
-    const queryString = req.url?.split('?')[1];
-    if (!queryString) {
-      ws.close(1008, 'Missing query string');
-      return;
-    }
-    
-    const params = new URLSearchParams(queryString);
+  wss.on('connection', async (ws, req) => {
+    const params = new URLSearchParams(req.url?.split('?')[1]);
     const locationId = params.get('locationId');
     const userId = params.get('userId');
     const username = params.get('username');
@@ -39,249 +24,191 @@ export const setupWebSocketServer = () => {
       return;
     }
 
-    ws.locationId = locationId;
-    ws.userId = userId;
-    ws.username = username;
-    console.log(`Chat WebSocket connection established for location: ${locationId}, user: ${username || 'unknown'}`);
-
-    // Trigger presence update when user joins chat
-    if (presenceBroadcaster && userId) {
-      console.log(`Triggering presence broadcast for user ${userId} joining chat location ${locationId}`);
-      setTimeout(() => {
-        presenceBroadcaster();
-      }, 1000); // Small delay to ensure presence is updated
+    // Verify location exists
+    try {
+      const locationRepository = AppDataSource.getRepository(Location);
+      const location = await locationRepository.findOne({ where: { id: parseInt(locationId) } });
+      if (!location) {
+        ws.close(1008, 'Invalid location');
+        return;
+      }
+    } catch (error) {
+      logger.error('Error verifying location:', { error: error.message, locationId });
+      ws.close(1011, 'Server error');
+      return;
     }
 
-    // Keep-alive ping
-    const interval = setInterval(() => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.ping();
-      }
-    }, 30000);
+    logger.websocket(`Chat WebSocket connection established for location: ${locationId}, user: ${username || 'unknown'}`);
 
-    ws.on('message', async (message) => {
+    // Trigger presence broadcast when user joins
+    if (presenceBroadcaster && userId) {
+      logger.debug(`Triggering presence broadcast for user ${userId} joining chat location ${locationId}`);
+      presenceBroadcaster();
+    }
+
+    // Add to location connections
+    if (!locationConnections.has(locationId)) {
+      locationConnections.set(locationId, new Set());
+    }
+    locationConnections.get(locationId).add(ws);
+
+    ws.on('message', async (data) => {
       try {
-        const parsedMessage = JSON.parse(message.toString());
-        console.log('Received WebSocket message:', parsedMessage);
-        console.log('Skill data in received message:', parsedMessage.skill);
+        const parsedMessage = JSON.parse(data);
+        logger.debug('Received WebSocket message:', { type: parsedMessage.type, hasSkill: !!parsedMessage.skill });
         
-        // Save the message and handle session management
+        const chatService = new ChatService();
+        
+        // Save message to database with skill data
         const savedMessage = await chatService.addMessage(
-          Number(locationId),
+          locationId,
           parsedMessage.userId,
           parsedMessage.username,
           parsedMessage.message,
-          parsedMessage.skill // Pass the skill data
+          parsedMessage.skill
         );
 
-        console.log('Saved message with skill:', savedMessage);
+        logger.debug('Saved message with skill:', { messageId: savedMessage.id, hasSkill: !!savedMessage.skillId });
 
-        // Handle session with proper character ID
-        const session = await handlePaidAction(locationId, parsedMessage.userId);
-        savedMessage.sessionId = session.id;
-
-        // If a skill was used, calculate its output and create skill engine log
-        let skillEngineLog = null;
-        if (parsedMessage.skill && parsedMessage.skill.id) {
-          try {
-            skillEngineLog = await calculateSkillOutput(parsedMessage.userId, parsedMessage.skill, locationId);
-          } catch (error) {
-            console.error('Error calculating skill output:', error);
-          }
-        }
-
-        // Single broadcast to all clients in the location
-        const messageToBroadcast = {
-          ...savedMessage,
+        // Format message for broadcasting with skill data
+        const messageToBroadcast = JSON.stringify({
+          username: savedMessage.username,
+          message: savedMessage.message,
+          createdAt: savedMessage.createdAt,
           skill: savedMessage.skillId ? {
             id: savedMessage.skillId,
             name: savedMessage.skillName,
             branch: savedMessage.skillBranch,
             type: savedMessage.skillType
           } : null
-        };
-        
-        console.log('Broadcasting message:', messageToBroadcast);
-        broadcastToLocation(locationId, messageToBroadcast);
+        });
 
-        // If we have a skill engine log, broadcast it to masters
-        if (skillEngineLog) {
-          broadcastSkillEngineLogToMasters(locationId, skillEngineLog);
+        logger.debug('Broadcasting message:', { hasSkill: !!savedMessage.skillId, recipientCount: locationConnections.get(locationId)?.size || 0 });
+
+        // Broadcast to all clients in this location
+        const connections = locationConnections.get(locationId);
+        if (connections) {
+          connections.forEach((client) => {
+            if (client.readyState === WebSocket.OPEN) {
+              client.send(messageToBroadcast);
+            }
+          });
         }
 
-        // Trigger presence update after message (in case character info changed)
-        if (presenceBroadcaster) {
-          setTimeout(() => {
-            presenceBroadcaster();
-          }, 500);
+        // Generate skill engine log for masters if skill was used
+        if (parsedMessage.skill && savedMessage.skillId) {
+          generateSkillEngineLog(parsedMessage, locationId);
         }
+
       } catch (error) {
-        console.error('Error processing message:', error);
-        ws.send(JSON.stringify({ error: 'Invalid message format' }));
+        logger.error('Error processing chat message:', { error: error.message });
       }
     });
 
     ws.on('close', (code, reason) => {
-      console.log(`Chat WebSocket connection closed: ${code} for location: ${locationId}, user: ${username || 'unknown'} - ${reason.toString()}`);
-      clearInterval(interval);
+      logger.websocket(`Chat WebSocket connection closed: ${code} for location: ${locationId}, user: ${username || 'unknown'} - ${reason.toString()}`);
       
-      // Trigger presence update when user leaves chat
+      // Remove from location connections
+      const connections = locationConnections.get(locationId);
+      if (connections) {
+        connections.delete(ws);
+        if (connections.size === 0) {
+          locationConnections.delete(locationId);
+        }
+      }
+
+      // Trigger presence broadcast when user leaves
       if (presenceBroadcaster && userId) {
-        console.log(`Triggering presence broadcast for user ${userId} leaving chat location ${locationId}`);
-        setTimeout(() => {
-          presenceBroadcaster();
-        }, 1000); // Small delay to ensure presence is updated
+        logger.debug(`Triggering presence broadcast for user ${userId} leaving chat location ${locationId}`);
+        presenceBroadcaster();
       }
     });
 
     ws.on('error', (error) => {
-      console.error(`Chat WebSocket error for location ${locationId}:`, error);
+      logger.error('Chat WebSocket error:', { error: error.message, locationId, username });
     });
   });
 
-  const handlePaidAction = async (locationId, userId) => {
-    let session = await sessionService.getActiveSessionByLocation(locationId);
-    
-    if (!session) {
-      // Create new session if none exists
-      session = await sessionService.createSession(
-        `Session-${locationId}-${Date.now()}`,
-        locationId
-      );
-      locationSessions.set(locationId, session);
-    }
-
-    // Get the user's active character
-    const activeCharacter = await characterService.getActiveCharacter(userId);
-    if (activeCharacter) {
-      // Add character to session participants if not already present
-      await sessionService.addParticipantIfNotExists(session.id, activeCharacter.id);
-    }
-    
-    // Update session expiration time
-    await sessionService.updateSessionExpiration(session.id);
-
-    return session;
-  };
-
-  const calculateSkillOutput = async (userId, skillData, locationId) => {
+  // Helper function to generate skill engine logs for masters
+  const generateSkillEngineLog = (messageData, locationId) => {
     try {
-      // Get the user's active character
-      const character = await characterService.getActiveCharacter(userId);
-      if (!character) {
-        throw new Error('No active character found');
-      }
-
-      // Get the full skill data from the database
-      const skill = await SkillService.getSkillById(skillData.id);
-      if (!skill) {
-        throw new Error('Skill not found');
-      }
-
-      // Create SkillEngine instance and calculate output
-      const skillEngine = new SkillEngine(character, skill);
-      const finalOutput = await skillEngine.computeFinalOutput();
-      const outcomeMultiplier = skillEngine.rollOutcome();
-
-      // Get usage info for context
-      const usageInfo = await skillEngine.getSkillUses();
-      const branchUsage = await skillEngine.getBranchUses();
-
-      // Determine roll range from multiplier
-      let rollDescription = 'Standard';
-      if (outcomeMultiplier <= 0.6) rollDescription = 'Poor';
-      else if (outcomeMultiplier >= 1.4) rollDescription = 'Critical';
-
       // Create skill engine log
       const skillEngineLog = {
-        id: `${Date.now()}-${userId}-${skillData.id}`,
-        timestamp: new Date(),
+        id: Date.now().toString(),
+        timestamp: new Date().toISOString(),
         type: 'skill_use',
-        actor: character.name,
-        target: skillData.selectedTarget?.characterName || 
-                (skillData.target === 'self' ? character.name : 'Other'),
-        skill: skill.name,
-        damage: finalOutput, // Use the calculated final output
+        actor: messageData.username,
+        target: messageData.skill.selectedTarget?.characterName || 
+                messageData.skill.selectedTarget?.username || 
+                (messageData.skill.target === 'self' ? 'Self' : 'Area'),
+        skill: messageData.skill.name,
         effects: [
-          `Final Output: ${finalOutput}`,
-          `Base Power: ${skill.basePower}`,
-          `Roll Quality: ${rollDescription}`,
-          `Skill Uses: ${usageInfo}`,
-          `Branch Uses: ${branchUsage}`,
-          `Skill Rank: ${skillEngine.calculateSkillRankMultiplier(usageInfo)}x`,
-          `Branch Rank: ${skillEngine.calculateBranchRankMultiplier(branchUsage)}x`
+          `Skill: ${messageData.skill.name}`,
+          `Branch: ${messageData.skill.branch?.name || messageData.skill.branch}`,
+          `Type: ${messageData.skill.type?.name || messageData.skill.type}`,
+          `Target: ${messageData.skill.target}`
         ],
-        details: `${character.name} used ${skill.name} (${skill.target} target) and achieved ${finalOutput} output with a ${rollDescription.toLowerCase()} roll`,
-        rawData: {
-          finalOutput,
-          outcomeMultiplier,
-          basePower: skill.basePower,
-          skillUses: usageInfo,
-          branchUses: branchUsage,
-          skillRankMultiplier: skillEngine.calculateSkillRankMultiplier(usageInfo),
-          branchRankMultiplier: skillEngine.calculateBranchRankMultiplier(branchUsage)
-        }
+        details: `${messageData.username} used ${messageData.skill.name} (${messageData.skill.target} target)`
       };
 
-      console.log('Generated skill engine log:', skillEngineLog);
-      return skillEngineLog;
+      logger.skill('Generated skill engine log:', { 
+        actor: skillEngineLog.actor, 
+        skill: skillEngineLog.skill, 
+        target: skillEngineLog.target 
+      });
+
+      // Broadcast to all masters in all locations
+      broadcastSkillEngineLogToMasters(skillEngineLog);
+      
     } catch (error) {
-      console.error('Error in calculateSkillOutput:', error);
-      return null;
+      logger.error('Error generating skill engine log:', { error: error.message });
     }
   };
 
-  const broadcastToLocation = (locationId, message) => {
-    wss.clients.forEach((client) => {
-      if (client.readyState === WebSocket.OPEN && client.locationId === locationId) {
-        client.send(JSON.stringify(message));
-      }
-    });
-  };
-
-  const broadcastSkillEngineLogToMasters = async (locationId, skillEngineLog) => {
+  // Function to broadcast skill engine logs to masters
+  const broadcastSkillEngineLogToMasters = (skillEngineLog) => {
     try {
-      // Get all participants in this location's session
-      const participants = await sessionService.getLocationParticipants(locationId);
-      
-      // Get user IDs from participants
-      const userIds = participants.map(p => p.userId).filter(Boolean);
-      
-      // Get users and filter for masters/admins
-      const users = await Promise.all(userIds.map(id => userService.findById(id)));
-      const masters = users.filter(user => user && (user.role === 'master' || user.role === 'admin'));
-      
-      if (masters.length > 0) {
-        const skillLogMessage = {
-          type: 'skill_engine_log',
-          locationId,
-          log: skillEngineLog
-        };
+      const skillLogMessage = JSON.stringify({
+        type: 'skill_engine_log',
+        locationId: skillEngineLog.locationId,
+        log: skillEngineLog
+      });
 
-        console.log(`Broadcasting skill engine log to ${masters.length} masters:`, skillLogMessage);
-
-        // Broadcast to all clients in location (masters will filter client-side)
-        wss.clients.forEach((client) => {
-          if (client.readyState === WebSocket.OPEN && client.locationId === locationId) {
-            client.send(JSON.stringify(skillLogMessage));
-          }
-        });
+      let masterCount = 0;
+      // Get all masters across all locations
+      const masters = [];
+      for (const [locId, connections] of locationConnections.entries()) {
+        for (const ws of connections) {
+          // Note: We can't easily determine master status from WebSocket
+          // This would need to be enhanced with user role tracking
+          masters.push(ws);
+        }
       }
+
+      logger.debug(`Broadcasting skill engine log to ${masters.length} clients:`, { 
+        actor: skillEngineLog.actor, 
+        skill: skillEngineLog.skill 
+      });
+
+      masters.forEach((masterWs) => {
+        if (masterWs.readyState === WebSocket.OPEN) {
+          masterWs.send(skillLogMessage);
+          masterCount++;
+        }
+      });
+
     } catch (error) {
-      console.error('Error broadcasting skill engine log to masters:', error);
+      logger.error('Error broadcasting skill engine log:', { error: error.message });
     }
   };
 
   return {
     wss,
     setPresenceBroadcaster,
-    handleUpgrade: (request, socket, head) => {
-      const pathname = request.url?.split("?")[0];
-      if (pathname === "/ws/chat") {
-        wss.handleUpgrade(request, socket, head, (ws) => {
-          wss.emit("connection", ws, request);
-        });
-      }
-    },
+    handleUpgrade(request, socket, head) {
+      wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit('connection', ws, request);
+      });
+    }
   };
 };

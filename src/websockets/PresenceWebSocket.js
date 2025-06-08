@@ -1,5 +1,6 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { CharacterService } from '../services/CharacterService.js';
+import { logger } from '../utils/logger.js';
 
 export const setupPresenceWebSocketServer = (server) => {
   const wss = new WebSocketServer({ noServer: true }); // noServer mode for routing manually
@@ -21,14 +22,14 @@ export const setupPresenceWebSocketServer = (server) => {
       return;
     }
 
-    console.log(`User ${userId} (${username}) connected to presence WebSocket`);
+    logger.websocket(`User ${userId} (${username}) connected to presence WebSocket`);
 
     // Get user's active character
     let activeCharacter = null;
     try {
       activeCharacter = await characterService.getActiveCharacter(userId);
     } catch (error) {
-      console.log(`No active character found for user ${userId}`);
+      logger.debug(`No active character found for user ${userId}`);
     }
 
     const userInfo = {
@@ -70,17 +71,17 @@ export const setupPresenceWebSocketServer = (server) => {
           user.location = msg.location;
           user.lastSeen = new Date();
           
-          console.log(`User ${userId} moved from ${oldLocation} to ${msg.location}`);
+          logger.debug(`User ${userId} moved from ${oldLocation} to ${msg.location}`);
           
           // Update character info when location changes (in case user switched characters)
           try {
             const activeCharacter = await characterService.getActiveCharacter(userId);
             if (activeCharacter?.name !== user.characterName) {
-              console.log(`User ${userId} character changed from ${user.characterName} to ${activeCharacter?.name}`);
+              logger.debug(`User ${userId} character changed from ${user.characterName} to ${activeCharacter?.name}`);
               user.characterName = activeCharacter?.name || null;
             }
           } catch (error) {
-            console.log(`No active character found for user ${userId}`);
+            logger.debug(`No active character found for user ${userId}`);
             user.characterName = null;
           }
           
@@ -102,7 +103,7 @@ export const setupPresenceWebSocketServer = (server) => {
         }));
         const payload = JSON.stringify({ type: 'onlineUsers', users });
         
-        console.log(`🔍 Manual getOnlineUsers request from ${userId}, sending ${users.length} users`);
+        logger.debug(`Manual getOnlineUsers request from ${userId}, sending ${users.length} users`);
         
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(payload);
@@ -132,12 +133,12 @@ export const setupPresenceWebSocketServer = (server) => {
             user.characterName = activeCharacter?.name || null;
             user.lastSeen = new Date();
             
-            console.log(`🔄 Character refresh for user ${userId}: ${oldCharacterName} → ${user.characterName}`);
+            logger.debug(`Character refresh for user ${userId}: ${oldCharacterName} → ${user.characterName}`);
             
             // Always broadcast after character refresh to ensure all clients get updates
             broadcastOnlineUsers();
           } catch (error) {
-            console.log(`No active character found for user ${userId}`);
+            logger.debug(`No active character found for user ${userId}`);
             user.characterName = null;
             broadcastOnlineUsers();
           }
@@ -157,14 +158,14 @@ export const setupPresenceWebSocketServer = (server) => {
     }, 30000);
 
     ws.on('close', () => {
-      console.log(`User ${userId} disconnected from presence`);
+      logger.websocket(`User ${userId} disconnected from presence`);
       onlineUsers.delete(userId);
       broadcastOnlineUsers();
       clearInterval(pingInterval);
     });
 
     ws.on('error', (err) => {
-      console.error(`Presence WebSocket error for user ${userId}:`, err);
+      logger.error(`Presence WebSocket error for user ${userId}:`, { error: err.message });
     });
 
     ws.on('pong', () => {
@@ -181,7 +182,7 @@ export const setupPresenceWebSocketServer = (server) => {
     // Remove stale connections (older than 2 minutes)
     for (const [userId, user] of onlineUsers.entries()) {
       if (now - user.lastSeen > 2 * 60 * 1000) {
-        console.log(`Removing stale connection for user ${userId}`);
+        logger.debug(`Removing stale connection for user ${userId}`);
         onlineUsers.delete(userId);
       }
     }
@@ -194,7 +195,7 @@ export const setupPresenceWebSocketServer = (server) => {
     }));
     
     const payload = JSON.stringify({ type: 'onlineUsers', users });
-    console.log(`📡 Broadcasting to ${onlineUsers.size} clients:`, users.map(u => `${u.username} (${u.characterName || 'no char'}) at ${u.location}`));
+    logger.debug(`Broadcasting to ${onlineUsers.size} clients:`, { userSummary: users.map(u => `${u.username} at ${u.location}`) });
 
     let broadcastCount = 0;
     for (const { ws } of onlineUsers.values()) {
@@ -203,30 +204,27 @@ export const setupPresenceWebSocketServer = (server) => {
         broadcastCount++;
       }
     }
-    
-    console.log(`✅ Successfully broadcast to ${broadcastCount} clients`);
+    logger.debug(`Successfully broadcast to ${broadcastCount} clients`);
   };
 
-  // Cleanup function for the interval
   const cleanup = () => {
     clearInterval(periodicBroadcast);
+    for (const { ws } of onlineUsers.values()) {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.close();
+      }
+    }
+    onlineUsers.clear();
   };
 
-  // Export cleanup function for graceful shutdown
-  process.on('SIGTERM', cleanup);
-  process.on('SIGINT', cleanup);
-
-  return { 
-    wss, 
-    broadcastOnlineUsers, // Export for manual triggering
+  return {
+    wss,
+    broadcastOnlineUsers,
     cleanup,
     handleUpgrade(request, socket, head) {
-      const pathname = request.url?.split('?')[0];
-      if (pathname === '/ws/presence') {
-        wss.handleUpgrade(request, socket, head, (ws) => {
-          wss.emit('connection', ws, request);
-        });
-      }
-    } 
+      wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit('connection', ws, request);
+      });
+    }
   };
 };

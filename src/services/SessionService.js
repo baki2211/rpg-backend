@@ -3,6 +3,7 @@ import { Session } from '../models/sessionModel.js';
 import { SessionParticipant } from '../models/sessionParticipantModel.js';
 import { Character } from '../models/characterModel.js';
 import { Location } from '../models/locationModel.js';
+import { logger } from '../utils/logger.js';
 
 export class SessionService {
   constructor() {
@@ -135,7 +136,7 @@ export class SessionService {
 
     for (const participant of existingUserParticipants) {
       if (participant.character?.userId === character.userId && participant.characterId !== characterId) {
-        console.log(`Removing old participant entry for user ${character.userId}, character ${participant.characterId}`);
+        logger.session(`Removing old participant entry for user ${character.userId}, character ${participant.characterId}`);
         await this.participantRepository.remove(participant);
       }
     }
@@ -149,7 +150,7 @@ export class SessionService {
     });
 
     if (!existingParticipant) {
-      console.log(`Adding new participant: user ${character.userId}, character ${characterId}`);
+      logger.session(`Adding new participant: user ${character.userId}, character ${characterId}`);
       return await this.addParticipant(sessionId, characterId);
     }
     return existingParticipant;
@@ -236,13 +237,13 @@ export class SessionService {
     // Clear current chat messages (they're now frozen)
     await chatRepository.delete({ location: { id: session.locationId } });
     
-    console.log(`📦 Session ${sessionId} frozen with ${currentMessages.length} messages saved`);
+    logger.session(`Session ${sessionId} frozen with ${currentMessages.length} messages saved`);
   }
 
   async unfreezeSession(sessionId) {
     const session = await this.getSession(sessionId);
     if (!session || !session.frozenState) {
-      console.log(`❄️ Session ${sessionId} has no frozen state to restore`);
+      logger.session(`Session ${sessionId} has no frozen state to restore`);
       return;
     }
 
@@ -277,9 +278,9 @@ export class SessionService {
         }
       );
       
-      console.log(`🔥 Session ${sessionId} unfrozen with ${sessionState.messages.length} messages restored`);
+      logger.session(`Session ${sessionId} unfrozen with ${sessionState.messages.length} messages restored`);
     } catch (error) {
-      console.error('Error unfreezing session:', error);
+      logger.error('Error unfreezing session:', { error: error.message, sessionId });
       throw new Error('Failed to restore frozen session state');
     }
   }

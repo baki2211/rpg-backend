@@ -3,6 +3,7 @@ import { Character } from '../models/characterModel.js';
 import { User } from '../models/userModel.js';
 import { Race } from '../models/raceModel.js';
 import { Skill } from '../models/skillModel.js';
+import { logger } from '../utils/logger.js';
 
 export class CharacterService {
   characterRepository = AppDataSource.getRepository(Character);
@@ -14,7 +15,6 @@ export class CharacterService {
       throw new Error('User not found');
     }
     const race = await AppDataSource.getRepository(Race).findOneBy({ id: data.race?.id });
-    console.log('Race Log:', race);
     if (!race) {
       throw new Error('Race not found');
     }
@@ -38,8 +38,7 @@ export class CharacterService {
       imageUrl: imageUrl,
     });
 
-    console.log('Creating character for user:', user);
-    console.log('Character data:', data);
+    logger.character(`Creating character for user ${user.id}`, { characterName: data.name, race: race.name });
 
     return this.characterRepository.save(newCharacter);
   }

@@ -28,6 +28,7 @@ import pvpRoutes from './routes/pvpRoutes.js';
 import combatRoutes from './routes/combat.js';
 import eventRoutes from './routes/event.js';
 import { SessionExpirationJob } from './jobs/sessionExpiration.js';
+import { logger } from './utils/logger.js';
 
 dotenv.config();
 
@@ -43,8 +44,8 @@ const sessionExpirationInterval = SessionExpirationJob.startJob();
 
 // Connect chat and presence WebSockets for real-time updates
 chatWS.setPresenceBroadcaster(presenceWS.broadcastOnlineUsers);
-// Middleware for WebSocket connections
 
+// Middleware for WebSocket connections
 server.on('upgrade', (req, socket, head) => {
   const pathname = req.url?.split('?')[0];
 
@@ -58,7 +59,10 @@ server.on('upgrade', (req, socket, head) => {
 });
 
 // Middleware
-app.use(cors({origin: 'http://localhost:3000', credentials: true, methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], allowedHeaders: ['Content-Type', 'Authorization'],}));
+app.use(cors({
+  origin: ['http://localhost:3000', 'http://localhost:3001'], 
+  credentials: true,
+}));
 app.use(cookieParser());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
@@ -82,19 +86,23 @@ app.use('/api/pvp', pvpRoutes);
 app.use('/api/combat', combatRoutes);
 app.use('/api/events', eventRoutes);
 
-// Other Routes
+// Static files
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 app.use(errorHandler);
+
+// Database connection and server startup
 AppDataSource.initialize()
-    .then(() => {
-        console.log('App connected to the database');
-        server.listen(PORT, () => {
-            console.log(`App Server running on http://localhost:${PORT}`);
-        });
-    })
-    .catch((error) => {
-        console.error('Error during Data Source initialization:', error);
+  .then(() => {
+    logger.startup('App connected to the database');
+    server.listen(PORT, () => {
+      logger.startup(`App Server running on http://localhost:${PORT}`);
     });
+  })
+  .catch(error => {
+    logger.critical('Database connection failed:', { error: error.message });
+    process.exit(1);
+  });
+
 process.on('SIGTERM', () => {
   clearInterval(sessionExpirationInterval);
 });

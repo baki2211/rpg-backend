@@ -3,6 +3,7 @@ import { ChatMessage } from '../models/chatMessageModel.js';
 import { MoreThan } from 'typeorm';
 import { Character } from '../models/characterModel.js';
 import { SkillUsageService } from './SkillUsageService.js';
+import { logger } from '../utils/logger.js';
 
 export class ChatService {
   chatRepository = AppDataSource.getRepository(ChatMessage);
@@ -34,8 +35,6 @@ export class ChatService {
       throw new Error('No active character found for this user.');
     }
 
-    console.log('Adding message with skill data:', { skill });
-
     // Check if the message is more than 800 characters
     if (message.length > 800) {
       // Check if 5 minutes have passed since the last message
@@ -53,7 +52,7 @@ export class ChatService {
 
         // Increment character's experience points by 0.5
         character.experience += 0.5;
-        console.log(`Updated experience points for character ${character.id}: ${character.experience}`);
+        logger.character(`Updated experience points for character ${character.id}: ${character.experience}`);
         
         // If a skill is used, increment its usage counter and branch usage
         if (skill && skill.id && skill.branchId) {
@@ -63,10 +62,10 @@ export class ChatService {
               skill.id, 
               skill.branchId
             );
-            console.log(`Updated skill usage for ${skill.name}: ${usageResult.skillUses} uses`);
-            console.log(`Updated branch usage for branch ${skill.branchId}: ${usageResult.branchUses} uses`);
+            logger.skill(`Updated skill usage for ${skill.name}: ${usageResult.skillUses} uses`);
+            logger.skill(`Updated branch usage for branch ${skill.branchId}: ${usageResult.branchUses} uses`);
           } catch (error) {
-            console.error('Error updating skill usage:', error);
+            logger.error('Error updating skill usage:', { error: error.message });
           }
         }
       }
@@ -90,26 +89,16 @@ export class ChatService {
       }),
     });
 
-    console.log('Created chat message with data:', chatMessage);
-
     // Use a transaction to ensure atomicity
     return await AppDataSource.transaction(async (transactionalEntityManager) => {
       const characterRepository = transactionalEntityManager.getRepository(Character);
       const chatRepository = transactionalEntityManager.getRepository(ChatMessage);
       
-      // Log the character's experience points before saving
-      console.log(`Character experience points before save: ${character.experience}`);
-      
       // Save the character
       await characterRepository.save(character);
       
-      // Log the character's experience points after saving
-      const updatedCharacter = await characterRepository.findOne({ where: { id: character.id } });
-      console.log(`Character experience points after save: ${updatedCharacter.experience}`);
-      
       // Save the chat message
       const savedMessage = await chatRepository.save(chatMessage);
-      console.log('Saved chat message:', savedMessage);
       return savedMessage;
     });
   }
