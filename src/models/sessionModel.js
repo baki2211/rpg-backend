@@ -28,6 +28,14 @@ export const Session = new EntitySchema({
       type: 'boolean',
       default: true
     },
+    isEvent: {
+      type: 'boolean',
+      default: false  // true for event sessions, false for free roleplay
+    },
+    eventId: {
+      type: 'int',
+      nullable: true  // Link to the event if this is an event session
+    },
     status: {
       type: 'varchar',
       length: 20,
@@ -52,6 +60,12 @@ export const Session = new EntitySchema({
       type: 'one-to-many',
       target: 'ChatMessage',
       inverseSide: 'session'
+    },
+    event: {
+      type: 'one-to-one',
+      target: 'Event',
+      joinColumn: { name: 'eventId' },
+      nullable: true
     }
   }
 });

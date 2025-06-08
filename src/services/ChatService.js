@@ -3,11 +3,14 @@ import { ChatMessage } from '../models/chatMessageModel.js';
 import { MoreThan } from 'typeorm';
 import { Character } from '../models/characterModel.js';
 import { SkillUsageService } from './SkillUsageService.js';
+import { EngineLogService } from './EngineLogService.js';
+import { SkillEngine } from './SkillEngine.js';
 import { logger } from '../utils/logger.js';
 
 export class ChatService {
   chatRepository = AppDataSource.getRepository(ChatMessage);
   characterRepository = AppDataSource.getRepository(Character);
+  engineLogService = new EngineLogService();
 
   async getMessagesByLocation(locationId) {
     // Fetch messages from the past 5 hours
@@ -30,7 +33,10 @@ export class ChatService {
   }
 
   async addMessage(locationId, userId, username, message, skill = null) {
-    const character = await this.characterRepository.findOne({ where: { userId, isActive: true } });
+    const character = await this.characterRepository.findOne({ 
+      where: { userId, isActive: true },
+      relations: ['race'] // Need race for skill engine calculations
+    });
     if (!character) {
       throw new Error('No active character found for this user.');
     }
@@ -54,18 +60,12 @@ export class ChatService {
         character.experience += 0.5;
         logger.character(`Updated experience points for character ${character.id}: ${character.experience}`);
         
-        // If a skill is used, increment its usage counter and branch usage
+        // If a skill is used, process it through the skill engine and create logs
         if (skill && skill.id && skill.branchId) {
           try {
-            const usageResult = await SkillUsageService.incrementSkillUsage(
-              character.id, 
-              skill.id, 
-              skill.branchId
-            );
-            logger.skill(`Updated skill usage for ${skill.name}: ${usageResult.skillUses} uses`);
-            logger.skill(`Updated branch usage for branch ${skill.branchId}: ${usageResult.branchUses} uses`);
+            await this.processSkillUsage(character, skill, locationId);
           } catch (error) {
-            logger.error('Error updating skill usage:', { error: error.message });
+            logger.error('Error processing skill usage:', { error: error.message });
           }
         }
       }
@@ -101,5 +101,82 @@ export class ChatService {
       const savedMessage = await chatRepository.save(chatMessage);
       return savedMessage;
     });
+  }
+
+  /**
+   * Process skill usage through the skill engine and create appropriate logs
+   * @param {Object} character - The character using the skill
+   * @param {Object} skill - The skill being used
+   * @param {number} locationId - The location where the skill is used
+   */
+  async processSkillUsage(character, skill, locationId) {
+    // Import the actual skill model to get full skill data
+    const { Skill } = await import('../models/skillModel.js');
+    const skillRepository = AppDataSource.getRepository(Skill);
+    
+    const fullSkill = await skillRepository.findOne({
+      where: { id: skill.id },
+      relations: ['branch', 'type']
+    });
+
+    if (!fullSkill) {
+      throw new Error('Skill not found');
+    }
+
+    // Create skill engine instance and calculate output
+    const skillEngine = new SkillEngine(character, fullSkill);
+    const finalOutput = await skillEngine.computeFinalOutput();
+    const outcomeMultiplier = skillEngine.rollOutcome();
+
+    // Determine roll quality
+    let rollQuality = 'Standard';
+    if (outcomeMultiplier <= 0.6) rollQuality = 'Poor';
+    else if (outcomeMultiplier >= 1.4) rollQuality = 'Critical';
+
+    // Create engine log for skill usage
+    const engineData = {
+      basePower: fullSkill.basePower,
+      finalOutput,
+      outcomeMultiplier,
+      rollQuality,
+      skillUses: await skillEngine.getSkillUses(),
+      branchUses: await skillEngine.getBranchUses(),
+      characterStats: character.stats,
+      skillData: {
+        id: fullSkill.id,
+        name: fullSkill.name,
+        branch: fullSkill.branch?.name,
+        type: fullSkill.type?.name,
+        target: fullSkill.target
+      }
+    };
+
+    // Determine target for logging
+    let targetName = null;
+    if (skill.selectedTarget) {
+      targetName = skill.selectedTarget.characterName || skill.selectedTarget.username;
+    } else if (fullSkill.target === 'self') {
+      targetName = character.name;
+    }
+
+    // Create the engine log
+    await this.engineLogService.logSkillUsage(
+      locationId,
+      character.name,
+      fullSkill.name,
+      targetName,
+      finalOutput,
+      engineData
+    );
+
+    // Increment skill usage counters
+    const usageResult = await SkillUsageService.incrementSkillUsage(
+      character.id, 
+      skill.id, 
+      skill.branchId
+    );
+    
+    logger.skill(`Updated skill usage for ${fullSkill.name}: ${usageResult.skillUses} uses`);
+    logger.skill(`Updated branch usage for branch ${skill.branchId}: ${usageResult.branchUses} uses`);
   }
 }

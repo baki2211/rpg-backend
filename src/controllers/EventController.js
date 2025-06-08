@@ -10,7 +10,7 @@ export class EventController {
      */
     async createEvent(req, res) {
         try {
-            const { title, type, description, locationId, sessionId } = req.body;
+            const { title, type, description, locationId } = req.body;
             const createdBy = req.user.id;
 
             if (!title || !type || !locationId) {
@@ -20,18 +20,13 @@ export class EventController {
                 });
             }
 
-            const event = await this.eventService.createEvent(
-                title, 
-                type, 
-                parseInt(locationId), 
-                createdBy, 
-                sessionId ? parseInt(sessionId) : null,
-                description
-            );
+            const result = await this.eventService.createEvent(title, type, locationId, createdBy, description);
 
-            res.json({ 
-                success: true, 
-                event 
+            res.status(201).json({
+                success: true,
+                event: result.event,
+                session: result.session,
+                transformation: result.transformation
             });
         } catch (error) {
             console.error('Error creating event:', error);
@@ -50,17 +45,67 @@ export class EventController {
             const { eventId } = req.params;
             const closedBy = req.user.id;
 
-            const event = await this.eventService.closeEvent(parseInt(eventId), closedBy);
+            const result = await this.eventService.closeEvent(parseInt(eventId), closedBy);
 
-            res.json({ 
-                success: true, 
-                event 
+            res.json({
+                success: true,
+                event: result.event,
+                session: result.session,
+                transformation: result.transformation
             });
         } catch (error) {
             console.error('Error closing event:', error);
             res.status(500).json({ 
                 success: false, 
                 error: error.message 
+            });
+        }
+    }
+
+    /**
+     * Freeze an event
+     */
+    async freezeEvent(req, res) {
+        try {
+            const { eventId } = req.params;
+            const frozenBy = req.user.id;
+
+            const result = await this.eventService.freezeEvent(parseInt(eventId), frozenBy);
+
+            res.json({
+                success: true,
+                event: result.event,
+                session: result.session,
+                action: result.action
+            });
+        } catch (error) {
+            res.status(400).json({
+                success: false,
+                error: error.message
+            });
+        }
+    }
+
+    /**
+     * Unfreeze an event
+     */
+    async unfreezeEvent(req, res) {
+        try {
+            const { eventId } = req.params;
+            const unfrozenBy = req.user.id;
+
+            const result = await this.eventService.unfreezeEvent(parseInt(eventId), unfrozenBy);
+
+            res.json({
+                success: true,
+                event: result.event,
+                session: result.session,
+                action: result.action
+            });
+        } catch (error) {
+            res.status(400).json({
+                success: false,
+                error: error.message
             });
         }
     }
@@ -93,12 +138,12 @@ export class EventController {
     async getEventsByLocation(req, res) {
         try {
             const { locationId } = req.params;
-            const { limit, status } = req.query;
+            const { limit = 10, status } = req.query;
 
             const events = await this.eventService.getEventsByLocation(
                 parseInt(locationId),
-                limit ? parseInt(limit) : 10,
-                status || null
+                parseInt(limit),
+                status
             );
 
             res.json({ 

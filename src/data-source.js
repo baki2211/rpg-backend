@@ -17,6 +17,7 @@ import { SessionParticipant } from './models/sessionParticipantModel.js';
 import { CombatRound } from './models/combatRoundModel.js';
 import { CombatAction } from './models/combatActionModel.js';
 import { Event } from './models/eventModel.js';
+import { EngineLog } from './models/engineLogModel.js';
 
 dotenv.config();
 
@@ -45,7 +46,8 @@ export const AppDataSource = new DataSource({
     SessionParticipant,
     CombatRound,
     CombatAction,
-    Event
+    Event,
+    EngineLog
   ],
   migrations: ['./src/migrations/*.js'],
   migrationsTableName: 'migrations'

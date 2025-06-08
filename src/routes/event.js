@@ -27,6 +27,24 @@ router.post('/:eventId/close', requireRole(['master', 'admin']), async (req, res
 });
 
 /**
+ * @route POST /api/events/:eventId/freeze
+ * @desc Freeze an active event
+ * @access Master/Admin only
+ */
+router.post('/:eventId/freeze', requireRole(['master', 'admin']), async (req, res) => {
+    await eventController.freezeEvent(req, res);
+});
+
+/**
+ * @route POST /api/events/:eventId/unfreeze
+ * @desc Unfreeze an active event
+ * @access Master/Admin only
+ */
+router.post('/:eventId/unfreeze', requireRole(['master', 'admin']), async (req, res) => {
+    await eventController.unfreezeEvent(req, res);
+});
+
+/**
  * @route GET /api/events/active/:locationId
  * @desc Get active event for a location
  * @access All authenticated users

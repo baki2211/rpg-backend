@@ -1,24 +1,27 @@
 import { AppDataSource } from '../data-source.js';
 import { Event } from '../models/eventModel.js';
 import { CombatRound } from '../models/combatRoundModel.js';
+import { Session } from '../models/sessionModel.js';
+import { SessionService } from './SessionService.js';
 
 export class EventService {
     constructor() {
         this.eventRepository = AppDataSource.getRepository(Event);
         this.roundRepository = AppDataSource.getRepository(CombatRound);
+        this.sessionRepository = AppDataSource.getRepository(Session);
+        this.sessionService = new SessionService();
     }
 
     /**
-     * Create a new event
+     * Create a new event and transform existing session
      * @param {string} title - The event title
      * @param {string} type - The event type (lore, duel, quest)
      * @param {number} locationId - The location where the event takes place
      * @param {number} createdBy - User ID of the master creating the event
-     * @param {number} sessionId - Optional session ID
      * @param {string} description - Optional event description
-     * @returns {Promise<Object>} The created event
+     * @returns {Promise<Object>} The created event with session info
      */
-    async createEvent(title, type, locationId, createdBy, sessionId = null, description = null) {
+    async createEvent(title, type, locationId, createdBy, description = null) {
         // Validate event type
         const validTypes = ['lore', 'duel', 'quest'];
         if (!validTypes.includes(type.toLowerCase())) {
@@ -34,29 +37,69 @@ export class EventService {
             throw new Error('There is already an active event in this location. Close it first.');
         }
 
-        const event = this.eventRepository.create({
-            title,
-            type: type.toLowerCase(),
-            description,
-            locationId,
-            sessionId,
-            createdBy,
-            status: 'active'
-        });
+        return await AppDataSource.transaction(async (manager) => {
+            const eventRepo = manager.getRepository(Event);
+            const sessionRepo = manager.getRepository(Session);
 
-        return await this.eventRepository.save(event);
+            // Get or create session for this location
+            let session = await sessionRepo.findOne({
+                where: { locationId, isActive: true }
+            });
+
+            if (!session) {
+                // Create new session if none exists
+                session = sessionRepo.create({
+                    name: `Free Role - Location ${locationId}`,
+                    locationId,
+                    isEvent: false,
+                    isActive: true,
+                    status: 'open'
+                });
+                session = await sessionRepo.save(session);
+            }
+
+            // Create the event
+            const event = eventRepo.create({
+                title,
+                type: type.toLowerCase(),
+                description,
+                locationId,
+                sessionId: session.id,
+                createdBy,
+                status: 'active'
+            });
+
+            const savedEvent = await eventRepo.save(event);
+
+            // Transform session to event role
+            await sessionRepo.update(session.id, { 
+                name: `Event: ${title}`,
+                isEvent: true,
+                eventId: savedEvent.id
+            });
+
+            // Get updated session
+            const updatedSession = await sessionRepo.findOne({ where: { id: session.id } });
+
+            return {
+                event: savedEvent,
+                session: updatedSession,
+                transformation: 'free_role_to_event'
+            };
+        });
     }
 
     /**
-     * Close an active event
+     * Close an active event and revert session to free role
      * @param {number} eventId - The event ID to close
      * @param {number} closedBy - User ID of the master closing the event
-     * @returns {Promise<Object>} The closed event with round summary
+     * @returns {Promise<Object>} The closed event with session info
      */
     async closeEvent(eventId, closedBy) {
         return await AppDataSource.transaction(async (manager) => {
             const eventRepo = manager.getRepository(Event);
             const roundRepo = manager.getRepository(CombatRound);
+            const sessionRepo = manager.getRepository(Session);
 
             // Get the event
             const event = await eventRepo.findOne({
@@ -89,7 +132,16 @@ export class EventService {
                 }))
             };
 
-            // Update event status
+            // Revert session back to free role
+            if (event.sessionId) {
+                await sessionRepo.update(event.sessionId, { 
+                    name: `Free Role - Location ${event.locationId}`,
+                    isEvent: false,
+                    eventId: null
+                });
+            }
+
+            // Close the event
             await eventRepo.update(
                 { id: eventId },
                 {
@@ -100,8 +152,67 @@ export class EventService {
                 }
             );
 
-            return await eventRepo.findOne({ where: { id: eventId } });
+            const closedEvent = await eventRepo.findOne({ where: { id: eventId } });
+            const revertedSession = await sessionRepo.findOne({ where: { id: event.sessionId } });
+
+            return {
+                event: closedEvent,
+                session: revertedSession,
+                transformation: 'event_to_free_role'
+            };
         });
+    }
+
+    /**
+     * Freeze an event (and its session)
+     * @param {number} eventId - The event ID
+     * @param {number} frozenBy - User ID performing the action
+     * @returns {Promise<Object>} Updated event and session
+     */
+    async freezeEvent(eventId, frozenBy) {
+        const event = await this.eventRepository.findOne({
+            where: { id: eventId, status: 'active' }
+        });
+
+        if (!event) {
+            throw new Error('Event not found or not active');
+        }
+
+        if (event.sessionId) {
+            await this.sessionService.updateSessionStatus(event.sessionId, 'frozen');
+        }
+
+        return {
+            event,
+            session: await this.sessionService.getSession(event.sessionId),
+            action: 'frozen'
+        };
+    }
+
+    /**
+     * Unfreeze an event (and its session)
+     * @param {number} eventId - The event ID
+     * @param {number} unfrozenBy - User ID performing the action
+     * @returns {Promise<Object>} Updated event and session
+     */
+    async unfreezeEvent(eventId, unfrozenBy) {
+        const event = await this.eventRepository.findOne({
+            where: { id: eventId, status: 'active' }
+        });
+
+        if (!event) {
+            throw new Error('Event not found or not active');
+        }
+
+        if (event.sessionId) {
+            await this.sessionService.updateSessionStatus(event.sessionId, 'open');
+        }
+
+        return {
+            event,
+            session: await this.sessionService.getSession(event.sessionId),
+            action: 'unfrozen'
+        };
     }
 
     /**
@@ -112,7 +223,7 @@ export class EventService {
     async getActiveEvent(locationId) {
         return await this.eventRepository.findOne({
             where: { locationId, status: 'active' },
-            relations: ['rounds', 'rounds.actions']
+            relations: ['rounds', 'rounds.actions', 'session']
         });
     }
 
@@ -131,7 +242,7 @@ export class EventService {
 
         return await this.eventRepository.find({
             where: whereCondition,
-            relations: ['rounds'],
+            relations: ['rounds', 'session'],
             order: { createdAt: 'DESC' },
             take: limit
         });
@@ -145,7 +256,7 @@ export class EventService {
     async getEventById(eventId) {
         return await this.eventRepository.findOne({
             where: { id: eventId },
-            relations: ['rounds', 'rounds.actions', 'rounds.actions.character', 'rounds.actions.skill']
+            relations: ['rounds', 'rounds.actions', 'rounds.actions.character', 'rounds.actions.skill', 'session']
         });
     }
 

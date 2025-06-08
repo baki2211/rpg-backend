@@ -2,6 +2,51 @@
 
 This is the backend for the RPG application, built using Node.js, Express.js, TypeScript, PostgreSQL, and TypeORM. The app supports user authentication, role-based access, and a PostgreSQL database for data storage.
 
+## Session-Event Lifecycle
+
+The system now features a unified Session-Event lifecycle that seamlessly integrates event management with session management:
+
+### Event Creation
+When an event is created:
+- **Existing Free Role Session** → **Event Role Session** (`isEvent = true`)
+- The session name changes from "Free Role - Location X" to "Event: [Event Title]"
+- The session becomes linked to the event via `eventId`
+
+### Event Closure
+When an event is closed:
+- **Event Role Session** → **Free Role Session** (`isEvent = false`)
+- The session name changes back to "Free Role - Location X"
+- The `eventId` link is removed
+
+### Role-Based Session Management
+Session actions are now role-based:
+- **Master/Admin Users**: Can freeze/unfreeze, close/open, and go to sessions
+- **Regular Users**: Can only "Go Here" to visit sessions
+
+### Event Management Actions
+Events now have the same management capabilities as sessions:
+- **Freeze Event**: Freezes the underlying session and saves chat state
+- **Unfreeze Event**: Unfreezes the session and restores chat state
+- **Close Event**: Closes the event and reverts session to free roleplay
+
+### Visual Indicators
+- **Event Sessions**: Green left border with event badge showing event title
+- **Free Role Sessions**: Blue left border with free role badge
+- **Role Notice**: Users see their permission level clearly indicated
+
+This unified approach ensures that events and sessions work together seamlessly, providing masters with comprehensive control while maintaining clear boundaries for regular users.
+
+## Features
+
+- User authentication and authorization
+- Character creation and management
+- Dynamic chat system with skill integration
+- Session management with role-based permissions
+- Event management with automatic session transformation
+- Skill system with usage tracking and rank progression
+- Combat rounds with action resolution
+- Master panel with comprehensive oversight tools
+
 ## Prerequisites
 
 Before you begin, ensure you have the following installed on your system:
@@ -159,3 +204,14 @@ Ensure the `.env` file is correctly configured for the production environment.
 
 ## License
 This project is licensed under the MIT License.
+
+## API Documentation
+
+The API provides endpoints for:
+- User management and authentication
+- Character CRUD operations
+- Session and event management
+- Chat and skill systems
+- Combat and master tools
+
+For detailed API documentation, see the individual controller files in `/src/controllers/`.

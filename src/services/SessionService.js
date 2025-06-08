@@ -80,7 +80,7 @@ export class SessionService {
           { status: 'open' },
           { status: 'frozen' }
         ],
-        relations: ['participants', 'participants.character']
+        relations: ['participants', 'participants.character', 'event']
       });
       
       // Get all unique location IDs
@@ -99,7 +99,13 @@ export class SessionService {
           id: participant.id,
           characterName: participant.character?.name || 'Unknown',
           joinedAt: participant.joinedAt
-        })) || []
+        })) || [],
+        event: session.event ? {
+          id: session.event.id,
+          title: session.event.title,
+          type: session.event.type,
+          status: session.event.status
+        } : undefined
       }));
     } catch (error) {
       console.error('Error in getAllSessions:', error);
