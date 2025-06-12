@@ -6,11 +6,13 @@ import { SkillUsageService } from './SkillUsageService.js';
 import { EngineLogService } from './EngineLogService.js';
 import { SkillEngine } from './SkillEngine.js';
 import { logger } from '../utils/logger.js';
+import { CharacterService } from './CharacterService.js';
 
 export class ChatService {
   chatRepository = AppDataSource.getRepository(ChatMessage);
   characterRepository = AppDataSource.getRepository(Character);
   engineLogService = new EngineLogService();
+  characterService = new CharacterService();
 
   async getMessagesByLocation(locationId) {
     // Fetch messages from the past 5 hours
@@ -58,7 +60,9 @@ export class ChatService {
 
         // Increment character's experience points by 0.5
         character.experience += 0.5;
-        logger.character(`Updated experience points for character ${character.id}: ${character.experience}`);
+
+        // Check level up
+        await this.characterService.checkLevelUp(character);
         
         // If a skill is used, process it through the skill engine and create logs
         if (skill && skill.id && skill.branchId) {

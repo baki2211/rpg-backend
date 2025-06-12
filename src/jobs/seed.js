@@ -14,6 +14,7 @@ import { SkillType } from '../models/skillTypeModel.js';
 import { Session } from '../models/sessionModel.js';
 import { SessionParticipant } from '../models/sessionParticipantModel.js';
 import { ChatMessage } from '../models/chatMessageModel.js';
+import { Rank } from '../models/rankModel.js';
 
 async function seed() {
   try {
@@ -32,6 +33,7 @@ async function seed() {
     const sessionRepo = AppDataSource.getRepository(Session);
     const sessionParticipantRepo = AppDataSource.getRepository(SessionParticipant);
     const chatMessageRepo = AppDataSource.getRepository(ChatMessage);
+    const rankRepo = AppDataSource.getRepository(Rank);
 
     const userCount = await userRepo.count();
     if (userCount > 0) {
@@ -157,6 +159,23 @@ async function seed() {
       })
     ]);
 
+    // Seed rank progression if not present
+    const rankCount = await rankRepo.count();
+    if (rankCount === 0) {
+      const rankSeedData = [
+        { level:1, requiredExperience:0,    statPoints:0,  skillPoints:0, aetherPercent:0,  hpPercent:0 },
+        { level:2, requiredExperience:500,  statPoints:16, skillPoints:2, aetherPercent:3,  hpPercent:4 },
+        { level:3, requiredExperience:750,  statPoints:16, skillPoints:2, aetherPercent:3,  hpPercent:4 },
+        { level:4, requiredExperience:1200, statPoints:16, skillPoints:2, aetherPercent:3,  hpPercent:4 },
+        { level:5, requiredExperience:1800, statPoints:16, skillPoints:2, aetherPercent:3,  hpPercent:4 },
+        { level:6, requiredExperience:2700, statPoints:16, skillPoints:2, aetherPercent:3,  hpPercent:4 },
+        { level:7, requiredExperience:4000, statPoints:16, skillPoints:2, aetherPercent:3,  hpPercent:4 },
+        { level:8, requiredExperience:6000, statPoints:16, skillPoints:2, aetherPercent:3,  hpPercent:4 }
+      ];
+      await rankRepo.save(rankSeedData.map(r=>rankRepo.create(r)));
+      console.log('Ranks seeded');
+    }
+
     // Create characters for both users
     const adminCharacter = await characterRepo.save(characterRepo.create({
       userId: admin.id,
@@ -165,10 +184,12 @@ async function seed() {
       age: 25,
       gender: 'Non-binary',
       raceId: race.id,
-      stats: { FOC: 10, CON: 8, RES: 7, INS: 9, PRE: 8, FOR: 8 },
+      stats: { foc: 10, con: 8, res: 7, ins: 9, pre: 8, for: 8, hp:100, aether:50 },
       isActive: true,
       background: 'An administrator with access to powerful abilities.',
       experience: 0,
+      rank:1,
+      statPoints:0,
       skillPoints: 10 // Extra skill points for admin
     }));
 
@@ -179,10 +200,12 @@ async function seed() {
       age: 22,
       gender: 'Female',
       raceId: race.id,
-      stats: { FOC: 8, CON: 7, RES: 9, INS: 8, PRE: 10, FOR: 8 },
+      stats: { foc: 8, con: 7, res: 9, ins: 8, pre: 10, for: 8, hp:100, aether:50 },
       isActive: true,
       background: 'A regular user exploring the world.',
       experience: 0,
+      rank:1,
+      statPoints:0,
       skillPoints: 5 // Starting skill points
     }));
 

@@ -5,11 +5,13 @@ import { Race } from '../models/raceModel.js';
 import { Skill } from '../models/skillModel.js';
 import { StatDefinitionService } from './StatDefinitionService.js';
 import { logger } from '../utils/logger.js';
+import { RankService } from './RankService.js';
 
 export class CharacterService {
   characterRepository = AppDataSource.getRepository(Character);
   userRepository = AppDataSource.getRepository(User);
   statDefinitionService = new StatDefinitionService();
+  rankService = new RankService();
 
   /**
    * Initialize character stats based on stat definitions
@@ -421,5 +423,34 @@ export class CharacterService {
       totalPrimaryStatPoints: await this.calculateStatPointsUsed(character.stats),
       remainingPrimaryStatPoints: 45 - await this.calculateStatPointsUsed(character.stats)
     };
+  }
+
+  async checkLevelUp(character) {
+    let nextRank = await this.rankService.getNextRank(character.rank);
+    let leveledUp = false;
+    while (nextRank && character.experience >= nextRank.requiredExperience) {
+      character.rank = nextRank.level;
+      character.statPoints += nextRank.statPoints;
+      character.skillPoints += nextRank.skillPoints;
+
+      // apply percentage bonuses
+      if (nextRank.aetherPercent) {
+        if (character.stats.aether !== undefined) {
+          character.stats.aether = Math.floor(character.stats.aether * (1 + nextRank.aetherPercent / 100));
+        }
+      }
+      if (nextRank.hpPercent) {
+        if (character.stats.hp !== undefined) {
+          character.stats.hp = Math.floor(character.stats.hp * (1 + nextRank.hpPercent / 100));
+        }
+      }
+
+      leveledUp = true;
+      nextRank = await this.rankService.getNextRank(character.rank);
+    }
+    if (leveledUp) {
+      await this.characterRepository.save(character);
+    }
+    return leveledUp;
   }
 }

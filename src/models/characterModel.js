@@ -67,6 +67,16 @@ export const Character = new EntitySchema({
       type: 'int',
       nullable: false,
       default: 5  // Starting skill points for new characters
+    },
+    rank: {
+      type: 'int',
+      nullable: false,
+      default: 1
+    },
+    statPoints: {
+      type: 'int',
+      nullable: false,
+      default: 0
     }
   },
   relations: {
