@@ -64,12 +64,13 @@ export class PvPResolutionService {
             report: report,
             winner: clashResult.winner,
             effects: clashResult.effects,
-            damage: clashResult.damage
+            damage: clashResult.damage,
+            resolution: clashResult.resolution
         };
     }
 
     /**
-     * Determine if skills clash and resolve the interaction
+     * Determine if skills clash and resolve the interaction based on comprehensive clash table
      * @param {Object} attackerSkill - Attacker's skill
      * @param {Object} defenderSkill - Defender's skill  
      * @param {number} attackerOutput - Attacker's skill output
@@ -83,172 +84,231 @@ export class PvPResolutionService {
         // Check if both skills target each other (required for most clashes)
         const targetsEachOther = (attackerSkill.target === 'other' && defenderSkill.target === 'other');
         
-        // Determine clash based on skill type combinations
-        switch (attackerType) {
-            case 'Attack':
-                return this.resolveAttackClash(defenderType, attackerOutput, defenderOutput, targetsEachOther);
-            
-            case 'Defence':
-                return this.resolveDefenceClash(defenderType, attackerOutput, defenderOutput);
-            
-            case 'Buff':
-            case 'Heal':
-                return this.resolveBuffHealClash(defenderType, attackerOutput, defenderOutput);
-            
-            case 'Debuff':
-                return this.resolveDebuffClash(defenderType, attackerOutput, defenderOutput);
-            
-            case 'Counter':
-                return this.resolveCounterClash(defenderType, attackerOutput, defenderOutput, targetsEachOther);
-            
-            case 'Crafting':
-                return this.resolveCraftingClash(defenderType, attackerOutput, defenderOutput);
-            
-            default:
-                return { isClash: false, winner: null, effects: [], damage: 0 };
-        }
+        // Implement the comprehensive clash table
+        return this.resolveClashByTable(
+            attackerType, 
+            defenderType, 
+            attackerOutput, 
+            defenderOutput, 
+            targetsEachOther,
+            attackerSkill,
+            defenderSkill
+        );
     }
 
     /**
-     * Resolve clashes involving Attack skills
+     * Resolve clash based on the comprehensive clash table
+     * @param {string} typeA - First skill type
+     * @param {string} typeB - Second skill type
+     * @param {number} outputA - First skill output
+     * @param {number} outputB - Second skill output
+     * @param {boolean} targetsEachOther - Whether skills target each other
+     * @param {Object} skillA - First skill object
+     * @param {Object} skillB - Second skill object
+     * @returns {Object} Clash resolution result
      */
-    static resolveAttackClash(defenderType, attackerOutput, defenderOutput, targetsEachOther) {
-        switch (defenderType) {
-            case 'Attack':
-                if (targetsEachOther) {
-                    return {
-                        isClash: true,
-                        winner: attackerOutput > defenderOutput ? 'attacker' : 
-                               defenderOutput > attackerOutput ? 'defender' : 'tie',
-                        effects: ['mutual_damage'],
-                        damage: { attacker: defenderOutput, defender: attackerOutput }
-                    };
-                }
-                break;
-                
-            case 'Defence':
-                if (targetsEachOther) {
-                    const remainingDamage = Math.max(0, attackerOutput - defenderOutput);
-                    return {
-                        isClash: true,
-                        winner: remainingDamage > 0 ? 'attacker' : 'defender',
-                        effects: ['damage_absorbed'],
-                        damage: { attacker: 0, defender: remainingDamage }
-                    };
-                }
-                break;
-                
-            case 'Counter':
-                if (targetsEachOther && defenderOutput > attackerOutput) {
+    static resolveClashByTable(typeA, typeB, outputA, outputB, targetsEachOther, skillA, skillB) {
+        // Attack vs Attack - Both take damage equal to opponent's final output
+        if (typeA === 'Attack' && typeB === 'Attack') {
+            if (targetsEachOther) {
+                return {
+                    isClash: true,
+                    winner: outputA > outputB ? 'attacker' : outputB > outputA ? 'defender' : 'tie',
+                    effects: ['mutual_damage', 'both_take_full_output'],
+                    damage: { attacker: outputB, defender: outputA },
+                    resolution: `Both attackers take damage: Attacker takes ${outputB}, Defender takes ${outputA}`
+                };
+            }
+        }
+
+        // Attack vs Defence - Defender absorbs, subtract from output
+        if (typeA === 'Attack' && typeB === 'Defence') {
+            if (targetsEachOther) {
+                const remainingDamage = Math.max(0, outputA - outputB);
+                return {
+                    isClash: true,
+                    winner: remainingDamage > 0 ? 'attacker' : 'defender',
+                    effects: ['damage_absorbed', `absorbed_${outputB}_damage`],
+                    damage: { attacker: 0, defender: remainingDamage },
+                    resolution: `Defence absorbs ${Math.min(outputA, outputB)} damage. Remaining damage: ${remainingDamage}`
+                };
+            }
+        }
+
+        // Attack vs Counter - If Counter > Attack → attacker takes counter's output
+        if (typeA === 'Attack' && typeB === 'Counter') {
+            if (targetsEachOther) {
+                if (outputB > outputA) {
                     return {
                         isClash: true,
                         winner: 'defender',
-                        effects: ['counter_attack'],
-                        damage: { attacker: defenderOutput, defender: 0 }
+                        effects: ['counter_successful', 'attacker_takes_counter_damage'],
+                        damage: { attacker: outputB, defender: 0 },
+                        resolution: `Counter successful! Attacker takes ${outputB} damage from counter`
                     };
-                } else if (targetsEachOther) {
+                } else {
                     return {
                         isClash: true,
                         winner: 'attacker',
-                        effects: ['counter_failed'],
-                        damage: { attacker: 0, defender: attackerOutput }
+                        effects: ['counter_failed', 'defender_takes_attack_damage'],
+                        damage: { attacker: 0, defender: outputA },
+                        resolution: `Counter failed! Defender takes ${outputA} damage from attack`
                     };
                 }
-                break;
-                
-            case 'Buff':
-            case 'Heal':
-                return {
-                    isClash: false, // Conditional - both execute
-                    winner: null,
-                    effects: ['buff_heal_executed', 'attack_executed'],
-                    damage: { attacker: 0, defender: attackerOutput }
-                };
-                
-            case 'Debuff':
-                return {
-                    isClash: false, // Conditional - both execute
-                    winner: null,
-                    effects: ['debuff_applied', 'attack_executed'],
-                    damage: { attacker: 0, defender: attackerOutput }
-                };
-                
-            case 'Crafting':
+            }
+        }
+
+        // Attack vs Buff/Heal - Conditional: Buff/Heal executes; Attacker deals damage
+        if (typeA === 'Attack' && (typeB === 'Buff' || typeB === 'Heal')) {
+            return {
+                isClash: false, // Conditional clash
+                winner: null,
+                effects: ['buff_heal_executed', 'attack_executed', 'both_resolve'],
+                damage: { attacker: 0, defender: outputA },
+                resolution: `Both resolve: ${typeB} effect applied, then ${outputA} damage dealt`
+            };
+        }
+
+        // Attack vs Debuff - Conditional: Debuff applies; Attacker deals damage
+        if (typeA === 'Attack' && typeB === 'Debuff') {
+            return {
+                isClash: false, // Conditional clash
+                winner: null,
+                effects: ['debuff_applied', 'attack_executed', 'both_resolve'],
+                damage: { attacker: 0, defender: outputA },
+                resolution: `Both resolve: Debuff applied, then ${outputA} damage dealt`
+            };
+        }
+
+        // Attack vs Crafting - Edge case: Crafting halted; output negated if taking full damage
+        if (typeA === 'Attack' && typeB === 'Crafting') {
+            return {
+                isClash: true,
+                winner: 'attacker',
+                effects: ['crafting_interrupted', 'crafting_output_negated'],
+                damage: { attacker: 0, defender: outputA },
+                resolution: `Crafting interrupted by attack! Crafting output negated, ${outputA} damage dealt`
+            };
+        }
+
+        // Defence vs Buff/Heal - No clash: Both resolve independently
+        if (typeA === 'Defence' && (typeB === 'Buff' || typeB === 'Heal')) {
+            return {
+                isClash: false,
+                winner: null,
+                effects: ['both_resolve_independently'],
+                damage: { attacker: 0, defender: 0 },
+                resolution: `Both resolve independently: Defence ready, ${typeB} effect applied`
+            };
+        }
+
+        // Buff vs Debuff - No clash: Both resolve
+        if ((typeA === 'Buff' || typeA === 'Heal') && typeB === 'Debuff') {
+            return {
+                isClash: false,
+                winner: null,
+                effects: ['both_resolve', 'buff_debuff_interaction'],
+                damage: { attacker: 0, defender: 0 },
+                resolution: `Both resolve: ${typeA} and Debuff effects both apply`
+            };
+        }
+
+        // Buff/Heal vs Buff/Heal - No clash: Both resolve independently
+        if ((typeA === 'Buff' || typeA === 'Heal') && (typeB === 'Buff' || typeB === 'Heal')) {
+            return {
+                isClash: false,
+                winner: null,
+                effects: ['both_resolve_independently'],
+                damage: { attacker: 0, defender: 0 },
+                resolution: `Both resolve independently: ${typeA} and ${typeB} effects both apply`
+            };
+        }
+
+        // Handle reverse cases (when defender is the "attacker" in the table)
+        if (typeB === 'Attack' && typeA === 'Defence') {
+            if (targetsEachOther) {
+                const remainingDamage = Math.max(0, outputB - outputA);
                 return {
                     isClash: true,
-                    winner: 'attacker',
-                    effects: ['crafting_interrupted'],
-                    damage: { attacker: 0, defender: attackerOutput }
+                    winner: remainingDamage > 0 ? 'defender' : 'attacker',
+                    effects: ['damage_absorbed', `absorbed_${outputA}_damage`],
+                    damage: { attacker: remainingDamage, defender: 0 },
+                    resolution: `Defence absorbs ${Math.min(outputB, outputA)} damage. Remaining damage: ${remainingDamage}`
                 };
+            }
         }
-        
-        return { isClash: false, winner: null, effects: [], damage: 0 };
-    }
 
-    /**
-     * Resolve clashes involving Defence skills
-     */
-    static resolveDefenceClash(defenderType, attackerOutput, defenderOutput) {
-        switch (defenderType) {
-            case 'Buff':
-            case 'Heal':
-                return {
-                    isClash: false,
-                    winner: null,
-                    effects: ['both_resolve_independently'],
-                    damage: 0
-                };
+        if (typeB === 'Attack' && typeA === 'Counter') {
+            if (targetsEachOther) {
+                if (outputA > outputB) {
+                    return {
+                        isClash: true,
+                        winner: 'attacker',
+                        effects: ['counter_successful', 'defender_takes_counter_damage'],
+                        damage: { attacker: 0, defender: outputA },
+                        resolution: `Counter successful! Defender takes ${outputA} damage from counter`
+                    };
+                } else {
+                    return {
+                        isClash: true,
+                        winner: 'defender',
+                        effects: ['counter_failed', 'attacker_takes_attack_damage'],
+                        damage: { attacker: outputB, defender: 0 },
+                        resolution: `Counter failed! Attacker takes ${outputB} damage from attack`
+                    };
+                }
+            }
         }
-        
-        return { isClash: false, winner: null, effects: [], damage: 0 };
-    }
 
-    /**
-     * Resolve clashes involving Buff/Heal skills
-     */
-    static resolveBuffHealClash(defenderType, attackerOutput, defenderOutput) {
-        switch (defenderType) {
-            case 'Debuff':
-                return {
-                    isClash: false,
-                    winner: null,
-                    effects: ['both_resolve'],
-                    damage: 0
-                };
-                
-            case 'Buff':
-            case 'Heal':
-                return {
-                    isClash: false,
-                    winner: null,
-                    effects: ['both_resolve_independently'],
-                    damage: 0
-                };
+        if (typeB === 'Attack' && (typeA === 'Buff' || typeA === 'Heal')) {
+            return {
+                isClash: false, // Conditional clash
+                winner: null,
+                effects: ['buff_heal_executed', 'attack_executed', 'both_resolve'],
+                damage: { attacker: outputB, defender: 0 },
+                resolution: `Both resolve: ${typeA} effect applied, then ${outputB} damage dealt`
+            };
         }
-        
-        return { isClash: false, winner: null, effects: [], damage: 0 };
-    }
 
-    /**
-     * Resolve clashes involving Debuff skills
-     */
-    static resolveDebuffClash(defenderType, attackerOutput, defenderOutput) {
-        return { isClash: false, winner: null, effects: [], damage: 0 };
-    }
+        if (typeB === 'Attack' && typeA === 'Debuff') {
+            return {
+                isClash: false, // Conditional clash
+                winner: null,
+                effects: ['debuff_applied', 'attack_executed', 'both_resolve'],
+                damage: { attacker: outputB, defender: 0 },
+                resolution: `Both resolve: Debuff applied, then ${outputB} damage dealt`
+            };
+        }
 
-    /**
-     * Resolve clashes involving Counter skills
-     */
-    static resolveCounterClash(defenderType, attackerOutput, defenderOutput, targetsEachOther) {
-        // Counter skills are typically reactive, main logic handled in Attack resolution
-        return { isClash: false, winner: null, effects: [], damage: 0 };
-    }
+        if (typeB === 'Attack' && typeA === 'Crafting') {
+            return {
+                isClash: true,
+                winner: 'defender',
+                effects: ['crafting_interrupted', 'crafting_output_negated'],
+                damage: { attacker: outputB, defender: 0 },
+                resolution: `Crafting interrupted by attack! Crafting output negated, ${outputB} damage dealt`
+            };
+        }
 
-    /**
-     * Resolve clashes involving Crafting skills
-     */
-    static resolveCraftingClash(defenderType, attackerOutput, defenderOutput) {
-        return { isClash: false, winner: null, effects: [], damage: 0 };
+        // Handle Debuff vs Buff (reverse case)
+        if (typeA === 'Debuff' && (typeB === 'Buff' || typeB === 'Heal')) {
+            return {
+                isClash: false,
+                winner: null,
+                effects: ['both_resolve', 'buff_debuff_interaction'],
+                damage: { attacker: 0, defender: 0 },
+                resolution: `Both resolve: Debuff and ${typeB} effects both apply`
+            };
+        }
+
+        // Default case - no clash
+        return {
+            isClash: false,
+            winner: null,
+            effects: ['no_interaction'],
+            damage: { attacker: 0, defender: 0 },
+            resolution: `No clash: Both skills resolve independently`
+        };
     }
 
     /**
@@ -270,14 +330,14 @@ export class PvPResolutionService {
         if (name.includes('counter') || name.includes('retaliate')) {
             return 'Counter';
         }
+        if (name.includes('debuff') || name.includes('curse') || name.includes('weaken')) {
+            return 'Debuff';
+        }
         if (name.includes('buff') || name.includes('enhance') || name.includes('boost')) {
             return 'Buff';
         }
         if (name.includes('heal') || name.includes('restore') || name.includes('recovery')) {
             return 'Heal';
-        }
-        if (name.includes('debuff') || name.includes('curse') || name.includes('weaken')) {
-            return 'Debuff';
         }
         if (name.includes('craft') || name.includes('create') || name.includes('build')) {
             return 'Crafting';

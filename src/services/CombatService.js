@@ -364,32 +364,56 @@ export class CombatService {
      * @returns {boolean} True if actions clash
      */
     actionsClash(action1, action2) {
+        // Import PvPResolutionService for type categorization
+        const { PvPResolutionService } = require('./PvPResolutionService.js');
+        
+        // Get skill type categories
+        const type1 = PvPResolutionService.getSkillTypeCategory(action1.skillData.type);
+        const type2 = PvPResolutionService.getSkillTypeCategory(action2.skillData.type);
+        
         // Actions clash if they target each other
         const action1TargetsAction2 = action1.targetId === action2.characterId;
         const action2TargetsAction1 = action2.targetId === action1.characterId;
+        const targetsEachOther = action1TargetsAction2 && action2TargetsAction1;
 
-        // Basic clash conditions
-        if (action1TargetsAction2 && action2TargetsAction1) {
-            return true; // Mutual targeting
-        }
-
-        // Additional clash logic based on skill types
-        const type1 = action1.skillData.type?.toLowerCase() || '';
-        const type2 = action2.skillData.type?.toLowerCase() || '';
-
-        // Attacks vs defenses when targeting each other
-        if (action1TargetsAction2 && 
-            (type1.includes('attack') || type1.includes('offensive')) &&
-            (type2.includes('defence') || type2.includes('defensive'))) {
+        // Check for clashes based on the comprehensive clash table
+        
+        // Attack vs Attack - Always clash if targeting each other
+        if (type1 === 'Attack' && type2 === 'Attack' && targetsEachOther) {
             return true;
         }
 
-        if (action2TargetsAction1 && 
-            (type2.includes('attack') || type2.includes('offensive')) &&
-            (type1.includes('defence') || type1.includes('defensive'))) {
+        // Attack vs Defence - Clash if targeting each other
+        if ((type1 === 'Attack' && type2 === 'Defence') || 
+            (type1 === 'Defence' && type2 === 'Attack')) {
+            return targetsEachOther;
+        }
+
+        // Attack vs Counter - Clash if targeting each other
+        if ((type1 === 'Attack' && type2 === 'Counter') || 
+            (type1 === 'Counter' && type2 === 'Attack')) {
+            return targetsEachOther;
+        }
+
+        // Attack vs Buff/Heal - Conditional clash (always considered a clash for processing)
+        if ((type1 === 'Attack' && (type2 === 'Buff' || type2 === 'Heal')) ||
+            ((type1 === 'Buff' || type1 === 'Heal') && type2 === 'Attack')) {
+            return true; // Conditional clashes are still processed as clashes
+        }
+
+        // Attack vs Debuff - Conditional clash (always considered a clash for processing)
+        if ((type1 === 'Attack' && type2 === 'Debuff') ||
+            (type1 === 'Debuff' && type2 === 'Attack')) {
+            return true; // Conditional clashes are still processed as clashes
+        }
+
+        // Attack vs Crafting - Edge case clash
+        if ((type1 === 'Attack' && type2 === 'Crafting') ||
+            (type1 === 'Crafting' && type2 === 'Attack')) {
             return true;
         }
 
+        // All other combinations don't clash
         return false;
     }
 
@@ -402,21 +426,19 @@ export class CombatService {
     async resolveClash(clashActions, manager) {
         const [action1, action2] = clashActions;
         
-        // Use PvPResolutionService to resolve the clash
+        // Use PvPResolutionService to resolve the clash with comprehensive logic
         const character1 = action1.character;
         const character2 = action2.character;
         const skill1 = action1.skill;
         const skill2 = action2.skill;
 
-        // Create temporary skill engines for clash resolution
-        const engine1 = new SkillEngine(character1, skill1);
-        const engine2 = new SkillEngine(character2, skill2);
-
-        // Use the existing clash resolution
-        const clashResult = await engine1.resolveClash(character2, skill2);
+        // Use PvPResolutionService for comprehensive clash resolution
+        const pvpResult = await PvPResolutionService.resolvePvPEncounter(
+            character1, skill1, character2, skill2
+        );
 
         const result = {
-            isClash: true,
+            isClash: pvpResult.isClash,
             participants: [
                 {
                     character: action1.characterData.name,
@@ -435,10 +457,11 @@ export class CombatService {
                     rollQuality: action2.rollQuality
                 }
             ],
-            winner: clashResult.winner,
-            damage: clashResult.damage,
-            effects: clashResult.effects,
-            details: `${action1.characterData.name} (${action1.skillData.name}: ${action1.finalOutput}) vs ${action2.characterData.name} (${action2.skillData.name}: ${action2.finalOutput})`
+            winner: pvpResult.winner,
+            damage: pvpResult.damage,
+            effects: pvpResult.effects,
+            resolution: pvpResult.resolution,
+            details: pvpResult.resolution || `${action1.characterData.name} (${action1.skillData.name}: ${action1.finalOutput}) vs ${action2.characterData.name} (${action2.skillData.name}: ${action2.finalOutput})`
         };
 
         // Store clash result in both actions
@@ -512,15 +535,40 @@ export class CombatService {
         let details;
         let effects = ['Clash Resolution'];
         
-        if (clashResult.winner === 'attacker') {
-            details = `CLASH: ${participant1.character} (${participant1.skill}: ${participant1.finalOutput}) defeated ${participant2.character} (${participant2.skill}: ${participant2.finalOutput}). Damage: ${clashResult.damage}`;
-            effects.push(`Winner: ${participant1.character}`, `Damage: ${clashResult.damage}`);
-        } else if (clashResult.winner === 'defender') {
-            details = `CLASH: ${participant2.character} (${participant2.skill}: ${participant2.finalOutput}) defeated ${participant1.character} (${participant1.skill}: ${participant1.finalOutput}). Damage: ${clashResult.damage}`;
-            effects.push(`Winner: ${participant2.character}`, `Damage: ${clashResult.damage}`);
+        // Use the resolution text if available, otherwise fall back to old format
+        if (clashResult.resolution) {
+            details = `CLASH: ${participant1.character} (${participant1.skill}: ${participant1.finalOutput}) vs ${participant2.character} (${participant2.skill}: ${participant2.finalOutput}) - ${clashResult.resolution}`;
+            
+            // Add effects from the clash result
+            if (clashResult.effects && Array.isArray(clashResult.effects)) {
+                effects.push(...clashResult.effects);
+            }
+            
+            // Add damage information if present
+            if (clashResult.damage) {
+                if (typeof clashResult.damage === 'object') {
+                    if (clashResult.damage.attacker > 0) {
+                        effects.push(`${participant1.character} takes ${clashResult.damage.attacker} damage`);
+                    }
+                    if (clashResult.damage.defender > 0) {
+                        effects.push(`${participant2.character} takes ${clashResult.damage.defender} damage`);
+                    }
+                } else {
+                    effects.push(`Damage: ${clashResult.damage}`);
+                }
+            }
         } else {
-            details = `CLASH: ${participant1.character} (${participant1.skill}: ${participant1.finalOutput}) vs ${participant2.character} (${participant2.skill}: ${participant2.finalOutput}) - TIE! Both take ${clashResult.damage} damage`;
-            effects.push('Result: Tie', `Both take ${clashResult.damage} damage`);
+            // Fallback to old format
+            if (clashResult.winner === 'attacker') {
+                details = `CLASH: ${participant1.character} (${participant1.skill}: ${participant1.finalOutput}) defeated ${participant2.character} (${participant2.skill}: ${participant2.finalOutput}). Damage: ${clashResult.damage}`;
+                effects.push(`Winner: ${participant1.character}`, `Damage: ${clashResult.damage}`);
+            } else if (clashResult.winner === 'defender') {
+                details = `CLASH: ${participant2.character} (${participant2.skill}: ${participant2.finalOutput}) defeated ${participant1.character} (${participant1.skill}: ${participant1.finalOutput}). Damage: ${clashResult.damage}`;
+                effects.push(`Winner: ${participant2.character}`, `Damage: ${clashResult.damage}`);
+            } else {
+                details = `CLASH: ${participant1.character} (${participant1.skill}: ${participant1.finalOutput}) vs ${participant2.character} (${participant2.skill}: ${participant2.finalOutput}) - TIE! Both take ${clashResult.damage} damage`;
+                effects.push('Result: Tie', `Both take ${clashResult.damage} damage`);
+            }
         }
 
         // Add roll qualities to effects

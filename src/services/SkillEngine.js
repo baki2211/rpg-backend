@@ -185,27 +185,19 @@ export class SkillEngine {
      * @returns {Promise<ClashResult>} The result of the clash
      */
     async resolveClash(target, targetSkill) {
-        const attackerOutput = await this.computeFinalOutput();
-        const defenderOutput = await new SkillEngine(target, targetSkill).computeFinalOutput();
+        // Use PvPResolutionService for comprehensive clash resolution
+        const { PvPResolutionService } = await import('./PvPResolutionService.js');
+        
+        const pvpResult = await PvPResolutionService.resolvePvPEncounter(
+            this.character, this.skill, target, targetSkill
+        );
 
-        // Determine winner and calculate damage
-        let winner, damage;
-        if (attackerOutput > defenderOutput) {
-            winner = 'attacker';
-            damage = attackerOutput - defenderOutput;
-        } else if (defenderOutput > attackerOutput) {
-            winner = 'defender';
-            damage = defenderOutput - attackerOutput;
-        } else {
-            // In case of a tie, both take minimal damage
-            winner = 'tie';
-            damage = Math.floor(attackerOutput * 0.1);
-        }
-
-        // Generate effects based on the clash
-        const effects = this.generateClashEffects(winner, damage);
-
-        return new ClashResult(winner, damage, effects);
+        // Convert PvP result to ClashResult format for backward compatibility
+        return new ClashResult(
+            pvpResult.winner, 
+            pvpResult.damage, 
+            pvpResult.effects
+        );
     }
 
     /**
