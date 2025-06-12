@@ -18,6 +18,7 @@ import { CombatRound } from './models/combatRoundModel.js';
 import { CombatAction } from './models/combatActionModel.js';
 import { Event } from './models/eventModel.js';
 import { EngineLog } from './models/engineLogModel.js';
+import { StatDefinition } from './models/statDefinitionModel.js';
 
 dotenv.config();
 
@@ -47,7 +48,8 @@ export const AppDataSource = new DataSource({
     CombatRound,
     CombatAction,
     Event,
-    EngineLog
+    EngineLog,
+    StatDefinition
   ],
   migrations: ['./src/migrations/*.js'],
   migrationsTableName: 'migrations'

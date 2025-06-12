@@ -24,4 +24,9 @@ router.delete('/:id', authenticateToken, CharacterController.deleteCharacter);
 router.post('/skills/:skillId', authenticateToken, CharacterController.acquireSkill);
 router.get('/:characterId/available-skills', authenticateToken, CharacterController.getAvailableSkills);
 
+// Character stats management
+router.get('/:characterId/stats', authenticateToken, CharacterController.getCharacterStats);
+router.put('/:characterId/stats', authenticateToken, CharacterController.updateCharacterStats);
+router.post('/:characterId/stats/reset', authenticateToken, CharacterController.resetCharacterStats);
+
 export default router;

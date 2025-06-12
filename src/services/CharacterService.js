@@ -3,11 +3,118 @@ import { Character } from '../models/characterModel.js';
 import { User } from '../models/userModel.js';
 import { Race } from '../models/raceModel.js';
 import { Skill } from '../models/skillModel.js';
+import { StatDefinitionService } from './StatDefinitionService.js';
 import { logger } from '../utils/logger.js';
 
 export class CharacterService {
   characterRepository = AppDataSource.getRepository(Character);
   userRepository = AppDataSource.getRepository(User);
+  statDefinitionService = new StatDefinitionService();
+
+  /**
+   * Initialize character stats based on stat definitions
+   * @param {Object} providedStats - Stats provided during character creation
+   * @returns {Promise<Object>} Initialized stats object
+   */
+  async initializeCharacterStats(providedStats = {}) {
+    // Get primary stats (the ones used in character creation)
+    const primaryStats = await this.statDefinitionService.getAllStatDefinitions('primary_stat', true);
+    const resourceStats = await this.statDefinitionService.getAllStatDefinitions('resource', true);
+    
+    const stats = {};
+    
+    // Initialize primary stats with provided values or defaults
+    for (const statDef of primaryStats) {
+      const providedValue = providedStats[statDef.internalName];
+      const maxValue = statDef.maxValue ?? 100; // Default to 100 if null
+      
+      if (providedValue !== undefined) {
+        // Validate the provided value
+        if (providedValue < statDef.minValue || providedValue > maxValue) {
+          throw new Error(`${statDef.displayName} must be between ${statDef.minValue} and ${maxValue}`);
+        }
+        stats[statDef.internalName] = providedValue;
+      } else {
+        stats[statDef.internalName] = statDef.defaultValue;
+      }
+    }
+    
+    // Initialize resource stats with default values
+    for (const statDef of resourceStats) {
+      stats[statDef.internalName] = statDef.defaultValue;
+    }
+    
+    return stats;
+  }
+
+  /**
+   * Validate character stats against stat definitions
+   * @param {Object} stats - Stats to validate
+   * @param {string} category - Optional category filter
+   * @returns {Promise<Object>} Validation result
+   */
+  async validateCharacterStats(stats, category = null) {
+    const statDefinitions = await this.statDefinitionService.getAllStatDefinitions(category, true);
+    const errors = [];
+    const warnings = [];
+    
+    // Validate each stat
+    for (const statDef of statDefinitions) {
+      const value = stats[statDef.internalName];
+      const maxValue = statDef.maxValue ?? 100; // Default to 100 if null
+      
+      if (value === undefined || value === null) {
+        if (statDef.category === 'primary_stat') {
+          errors.push(`Missing required stat: ${statDef.displayName}`);
+        }
+        continue;
+      }
+      
+      if (typeof value !== 'number') {
+        errors.push(`${statDef.displayName} must be a number`);
+        continue;
+      }
+      
+      if (value < statDef.minValue) {
+        errors.push(`${statDef.displayName} cannot be less than ${statDef.minValue}`);
+      }
+      
+      if (value > maxValue) {
+        errors.push(`${statDef.displayName} cannot be greater than ${maxValue}`);
+      }
+    }
+    
+    // Check for unknown stats
+    for (const statName in stats) {
+      const statDef = statDefinitions.find(def => def.internalName === statName);
+      if (!statDef) {
+        warnings.push(`Unknown stat: ${statName}`);
+      }
+    }
+    
+    return {
+      isValid: errors.length === 0,
+      errors,
+      warnings
+    };
+  }
+
+  /**
+   * Calculate total stat points used (for primary stats only)
+   * @param {Object} stats - Character stats
+   * @returns {Promise<number>} Total points used
+   */
+  async calculateStatPointsUsed(stats) {
+    const primaryStats = await this.statDefinitionService.getAllStatDefinitions('primary_stat', true);
+    let totalPoints = 0;
+    
+    for (const statDef of primaryStats) {
+      const value = stats[statDef.internalName] || statDef.defaultValue;
+      totalPoints += value;
+    }
+    
+    return totalPoints;
+  }
 
   async createCharacter(data, userId, imageUrl) {
     const user = await this.userRepository.findOneBy({ id: (await data.user)?.id || userId });
@@ -18,10 +125,19 @@ export class CharacterService {
     if (!race) {
       throw new Error('Race not found');
     }
-    // Validate pool of 45 points for stats
-    const totalStats = Object.values(data.stats || {}).reduce((sum, val) => sum + val, 0);
-    if (totalStats > 45) {
-      throw new Error('Total stats exceed the allowed 45 points.');
+    
+    // Initialize and validate stats using stat definitions
+    const initializedStats = await this.initializeCharacterStats(data.stats || {});
+    const validation = await this.validateCharacterStats(initializedStats, 'primary_stat');
+    
+    if (!validation.isValid) {
+      throw new Error(`Stat validation failed: ${validation.errors.join(', ')}`);
+    }
+    
+    // Validate pool of 45 points for primary stats only
+    const totalPrimaryStatPoints = await this.calculateStatPointsUsed(initializedStats);
+    if (totalPrimaryStatPoints > 45) {
+      throw new Error(`Total primary stat points (${totalPrimaryStatPoints}) exceed the allowed 45 points.`);
     }
 
     // Set all other characters for the user as inactive if this one is active
@@ -29,16 +145,21 @@ export class CharacterService {
       await this.characterRepository.update({ user }, { isActive: false });
     }
 
-    // Create the new character, using lazy loading for the `user`
+    // Create the new character, using the initialized stats
     const newCharacter = this.characterRepository.create({
       ...data,
+      stats: initializedStats,
       user: user,
       userId: user.id,
       race,
       imageUrl: imageUrl,
     });
 
-    logger.character(`Creating character for user ${user.id}`, { characterName: data.name, race: race.name });
+    logger.character(`Creating character for user ${user.id}`, { 
+      characterName: data.name, 
+      race: race.name,
+      stats: initializedStats
+    });
 
     return this.characterRepository.save(newCharacter);
   }
@@ -215,5 +336,90 @@ export class CharacterService {
 
     // Return the character's skills with their relations
     return character.skills;
+  }
+
+  /**
+   * Update character stats
+   * @param {number} characterId - Character ID
+   * @param {number} userId - User ID (for permission check)
+   * @param {Object} statUpdates - Object with stat updates { statName: newValue }
+   * @returns {Promise<Object>} Updated character
+   */
+  async updateCharacterStats(characterId, userId, statUpdates) {
+    const character = await this.getCharacterById(characterId, userId);
+    if (!character) {
+      throw new Error('Character not found');
+    }
+
+    // Merge the updates with existing stats
+    const updatedStats = { ...character.stats, ...statUpdates };
+    
+    // Validate the updated stats
+    const validation = await this.validateCharacterStats(updatedStats);
+    if (!validation.isValid) {
+      throw new Error(`Stat validation failed: ${validation.errors.join(', ')}`);
+    }
+
+    // For primary stats, check the 45-point limit
+    const totalPrimaryStatPoints = await this.calculateStatPointsUsed(updatedStats);
+    if (totalPrimaryStatPoints > 45) {
+      throw new Error(`Total primary stat points (${totalPrimaryStatPoints}) exceed the allowed 45 points.`);
+    }
+
+    // Update the character
+    await this.characterRepository.update(
+      { id: characterId, user: { id: userId } },
+      { stats: updatedStats }
+    );
+
+    return this.getCharacterById(characterId, userId);
+  }
+
+  /**
+   * Get character stats with stat definition metadata
+   * @param {number} characterId - Character ID
+   * @param {number} userId - User ID (for permission check)
+   * @returns {Promise<Object>} Character stats with metadata
+   */
+  async getCharacterStatsWithDefinitions(characterId, userId) {
+    const character = await this.getCharacterById(characterId, userId);
+    if (!character) {
+      throw new Error('Character not found');
+    }
+
+    // Get all stat definitions organized by category
+    const statsByCategory = await this.statDefinitionService.getStatsByCategory(true);
+    
+    // Enhance character stats with definition metadata
+    const enhancedStats = {
+      primary_stat: [],
+      resource: [],
+      scaling_stat: []
+    };
+
+    for (const [category, statDefs] of Object.entries(statsByCategory)) {
+      for (const statDef of statDefs) {
+        const currentValue = character.stats[statDef.internalName] ?? statDef.defaultValue;
+        const maxValue = statDef.maxValue ?? 100; // Default to 100 if null
+        enhancedStats[category].push({
+          ...statDef,
+          maxValue, // Use the resolved max value
+          currentValue,
+          isAtMin: currentValue <= statDef.minValue,
+          isAtMax: currentValue >= maxValue
+        });
+      }
+    }
+
+    return {
+      character: {
+        id: character.id,
+        name: character.name,
+        surname: character.surname
+      },
+      stats: enhancedStats,
+      totalPrimaryStatPoints: await this.calculateStatPointsUsed(character.stats),
+      remainingPrimaryStatPoints: 45 - await this.calculateStatPointsUsed(character.stats)
+    };
   }
 }

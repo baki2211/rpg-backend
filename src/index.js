@@ -28,6 +28,7 @@ import pvpRoutes from './routes/pvpRoutes.js';
 import combatRoutes from './routes/combat.js';
 import eventRoutes from './routes/event.js';
 import engineLogRoutes from './routes/engineLogs.js';
+import statDefinitionRoutes from './routes/statDefinition.js';
 import { SessionExpirationJob } from './jobs/sessionExpiration.js';
 import { logger } from './utils/logger.js';
 
@@ -87,6 +88,7 @@ app.use('/api/pvp', pvpRoutes);
 app.use('/api/combat', combatRoutes);
 app.use('/api/events', eventRoutes);
 app.use('/api/engine-logs', engineLogRoutes);
+app.use('/api/stat-definitions', statDefinitionRoutes);
 
 // Static files
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));

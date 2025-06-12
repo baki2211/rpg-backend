@@ -202,21 +202,26 @@ export class SkillEngine {
      * @param {Skill} skill - The skill being used
      */
     applyCost(skill) {
-        // Deduct aether cost
-        this.character.aether -= skill.aetherCost;
+        // Deduct aether cost from character stats
+        if (!this.character.stats.aether || this.character.stats.aether < skill.aetherCost) {
+            throw new Error(`Insufficient aether to use this skill. Required: ${skill.aetherCost}, Available: ${this.character.stats.aether || 0}`);
+        }
+        
+        this.character.stats.aether -= skill.aetherCost;
 
         // Apply any additional costs or effects
         if (skill.requiredStats) {
             // Handle any stat requirements or costs
             Object.entries(skill.requiredStats).forEach(([stat, value]) => {
-                if (this.character.stats[stat] < value) {
-                    throw new Error(`Insufficient ${stat} to use this skill`);
+                if (!this.character.stats[stat] || this.character.stats[stat] < value) {
+                    throw new Error(`Insufficient ${stat} to use this skill. Required: ${value}, Available: ${this.character.stats[stat] || 0}`);
                 }
             });
         }
 
-        // Save character changes
-        return this.character.save();
+        // Note: Character saving should be handled by the calling service
+        // This method just modifies the character object in memory
+        return true;
     }
 
     /**
