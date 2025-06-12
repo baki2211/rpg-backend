@@ -3,6 +3,7 @@ import { Skill } from '../models/skillModel.js';
 import { CharacterSkill } from '../models/characterSkillModel.js';
 import { CharacterSkillBranch } from '../models/characterSkillBranchModel.js';
 import { AppDataSource } from '../data-source.js';
+import { StatDefinitionService } from './StatDefinitionService.js';
 
 export class ClashResult {
     constructor(winner, damage, effects) {
@@ -16,6 +17,7 @@ export class SkillEngine {
     constructor(character, skill) {
         this.character = character;
         this.skill = skill;
+        this.statDefinitionService = new StatDefinitionService();
     }
 
     /**
@@ -81,40 +83,49 @@ export class SkillEngine {
 
     /**
      * Calculate the base impact of the skill based on character stats and skill properties
-     * @returns {number} The calculated impact value
+     * @returns {Promise<number>} The calculated impact value
      */
-    calculateImpact() {
+    async calculateImpact() {
         let impact = this.skill.basePower;
 
         // Apply scaling from character stats with weighted formula
         if (this.skill.scalingStats && this.skill.scalingStats.length > 0) {
-            const statValues = this.skill.scalingStats.map(stat => ({
-                stat: stat,
-                value: this.character.stats[stat] || 0
-            }));
+            // Get all primary stat definitions to validate scaling stats
+            const primaryStats = await this.statDefinitionService.getAllStatDefinitions('primary_stat', true);
+            const validStatNames = primaryStats.map(stat => stat.internalName);
+            
+            // Filter scaling stats to only include valid ones
+            const validScalingStats = this.skill.scalingStats.filter(stat => validStatNames.includes(stat));
+            
+            if (validScalingStats.length > 0) {
+                const statValues = validScalingStats.map(stat => ({
+                    stat: stat,
+                    value: this.character.stats[stat] || 0
+                }));
 
-            // Sort stats by value in descending order for weight assignment
-            statValues.sort((a, b) => b.value - a.value);
+                // Sort stats by value in descending order for weight assignment
+                statValues.sort((a, b) => b.value - a.value);
 
-            // Define weights based on number of stats
-            let weights;
-            switch (statValues.length) {
-                case 1:
-                    weights = [1.0]; // 100%
-                    break;
-                case 2:
-                    weights = [0.7, 0.3]; // 70%, 30%
-                    break;
-                case 3:
-                default:
-                    weights = [0.6, 0.25, 0.15]; // 60%, 25%, 15%
-                    break;
-            }
+                // Define weights based on number of stats
+                let weights;
+                switch (statValues.length) {
+                    case 1:
+                        weights = [1.0]; // 100%
+                        break;
+                    case 2:
+                        weights = [0.7, 0.3]; // 70%, 30%
+                        break;
+                    case 3:
+                    default:
+                        weights = [0.6, 0.25, 0.15]; // 60%, 25%, 15%
+                        break;
+                }
 
-            // Apply weighted stat contributions
-            for (let i = 0; i < Math.min(statValues.length, weights.length); i++) {
-                const statContribution = statValues[i].value * weights[i];
-                impact += Math.floor(statContribution);
+                // Apply weighted stat contributions
+                for (let i = 0; i < Math.min(statValues.length, weights.length); i++) {
+                    const statContribution = statValues[i].value * weights[i];
+                    impact += Math.floor(statContribution);
+                }
             }
         }
 
@@ -150,7 +161,7 @@ export class SkillEngine {
      * @returns {Promise<number>} The final calculated output value
      */
     async computeFinalOutput() {
-        const impact = this.calculateImpact();
+        const impact = await this.calculateImpact();
         const outcomeMultiplier = this.rollOutcome();
         
         // Get skill and branch uses
@@ -161,7 +172,7 @@ export class SkillEngine {
         const skillRankMultiplier = this.calculateSkillRankMultiplier(skillUses);
         const branchRankMultiplier = this.calculateBranchRankMultiplier(branchUses);
         
-        // Apply the formula: Final Output = IMP × (RankMultiplier + BranchMultiplier) × OutcomeMultiplier | Change if needed
+        // Apply the formula: Final Output = IMP × (RankMultiplier + BranchMultiplier) × OutcomeMultiplier
         const finalOutput = impact * (skillRankMultiplier + branchRankMultiplier) * outcomeMultiplier;
         
         return Math.floor(finalOutput);
@@ -201,7 +212,7 @@ export class SkillEngine {
      * Apply the cost of using the skill to the character
      * @param {Skill} skill - The skill being used
      */
-    applyCost(skill) {
+    async applyCost(skill) {
         // Deduct aether cost from character stats
         if (!this.character.stats.aether || this.character.stats.aether < skill.aetherCost) {
             throw new Error(`Insufficient aether to use this skill. Required: ${skill.aetherCost}, Available: ${this.character.stats.aether || 0}`);
@@ -211,10 +222,16 @@ export class SkillEngine {
 
         // Apply any additional costs or effects
         if (skill.requiredStats) {
+            // Get all primary stat definitions to validate required stats
+            const primaryStats = await this.statDefinitionService.getAllStatDefinitions('primary_stat', true);
+            const validStatNames = primaryStats.map(stat => stat.internalName);
+            
             // Handle any stat requirements or costs
             Object.entries(skill.requiredStats).forEach(([stat, value]) => {
-                if (!this.character.stats[stat] || this.character.stats[stat] < value) {
-                    throw new Error(`Insufficient ${stat} to use this skill. Required: ${value}, Available: ${this.character.stats[stat] || 0}`);
+                if (validStatNames.includes(stat)) {
+                    if (!this.character.stats[stat] || this.character.stats[stat] < value) {
+                        throw new Error(`Insufficient ${stat} to use this skill. Required: ${value}, Available: ${this.character.stats[stat] || 0}`);
+                    }
                 }
             });
         }
@@ -235,14 +252,14 @@ export class SkillEngine {
         const effects = {
             damage: damage,
             status: winner === 'tie' ? 'stalemate' : 'victory',
-            critical: damage > this.calculateImpact() * 1.5
+            critical: damage > this.skill.basePower * 1.5
         };
 
         // Add additional effects based on skill types
         if (this.skill.typeId === 1) { // Assuming 1 is for offensive skills
-            effects.stagger = damage > this.calculateImpact();
+            effects.stagger = damage > this.skill.basePower;
         } else if (this.skill.typeId === 2) { // Assuming 2 is for defensive skills
-            effects.block = damage < this.calculateImpact() * 0.5;
+            effects.block = damage < this.skill.basePower * 0.5;
         }
 
         return effects;

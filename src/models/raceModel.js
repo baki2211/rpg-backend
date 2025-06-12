@@ -29,23 +29,7 @@ export const Race = new EntitySchema({
             type: 'int',
             default: 0,
         },
-        strengthBonus: {
-            type: 'int',
-            default: 0,
-        },
-        agilityBonus: {
-            type: 'int',
-            default: 0,
-        },
-        intelligenceBonus: {
-            type: 'int',
-            default: 0,
-        },
         speedBonus: {
-            type: 'int',
-            default: 0,
-        },
-        armorBonus: {
             type: 'int',
             default: 0,
         },
@@ -56,6 +40,31 @@ export const Race = new EntitySchema({
         updatedAt: {
             type: 'timestamp',
             updateDate: true,
+        },
+        // New stat system bonuses
+        focusBonus: {
+            type: 'int',
+            default: 0,
+        },
+        controlBonus: {
+            type: 'int',
+            default: 0,
+        },
+        resilienceBonus: {
+            type: 'int',
+            default: 0,
+        },
+        instinctBonus: {
+            type: 'int',
+            default: 0,
+        },
+        presenceBonus: {
+            type: 'int',
+            default: 0,
+        },
+        forceBonus: {
+            type: 'int',
+            default: 0,
         },
     },
     relations: {

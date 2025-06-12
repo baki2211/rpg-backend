@@ -136,6 +136,10 @@ export class CharacterService {
       throw new Error(`Stat validation failed: ${validation.errors.join(', ')}`);
     }
     
+    // Compute derived resource stats and merge
+    const derived = await this.computeDerivedStats(initializedStats, race, 1);
+    Object.assign(initializedStats, derived);
+    
     // Validate pool of 45 points for primary stats only
     const totalPrimaryStatPoints = await this.calculateStatPointsUsed(initializedStats);
     if (totalPrimaryStatPoints > 45) {
@@ -176,7 +180,7 @@ export class CharacterService {
   async getCharacterById(characterId, userId) {
     return this.characterRepository.findOne({
       where: { id: characterId, user: { id: userId } },
-      relations: ['skills', 'skills.branch', 'skills.type']
+      relations: ['skills', 'skills.branch', 'skills.type', 'race']
     });
   }
   
@@ -242,6 +246,7 @@ export class CharacterService {
         const { CombatAction } = await import('../models/combatActionModel.js');
         const combatActionRepo = manager.getRepository(CombatAction);
         await combatActionRepo.delete({ characterId });
+        await combatActionRepo.delete({ targetId: characterId });
         logger.character(`Removed combat actions for character ${characterId}`);
       } catch (error) {
         // Combat module might not exist, that's ok
@@ -368,7 +373,10 @@ export class CharacterService {
       throw new Error(`Total primary stat points (${totalPrimaryStatPoints}) exceed the allowed 45 points.`);
     }
 
-    // Update the character
+    // recompute derived resources
+    const derived = await this.computeDerivedStats(updatedStats, character.race, character.rank);
+    Object.assign(updatedStats, derived);
+
     await this.characterRepository.update(
       { id: characterId, user: { id: userId } },
       { stats: updatedStats }
@@ -452,5 +460,54 @@ export class CharacterService {
       await this.characterRepository.save(character);
     }
     return leveledUp;
+  }
+
+  /**
+   * Compute derived (resource) stats based on primary stats, race bonuses and rank bonuses
+   */
+  async computeDerivedStats(baseStats, race, rankLevel) {
+    const rank = await this.rankService.getRank(rankLevel) || { hpPercent:0, aetherPercent:0 };
+
+    // Get primary stat definitions to dynamically calculate derived stats
+    const primaryStats = await this.statDefinitionService.getAllStatDefinitions('primary_stat', true);
+    
+    // Apply race bonuses to base stats and get stat values
+    const statValues = {};
+    let primarySum = 0;
+    
+    for (const statDef of primaryStats) {
+      const baseValue = baseStats[statDef.internalName] || 0;
+      const raceBonus = race?.[`${statDef.internalName}Bonus`] || 0;
+      const finalValue = baseValue + raceBonus;
+      statValues[statDef.internalName] = finalValue;
+      primarySum += finalValue;
+    }
+
+    // For backward compatibility, map to old stat names if they exist
+    const FOC = statValues.foc || 0;
+    const CON = statValues.con || 0;
+    const RES = statValues.res || 0;
+    const INS = statValues.ins || 0;
+    const PRE = statValues.pre || 0;
+    const FOR = statValues.for || 0;
+
+    // Reactions (based on Instinct and Focus)
+    const reactions = ((INS + FOC) / 2) + (INS * 0.165);
+
+    // Speed (using legacy speedBonus for backward compatibility)
+    const BSP = race?.speedBonus || 0;
+    const speed = ((FOR + CON + RES) / 3) + (FOR * 0.165) + BSP;
+
+    // HP (using legacy healthBonus for backward compatibility)
+    const BHP = race?.healthBonus || 0;
+    const baseHP = ((RES * 2) + (CON * 3)) + BHP;
+    const hp = Math.floor(baseHP * (1 + (rank.hpPercent || 0) / 100));
+
+    // Aether (AE) (using legacy manaBonus for backward compatibility)
+    const BAE = race?.manaBonus || 0;
+    const baseAE = BAE + Math.sqrt(primarySum) * 5;
+    const aether = Math.floor(baseAE * (1 + (rank.aetherPercent || 0) / 100));
+
+    return { reactions: Math.floor(reactions), speed: Math.floor(speed), hp, aether };
   }
 }
