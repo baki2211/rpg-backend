@@ -123,38 +123,34 @@ export class PvPResolutionService {
 
         // Attack vs Defence - Defender absorbs, subtract from output
         if (typeA === 'Attack' && typeB === 'Defence') {
-            if (targetsEachOther) {
-                const remainingDamage = Math.max(0, outputA - outputB);
-                return {
-                    isClash: true,
-                    winner: remainingDamage > 0 ? 'attacker' : 'defender',
-                    effects: ['damage_absorbed', `absorbed_${outputB}_damage`],
-                    damage: { attacker: 0, defender: remainingDamage },
-                    resolution: `Defence absorbs ${Math.min(outputA, outputB)} damage. Remaining damage: ${remainingDamage}`
-                };
-            }
+            const remainingDamage = Math.max(0, outputA - outputB);
+            return {
+                isClash: true,
+                winner: remainingDamage > 0 ? 'attacker' : 'defender',
+                effects: ['damage_absorbed', `absorbed_${Math.min(outputA, outputB)}_damage`],
+                damage: { attacker: 0, defender: remainingDamage },
+                resolution: `Defence absorbs ${Math.min(outputA, outputB)} damage. Remaining damage: ${remainingDamage}`
+            };
         }
 
         // Attack vs Counter - If Counter > Attack → attacker takes counter's output
         if (typeA === 'Attack' && typeB === 'Counter') {
-            if (targetsEachOther) {
-                if (outputB > outputA) {
-                    return {
-                        isClash: true,
-                        winner: 'defender',
-                        effects: ['counter_successful', 'attacker_takes_counter_damage'],
-                        damage: { attacker: outputB, defender: 0 },
-                        resolution: `Counter successful! Attacker takes ${outputB} damage from counter`
-                    };
-                } else {
-                    return {
-                        isClash: true,
-                        winner: 'attacker',
-                        effects: ['counter_failed', 'defender_takes_attack_damage'],
-                        damage: { attacker: 0, defender: outputA },
-                        resolution: `Counter failed! Defender takes ${outputA} damage from attack`
-                    };
-                }
+            if (outputB > outputA) {
+                return {
+                    isClash: true,
+                    winner: 'defender',
+                    effects: ['counter_successful', 'attacker_takes_counter_damage'],
+                    damage: { attacker: outputB, defender: 0 },
+                    resolution: `Counter successful! Attacker takes ${outputB} damage from counter`
+                };
+            } else {
+                return {
+                    isClash: true,
+                    winner: 'attacker',
+                    effects: ['counter_failed', 'defender_takes_attack_damage'],
+                    damage: { attacker: 0, defender: outputA },
+                    resolution: `Counter failed! Defender takes ${outputA} damage from attack`
+                };
             }
         }
 
@@ -226,37 +222,33 @@ export class PvPResolutionService {
 
         // Handle reverse cases (when defender is the "attacker" in the table)
         if (typeB === 'Attack' && typeA === 'Defence') {
-            if (targetsEachOther) {
-                const remainingDamage = Math.max(0, outputB - outputA);
-                return {
-                    isClash: true,
-                    winner: remainingDamage > 0 ? 'defender' : 'attacker',
-                    effects: ['damage_absorbed', `absorbed_${outputA}_damage`],
-                    damage: { attacker: remainingDamage, defender: 0 },
-                    resolution: `Defence absorbs ${Math.min(outputB, outputA)} damage. Remaining damage: ${remainingDamage}`
-                };
-            }
+            const remainingDamage = Math.max(0, outputB - outputA);
+            return {
+                isClash: true,
+                winner: remainingDamage > 0 ? 'defender' : 'attacker',
+                effects: ['damage_absorbed', `absorbed_${Math.min(outputB, outputA)}_damage`],
+                damage: { attacker: remainingDamage, defender: 0 },
+                resolution: `Defence absorbs ${Math.min(outputB, outputA)} damage. Remaining damage: ${remainingDamage}`
+            };
         }
 
         if (typeB === 'Attack' && typeA === 'Counter') {
-            if (targetsEachOther) {
-                if (outputA > outputB) {
-                    return {
-                        isClash: true,
-                        winner: 'attacker',
-                        effects: ['counter_successful', 'defender_takes_counter_damage'],
-                        damage: { attacker: 0, defender: outputA },
-                        resolution: `Counter successful! Defender takes ${outputA} damage from counter`
-                    };
-                } else {
-                    return {
-                        isClash: true,
-                        winner: 'defender',
-                        effects: ['counter_failed', 'attacker_takes_attack_damage'],
-                        damage: { attacker: outputB, defender: 0 },
-                        resolution: `Counter failed! Attacker takes ${outputB} damage from attack`
-                    };
-                }
+            if (outputA > outputB) {
+                return {
+                    isClash: true,
+                    winner: 'attacker',
+                    effects: ['counter_successful', 'defender_takes_counter_damage'],
+                    damage: { attacker: 0, defender: outputA },
+                    resolution: `Counter successful! Defender takes ${outputA} damage from counter`
+                };
+            } else {
+                return {
+                    isClash: true,
+                    winner: 'defender',
+                    effects: ['counter_failed', 'attacker_takes_attack_damage'],
+                    damage: { attacker: outputB, defender: 0 },
+                    resolution: `Counter failed! Attacker takes ${outputB} damage from attack`
+                };
             }
         }
 
@@ -321,33 +313,29 @@ export class PvPResolutionService {
         
         const name = skillTypeName.toLowerCase();
         
+        let result;
         if (name.includes('attack') || name.includes('offensive') || name.includes('damage')) {
-            return 'Attack';
-        }
-        if (name.includes('defence') || name.includes('defensive') || name.includes('block') || name.includes('shield')) {
-            return 'Defence';
-        }
-        if (name.includes('counter') || name.includes('retaliate')) {
-            return 'Counter';
-        }
-        if (name.includes('debuff') || name.includes('curse') || name.includes('weaken')) {
-            return 'Debuff';
-        }
-        if (name.includes('buff') || name.includes('enhance') || name.includes('boost')) {
-            return 'Buff';
-        }
-        if (name.includes('heal') || name.includes('restore') || name.includes('recovery')) {
-            return 'Heal';
-        }
-        if (name.includes('craft') || name.includes('create') || name.includes('build')) {
-            return 'Crafting';
-        }
-        if (name.includes('passive')) {
-            return 'Passive';
+            result = 'Attack';
+        } else if (name.includes('defence') || name.includes('defensive') || name.includes('block') || name.includes('shield')) {
+            result = 'Defence';
+        } else if (name.includes('counter') || name.includes('retaliate')) {
+            result = 'Counter';
+        } else if (name.includes('debuff') || name.includes('curse') || name.includes('weaken')) {
+            result = 'Debuff';
+        } else if (name.includes('buff') || name.includes('enhance') || name.includes('boost')) {
+            result = 'Buff';
+        } else if (name.includes('heal') || name.includes('restore') || name.includes('recovery')) {
+            result = 'Heal';
+        } else if (name.includes('craft') || name.includes('create') || name.includes('build')) {
+            result = 'Crafting';
+        } else if (name.includes('passive')) {
+            result = 'Passive';
+        } else {
+            // Default to Attack if uncertain
+            result = 'Attack';
         }
         
-        // Default to Attack if uncertain
-        return 'Attack';
+        return result;
     }
 
     /**

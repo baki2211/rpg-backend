@@ -82,17 +82,32 @@ export class CombatController {
                 return res.status(400).json({ error: 'Skill ID is required' });
             }
 
+            // Validate skillId format
+            const parsedSkillId = parseInt(skillId);
+            if (isNaN(parsedSkillId)) {
+                return res.status(400).json({ error: 'Invalid skill ID format' });
+            }
+
             // Get the user's active character
             const character = await CombatController.characterService.getActiveCharacter(userId);
             if (!character) {
                 return res.status(400).json({ error: 'No active character found' });
             }
 
+            // Parse and validate targetId
+            let parsedTargetId = null;
+            if (targetId && targetId !== '' && targetId !== 'null' && targetId !== 'undefined') {
+                parsedTargetId = parseInt(targetId);
+                if (isNaN(parsedTargetId)) {
+                    return res.status(400).json({ error: 'Invalid target ID format' });
+                }
+            }
+
             const action = await CombatController.combatService.submitAction(
                 parseInt(roundId),
                 character.id,
-                skillId,
-                targetId || null
+                parsedSkillId,
+                parsedTargetId
             );
 
             res.status(201).json({

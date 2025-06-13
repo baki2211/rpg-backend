@@ -19,8 +19,8 @@ export const SkillService = {
     }
 
     // Validate target field
-    if (skillData.target && !['self', 'other', 'none'].includes(skillData.target)) {
-      throw new Error('Target must be one of: self, other, none');
+    if (skillData.target && !['self', 'other', 'none', 'any'].includes(skillData.target)) {
+      throw new Error('Target must be one of: self, other, none, any');
     }
 
     const skill = skillRepository.create(skillData);
@@ -36,8 +36,8 @@ export const SkillService = {
     }
 
     // Validate target field if it's being updated
-    if (skillData.target !== undefined && !['self', 'other', 'none'].includes(skillData.target)) {
-      throw new Error('Target must be one of: self, other, none');
+    if (skillData.target !== undefined && !['self', 'other', 'none', 'any'].includes(skillData.target)) {
+      throw new Error('Target must be one of: self, other, none, any');
     }
 
     await skillRepository.update(id, skillData);
