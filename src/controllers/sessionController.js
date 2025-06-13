@@ -139,4 +139,83 @@ export class SessionController {
       res.status(500).json({ error: error.message });
     }
   }
+
+  /**
+   * Get all sessions for logging/admin purposes
+   */
+  async getAllSessionsForLogs(req, res) {
+    try {
+      // Verify user has admin/master permissions
+      if (!['admin', 'master'].includes(req.user.role)) {
+        return res.status(403).json({ error: 'Admin or Master access required' });
+      }
+
+      const { limit } = req.query;
+      const sessions = await this.sessionService.getAllSessionsForLogs(
+        limit ? parseInt(limit) : 100
+      );
+      res.json(sessions);
+    } catch (error) {
+      console.error('Error in getAllSessionsForLogs:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  /**
+   * Freeze a session
+   */
+  async freezeSession(req, res) {
+    try {
+      // Verify user has admin/master permissions
+      if (!['admin', 'master'].includes(req.user.role)) {
+        return res.status(403).json({ error: 'Admin or Master access required' });
+      }
+
+      const { sessionId } = req.params;
+      const session = await this.sessionService.freezeSession(sessionId);
+      res.json(session);
+    } catch (error) {
+      console.error('Error in freezeSession:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  /**
+   * Unfreeze a session
+   */
+  async unfreezeSession(req, res) {
+    try {
+      // Verify user has admin/master permissions
+      if (!['admin', 'master'].includes(req.user.role)) {
+        return res.status(403).json({ error: 'Admin or Master access required' });
+      }
+
+      const { sessionId } = req.params;
+      const session = await this.sessionService.unfreezeSession(sessionId);
+      res.json(session);
+    } catch (error) {
+      console.error('Error in unfreezeSession:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  /**
+   * Close a session
+   */
+  async closeSession(req, res) {
+    try {
+      // Verify user has admin/master permissions
+      if (!['admin', 'master'].includes(req.user.role)) {
+        return res.status(403).json({ error: 'Admin or Master access required' });
+      }
+
+      const { sessionId } = req.params;
+      const { reason } = req.body;
+      const session = await this.sessionService.closeSession(sessionId, reason);
+      res.json(session);
+    } catch (error) {
+      console.error('Error in closeSession:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
 }

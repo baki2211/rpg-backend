@@ -14,13 +14,45 @@ export class EventService {
 
     /**
      * Ensure there's an active session for the given location
+     * Now handles frozen sessions by creating new sessions for events
      * @param {number} locationId - The location ID
      * @param {Object} manager - Database transaction manager (optional)
+     * @param {boolean} forEvent - Whether this is for an event (allows creating new session even if location has frozen session)
      * @returns {Promise<Object>} The session object
      */
-    async ensureSessionForLocation(locationId, manager = null) {
+    async ensureSessionForLocation(locationId, manager = null, forEvent = false) {
         const sessionRepo = manager ? manager.getRepository(Session) : this.sessionRepository;
         
+        // If creating for an event, we can create a new session even if there's a frozen one
+        if (forEvent) {
+            // Check for existing active open session first
+            let session = await sessionRepo.findOne({
+                where: { 
+                    locationId, 
+                    isActive: true,
+                    status: 'open'
+                }
+            });
+
+            if (session) {
+                return session;
+            }
+
+            // No active open session found, create one for the event
+            // This allows events to be created even when location has frozen sessions
+            session = sessionRepo.create({
+                name: `Event Session - Location ${locationId}`,
+                locationId,
+                isEvent: false, // Will be updated when event is created
+                isActive: true,
+                status: 'open'
+            });
+
+            const savedSession = await sessionRepo.save(session);
+            return savedSession;
+        }
+
+        // Original logic for non-event sessions
         // Try to find existing active session that is also open (not closed/frozen)
         let session = await sessionRepo.findOne({
             where: { 
@@ -49,6 +81,7 @@ export class EventService {
 
     /**
      * Create a new event and transform existing session
+     * Now supports creating events in locations with frozen sessions
      * @param {string} title - The event title
      * @param {string} type - The event type (lore, duel, quest)
      * @param {number} locationId - The location where the event takes place
@@ -77,9 +110,10 @@ export class EventService {
             const sessionRepo = manager.getRepository(Session);
 
             // Ensure there's an active session for this location
+            // Pass forEvent=true to allow creating new session even if location has frozen sessions
             let session;
             try {
-                session = await this.ensureSessionForLocation(locationId, manager);
+                session = await this.ensureSessionForLocation(locationId, manager, true);
             } catch (sessionError) {
                 throw new Error(`Failed to ensure session for location ${locationId}: ${sessionError.message}`);
             }
@@ -119,7 +153,7 @@ export class EventService {
                 return {
                     event: savedEvent,
                     session: updatedSession,
-                    transformation: 'free_role_to_event'
+                    transformation: session.isEvent ? 'event_to_event' : 'free_role_to_event'
                 };
             } catch (transformError) {
                 throw new Error(`Failed to transform session to event mode: ${transformError.message}`);
@@ -219,7 +253,7 @@ export class EventService {
         }
 
         if (event.sessionId) {
-            await this.sessionService.updateSessionStatus(event.sessionId, 'frozen');
+            await this.sessionService.freezeSession(event.sessionId);
         }
 
         return {
@@ -245,7 +279,7 @@ export class EventService {
         }
 
         if (event.sessionId) {
-            await this.sessionService.updateSessionStatus(event.sessionId, 'open');
+            await this.sessionService.unfreezeSession(event.sessionId);
         }
 
         return {

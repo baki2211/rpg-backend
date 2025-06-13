@@ -20,7 +20,102 @@ export class SessionService {
       status: 'open'   // Explicitly set status
     });
     const savedSession = await this.sessionRepository.save(session);
+    logger.session(`Created new session: ${name} at location ${locationId}`, { sessionId: savedSession.id });
     return savedSession;
+  }
+
+  /**
+   * Ensure there's an active session for a location, creating one if needed
+   * This is the main method for auto-creating sessions when users send messages
+   * @param {number} locationId - The location ID
+   * @param {number} userId - The user ID sending the message
+   * @param {string} characterName - The character name for logging
+   * @returns {Promise<Object>} The session object
+   */
+  async ensureActiveSessionForLocation(locationId, userId = null, characterName = null) {
+    // Try to find an existing active open session
+    let session = await this.sessionRepository.findOne({
+      where: { 
+        locationId, 
+        isActive: true,
+        status: 'open'
+      },
+      relations: ['participants', 'participants.character']
+    });
+
+    if (session) {
+      // If user provided, ensure they're a participant
+      if (userId) {
+        await this.ensureUserParticipation(session.id, userId);
+      }
+      return session;
+    }
+
+    // No active open session found, create a new free role session
+    const sessionName = characterName ? 
+      `Free Role - Started by ${characterName}` : 
+      `Free Role - Location ${locationId}`;
+
+    session = await this.createSession(sessionName, locationId);
+    
+    // Add the user as the first participant if provided
+    if (userId) {
+      await this.ensureUserParticipation(session.id, userId);
+    }
+
+    logger.session(`Auto-created new session for location ${locationId}`, { 
+      sessionId: session.id, 
+      startedBy: characterName || 'Unknown',
+      userId 
+    });
+
+    return session;
+  }
+
+  /**
+   * Ensure a user is a participant in a session
+   * @param {number} sessionId - The session ID
+   * @param {number} userId - The user ID
+   * @returns {Promise<Object>} The participant object
+   */
+  async ensureUserParticipation(sessionId, userId) {
+    // Get the user's active character
+    const character = await this.characterRepository.findOne({
+      where: { userId, isActive: true }
+    });
+
+    if (!character) {
+      throw new Error('No active character found for user');
+    }
+
+    // Remove any existing participants for this user in this session
+    // This handles the case where a user switched characters
+    const existingUserParticipants = await this.participantRepository.find({
+      where: { sessionId },
+      relations: ['character']
+    });
+
+    for (const participant of existingUserParticipants) {
+      if (participant.character?.userId === userId && participant.characterId !== character.id) {
+        logger.session(`Removing old participant entry for user ${userId}, character ${participant.characterId}`);
+        await this.participantRepository.remove(participant);
+      }
+    }
+
+    // Check if current character is already a participant
+    const existingParticipant = await this.participantRepository.findOne({
+      where: { 
+        sessionId,
+        characterId: character.id
+      }
+    });
+
+    if (!existingParticipant) {
+      logger.session(`Adding new participant: user ${userId}, character ${character.id} (${character.name})`);
+      return await this.addParticipant(sessionId, character.id);
+    }
+    
+    return existingParticipant;
   }
 
   async getSession(sessionId) {
@@ -83,7 +178,8 @@ export class SessionService {
           { status: 'open' },
           { status: 'frozen' }
         ],
-        relations: ['participants', 'participants.character', 'event']
+        relations: ['participants', 'participants.character', 'event'],
+        order: { updatedAt: 'DESC' }
       });
       
       // Get all unique location IDs
@@ -115,6 +211,7 @@ export class SessionService {
       throw error;
     }
   }
+
   async getActiveSessionByLocation(locationId) {
     const session = await this.sessionRepository.findOne({
       where: { 
@@ -198,103 +295,104 @@ export class SessionService {
     }
   }
 
+  /**
+   * Update session status with improved freeze/unfreeze logic
+   * @param {number} sessionId - The session ID
+   * @param {string} status - The new status ('open', 'frozen', 'closed')
+   * @returns {Promise<Object>} Updated session
+   */
   async updateSessionStatus(sessionId, status) {
-    // If freezing the session, save the current chat state
-    if (status === 'frozen') {
-      await this.freezeSession(sessionId);
-    } else if (status === 'open') {
-      // If unfreezing, restore the saved chat state
-      await this.unfreezeSession(sessionId);
+    const session = await this.getSession(sessionId);
+    if (!session) {
+      throw new Error('Session not found');
     }
+
+    const oldStatus = session.status;
     
+    // Update the session status
     await this.sessionRepository.update(
       { id: sessionId },
       { status, updatedAt: new Date() }
     );
-    return await this.getSession(sessionId);
+
+    const updatedSession = await this.getSession(sessionId);
+    
+    logger.session(`Session ${sessionId} status changed from ${oldStatus} to ${status}`, {
+      sessionId,
+      locationId: session.locationId,
+      oldStatus,
+      newStatus: status
+    });
+
+    return updatedSession;
   }
 
+  /**
+   * Freeze a session - just changes status, chat remains visible
+   * @param {number} sessionId - The session ID
+   * @returns {Promise<Object>} Updated session
+   */
   async freezeSession(sessionId) {
     const session = await this.getSession(sessionId);
     if (!session) {
       throw new Error('Session not found');
     }
 
-    // Get current chat messages for this location
-    const { ChatMessage } = await import('../models/chatMessageModel.js');
-    const chatRepository = AppDataSource.getRepository(ChatMessage);
-    
-    const currentMessages = await chatRepository.find({
-      where: { location: { id: session.locationId } },
-      order: { createdAt: 'ASC' }
-    });
+    if (session.status === 'frozen') {
+      logger.session(`Session ${sessionId} is already frozen`);
+      return session;
+    }
 
-    // Save the session state
-    const sessionState = {
-      messages: currentMessages,
-      participants: session.participants,
-      frozenAt: new Date(),
-      locationId: session.locationId
-    };
-
-    // Store the frozen state in the session
+    // Simply change status to frozen - chat messages remain visible
     await this.sessionRepository.update(
       { id: sessionId },
       { 
-        frozenState: JSON.stringify(sessionState),
+        status: 'frozen',
         updatedAt: new Date()
       }
     );
 
-    // Clear current chat messages (they're now frozen)
-    await chatRepository.delete({ location: { id: session.locationId } });
-    
-    logger.session(`Session ${sessionId} frozen with ${currentMessages.length} messages saved`);
+    logger.session(`Session ${sessionId} frozen - chat remains visible`, {
+      sessionId,
+      locationId: session.locationId,
+      participantCount: session.participants?.length || 0
+    });
+
+    return await this.getSession(sessionId);
   }
 
+  /**
+   * Unfreeze a session - changes status back to open
+   * @param {number} sessionId - The session ID
+   * @returns {Promise<Object>} Updated session
+   */
   async unfreezeSession(sessionId) {
     const session = await this.getSession(sessionId);
-    if (!session || !session.frozenState) {
-      logger.session(`Session ${sessionId} has no frozen state to restore`);
-      return;
+    if (!session) {
+      throw new Error('Session not found');
     }
 
-    try {
-      const sessionState = JSON.parse(session.frozenState);
-      
-      // Restore chat messages
-      const { ChatMessage } = await import('../models/chatMessageModel.js');
-      const chatRepository = AppDataSource.getRepository(ChatMessage);
-      
-      // Clear any current messages first
-      await chatRepository.delete({ location: { id: session.locationId } });
-      
-      // Restore the frozen messages
-      for (const message of sessionState.messages) {
-        const restoredMessage = chatRepository.create({
-          ...message,
-          id: undefined, // Let the database assign new IDs
-          location: { id: session.locationId },
-          createdAt: message.createdAt,
-          updatedAt: new Date()
-        });
-        await chatRepository.save(restoredMessage);
+    if (session.status !== 'frozen') {
+      logger.session(`Session ${sessionId} is not frozen (status: ${session.status})`);
+      return session;
+    }
+
+    // Simply change status back to open
+    await this.sessionRepository.update(
+      { id: sessionId },
+      { 
+        status: 'open',
+        updatedAt: new Date()
       }
+    );
 
-      // Clear the frozen state
-      await this.sessionRepository.update(
-        { id: sessionId },
-        { 
-          frozenState: null,
-          updatedAt: new Date()
-        }
-      );
-      
-      logger.session(`Session ${sessionId} unfrozen with ${sessionState.messages.length} messages restored`);
-    } catch (error) {
-      logger.error('Error unfreezing session:', { error: error.message, sessionId });
-      throw new Error('Failed to restore frozen session state');
-    }
+    logger.session(`Session ${sessionId} unfrozen - chat remains as it was`, {
+      sessionId,
+      locationId: session.locationId,
+      participantCount: session.participants?.length || 0
+    });
+
+    return await this.getSession(sessionId);
   }
 
   async updateSessionActive(sessionId, isActive) {
@@ -302,6 +400,37 @@ export class SessionService {
       { id: sessionId },
       { isActive, updatedAt: new Date() }
     );
+    return await this.getSession(sessionId);
+  }
+
+  /**
+   * Close a session and mark it as closed
+   * @param {number} sessionId - The session ID
+   * @param {string} reason - Reason for closing
+   * @returns {Promise<Object>} Updated session
+   */
+  async closeSession(sessionId, reason = 'Manual close') {
+    const session = await this.getSession(sessionId);
+    if (!session) {
+      throw new Error('Session not found');
+    }
+
+    await this.sessionRepository.update(
+      { id: sessionId },
+      { 
+        status: 'closed',
+        isActive: false,
+        updatedAt: new Date()
+      }
+    );
+
+    logger.session(`Session ${sessionId} closed: ${reason}`, {
+      sessionId,
+      locationId: session.locationId,
+      participantCount: session.participants?.length || 0,
+      reason
+    });
+
     return await this.getSession(sessionId);
   }
 
@@ -333,6 +462,50 @@ export class SessionService {
       }));
     } catch (error) {
       console.error('Error in getClosedSessions:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get all sessions (active, frozen, and closed) for logging/admin purposes
+   * @param {number} limit - Maximum number of sessions to return
+   * @returns {Promise<Array>} Array of all sessions
+   */
+  async getAllSessionsForLogs(limit = 100) {
+    try {
+      const sessions = await this.sessionRepository.find({
+        relations: ['participants', 'participants.character', 'event'],
+        order: { updatedAt: 'DESC' },
+        take: limit
+      });
+      
+      // Get all unique location IDs
+      const locationIds = [...new Set(sessions.map(session => session.locationId))];
+      
+      // Fetch location data
+      const locationRepository = AppDataSource.getRepository(Location);
+      const locations = await locationRepository.findByIds(locationIds);
+      const locationMap = new Map(locations.map(loc => [loc.id, loc]));
+      
+      return sessions.map(session => ({
+        ...session,
+        location: locationMap.get(session.locationId),
+        participantCount: session.participants?.length || 0,
+        participants: session.participants?.map(participant => ({
+          id: participant.id,
+          characterName: participant.character?.name || 'Unknown',
+          userId: participant.character?.userId,
+          joinedAt: participant.joinedAt
+        })) || [],
+        event: session.event ? {
+          id: session.event.id,
+          title: session.event.title,
+          type: session.event.type,
+          status: session.event.status
+        } : undefined
+      }));
+    } catch (error) {
+      console.error('Error in getAllSessionsForLogs:', error);
       throw error;
     }
   }

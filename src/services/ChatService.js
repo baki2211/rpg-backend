@@ -5,6 +5,7 @@ import { Character } from '../models/characterModel.js';
 import { SkillUsageService } from './SkillUsageService.js';
 import { EngineLogService } from './EngineLogService.js';
 import { SkillEngine } from './SkillEngine.js';
+import { SessionService } from './SessionService.js';
 import { logger } from '../utils/logger.js';
 import { CharacterService } from './CharacterService.js';
 
@@ -13,6 +14,7 @@ export class ChatService {
   characterRepository = AppDataSource.getRepository(Character);
   engineLogService = new EngineLogService();
   characterService = new CharacterService();
+  sessionService = new SessionService();
 
   async getMessagesByLocation(locationId) {
     // Fetch messages from the past 5 hours
@@ -43,9 +45,13 @@ export class ChatService {
       throw new Error('No active character found for this user.');
     }
 
-    // Check if the message is more than 800 characters
-    if (message.length > 800) {
-      // Check if 5 minutes have passed since the last message
+    // Determine if this is a "valid message" (more than 800 characters)
+    const isValidMessage = message.length > 800;
+    let shouldProcessSkill = false;
+    let shouldGainExperience = false;
+
+    if (isValidMessage) {
+      // Check if 5 minutes have passed since the last message for experience
       const lastMessage = await this.chatRepository.findOne({
         where: { userId },
         order: { createdAt: 'DESC' }
@@ -53,24 +59,45 @@ export class ChatService {
 
       const fiveMinutesAgo = new Date(Date.now() - 0.5 * 60 * 1000);
       if (!lastMessage || new Date(lastMessage.createdAt) < fiveMinutesAgo) {
-        // Initialize experience points to 0 if not set
-        if (character.experience === undefined || character.experience === null) {
-          character.experience = 0;
-        }
+        shouldGainExperience = true;
+        shouldProcessSkill = skill && skill.id && skill.branchId;
+      }
+    }
 
-        // Increment character's experience points by 0.5
-        character.experience += 0.5;
+    // Auto-create/manage session when user sends a valid message
+    if (isValidMessage) {
+      try {
+        await this.sessionService.ensureActiveSessionForLocation(locationId, userId, character.name);
+        logger.session(`User ${userId} (${character.name}) participated in location ${locationId} with valid message`);
+      } catch (sessionError) {
+        // Log the error but don't fail the message sending
+        logger.error('Failed to manage session participation:', { 
+          error: sessionError.message, 
+          userId, 
+          locationId, 
+          characterName: character.name 
+        });
+      }
+    }
 
-        // Check level up
-        await this.characterService.checkLevelUp(character);
-        
-        // If a skill is used, process it through the skill engine and create logs
-        if (skill && skill.id && skill.branchId) {
-          try {
-            await this.processSkillUsage(character, skill, locationId);
-          } catch (error) {
-            logger.error('Error processing skill usage:', { error: error.message });
-          }
+    if (shouldGainExperience) {
+      // Initialize experience points to 0 if not set
+      if (character.experience === undefined || character.experience === null) {
+        character.experience = 0;
+      }
+
+      // Increment character's experience points by 0.5
+      character.experience += 0.5;
+
+      // Check level up
+      await this.characterService.checkLevelUp(character);
+      
+      // If a skill is used, process it through the skill engine and create logs
+      if (shouldProcessSkill) {
+        try {
+          await this.processSkillUsage(character, skill, locationId);
+        } catch (error) {
+          logger.error('Error processing skill usage:', { error: error.message });
         }
       }
     }
@@ -98,8 +125,10 @@ export class ChatService {
       const characterRepository = transactionalEntityManager.getRepository(Character);
       const chatRepository = transactionalEntityManager.getRepository(ChatMessage);
       
-      // Save the character
-      await characterRepository.save(character);
+      // Save the character (if experience was gained)
+      if (shouldGainExperience) {
+        await characterRepository.save(character);
+      }
       
       // Save the chat message
       const savedMessage = await chatRepository.save(chatMessage);

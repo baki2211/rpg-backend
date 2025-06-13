@@ -44,10 +44,6 @@ export const Session = new EntitySchema({
     expirationTime: {
       type: 'timestamp',
       nullable: true
-    },
-    frozenState: {
-      type: 'text',
-      nullable: true
     }
   },
   relations: {
