@@ -29,6 +29,23 @@ export class CharacterController {
     }
   }
 
+  /**
+   * Get all characters (admin only) - for simulator and admin tools
+   */
+  static async getAllCharacters(req, res) {
+    try {
+      // Check if user has admin permissions
+      if (!['admin', 'master'].includes(req.user.role)) {
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+
+      const characters = await characterService.getAllCharacters();
+      res.status(200).json(characters);
+    } catch (error) {
+      res.status(400).json({ error: error.message });
+    }
+  }
+
   static async activateCharacter(req, res) {
     try {
       const userId = req.user.id; // From auth middleware

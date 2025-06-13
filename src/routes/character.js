@@ -14,6 +14,7 @@ router.post('/:characterId/image', authenticateToken, upload.single('image'), Ch
 router.delete('/:characterId/image', authenticateToken, CharacterController.deleteCharacterImage);
 
 // Character management
+router.get('/all', authenticateToken, CharacterController.getAllCharacters); // Admin route - must come before '/'
 router.get('/', authenticateToken, CharacterController.getCharacters);
 router.put('/:characterId/activate', authenticateToken, CharacterController.activateCharacter);
 router.post('/:id/activate', authenticateToken, CharacterController.activateCharacter);

@@ -177,6 +177,36 @@ export class CharacterService {
     });
   }
 
+  /**
+   * Get all characters (admin only) - for simulator and admin tools
+   * @returns {Promise<Array>} All characters with basic info
+   */
+  async getAllCharacters() {
+    return this.characterRepository.find({
+      relations: ['race', 'user'],
+      select: {
+        id: true,
+        name: true,
+        surname: true,
+        stats: true,
+        rank: true,
+        experience: true,
+        skillPoints: true,
+        statPoints: true,
+        isActive: true,
+        race: {
+          id: true,
+          name: true
+        },
+        user: {
+          id: true,
+          username: true
+        }
+      },
+      order: { name: 'ASC' }
+    });
+  }
+
   async getCharacterById(characterId, userId) {
     return this.characterRepository.findOne({
       where: { id: characterId, user: { id: userId } },
