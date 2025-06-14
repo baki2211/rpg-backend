@@ -1,5 +1,5 @@
 import express from 'express';
-import { CharacterController } from '../controllers/CharacterController.js';
+import { CharacterController } from '../controllers/characterController.js';
 import { authenticateToken } from '../middleware/authMiddleware.js';
 import upload from '../middleware/uploadMiddleware.js';
 
