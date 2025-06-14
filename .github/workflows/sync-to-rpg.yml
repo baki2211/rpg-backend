@@ -21,6 +21,14 @@ jobs:
     - name: Copy backend code to RPG
       run: |
         mkdir -p rpg/backend
+        # Backup deployment-specific files
+        if [ -f rpg/backend/src/data-source.js ]; then
+          cp rpg/backend/src/data-source.js /tmp/data-source-deploy.js
+        fi
+        if [ -f rpg/backend/src/index.js ]; then
+          cp rpg/backend/src/index.js /tmp/index-deploy.js
+        fi
+        
         rm -rf rpg/backend/*
         # Exclude .git, node_modules, and other unnecessary files
         rsync -av \
@@ -33,6 +41,14 @@ jobs:
           --exclude='uploads' \
           --exclude='logs' \
           ./ rpg/backend/
+          
+        # Restore deployment-specific files if they existed
+        if [ -f /tmp/data-source-deploy.js ]; then
+          cp /tmp/data-source-deploy.js rpg/backend/src/data-source.js
+        fi
+        if [ -f /tmp/index-deploy.js ]; then
+          cp /tmp/index-deploy.js rpg/backend/src/index.js
+        fi
         cd rpg
         git add backend
         git commit -m "🔁 Sync backend from commit $GITHUB_SHA" || echo "No changes to commit"
