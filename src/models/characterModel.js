@@ -40,7 +40,7 @@ export const Character = new EntitySchema({
       type: 'int',
     },
     stats: {
-      type: 'json',
+      type: 'jsonb',
       default: {},
     },
     isActive: {

@@ -54,7 +54,7 @@ export const Event = new EntitySchema({
       nullable: true
     },
     eventData: {
-      type: 'json',
+      type: 'jsonb',
       nullable: true   // Store additional event metadata
     }
   },

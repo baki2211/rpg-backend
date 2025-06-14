@@ -40,7 +40,7 @@ export const CombatRound = new EntitySchema({
       nullable: true   // Master/admin who resolved the round
     },
     resolutionData: {
-      type: 'json',
+      type: 'jsonb',
       nullable: true   // Store resolution results
     },
     createdAt: {

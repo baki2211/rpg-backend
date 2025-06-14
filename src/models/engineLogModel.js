@@ -42,7 +42,7 @@ export const EngineLog = new EntitySchema({
       nullable: true   // Damage dealt (if applicable)
     },
     effects: {
-      type: 'json',
+      type: 'jsonb',
       nullable: true   // Array of effects
     },
     details: {
@@ -50,7 +50,7 @@ export const EngineLog = new EntitySchema({
       nullable: false  // Detailed description of what happened
     },
     engineData: {
-      type: 'json',
+      type: 'jsonb',
       nullable: true   // Additional engine calculation data
     },
     createdAt: {

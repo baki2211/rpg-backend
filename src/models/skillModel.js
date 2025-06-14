@@ -41,12 +41,12 @@ export const Skill = new EntitySchema({
       nullable: false
     },
     requiredStats: {
-      type: 'json',
+      type: 'jsonb',
       nullable: true
     },
     // Valid scaling stats: FOC (Focus), CON (Control), RES (Resilience), INS (Instinct), PRE (Presence), FOR (Force)
     scalingStats: {
-      type: 'json',
+      type: 'jsonb',
       nullable: true,
       default: []  // Array of up to 3 scaling stats
     },
@@ -78,14 +78,14 @@ export const Skill = new EntitySchema({
       nullable: false
     },
     unlockConditions: {
-      type: 'json',
+      type: 'jsonb',
       default: {
         uses: 0,
         combinations: []
       }
     },
     mutationOptions: {
-      type: 'json',
+      type: 'jsonb',
       nullable: true
     },
     comboTag: {

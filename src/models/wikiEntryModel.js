@@ -32,7 +32,7 @@ export const WikiEntry = new EntitySchema({
       nullable: true,
     },
     tags: {
-      type: 'json',
+      type: 'jsonb',
       nullable: true,
       default: () => "'[]'",
     },

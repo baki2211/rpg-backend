@@ -41,15 +41,15 @@ export const CombatAction = new EntitySchema({
       nullable: false  // Poor, Standard, Critical
     },
     skillData: {
-      type: 'json',
+      type: 'jsonb',
       nullable: false  // Store skill name, type, branch info
     },
     characterData: {
-      type: 'json',
+      type: 'jsonb',
       nullable: false  // Store character name and relevant stats
     },
     targetData: {
-      type: 'json',
+      type: 'jsonb',
       nullable: true   // Store target character info if applicable
     },
     submittedAt: {
@@ -61,7 +61,7 @@ export const CombatAction = new EntitySchema({
       default: false   // Whether this action has been processed in resolution
     },
     clashResult: {
-      type: 'json',
+      type: 'jsonb',
       nullable: true   // Store clash result if this action was part of a clash
     }
   },
