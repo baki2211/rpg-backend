@@ -22,7 +22,17 @@ jobs:
       run: |
         mkdir -p rpg/backend
         rm -rf rpg/backend/*
-        rsync -av --exclude='rpg' ./ rpg/backend/
+        # Exclude .git, node_modules, and other unnecessary files
+        rsync -av \
+          --exclude='rpg' \
+          --exclude='.git' \
+          --exclude='node_modules' \
+          --exclude='.env' \
+          --exclude='*.log' \
+          --exclude='.DS_Store' \
+          --exclude='uploads' \
+          --exclude='logs' \
+          ./ rpg/backend/
         cd rpg
         git add backend
         git commit -m "🔁 Sync backend from commit $GITHUB_SHA" || echo "No changes to commit"
