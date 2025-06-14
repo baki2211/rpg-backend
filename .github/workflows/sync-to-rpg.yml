@@ -1,0 +1,28 @@
+name: Sync Backend to RPG
+
+on:
+  push:
+    branches: [main] 
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout backend repo
+      uses: actions/checkout@v3
+
+    - name: Clone RPG
+      run: |
+        git config --global user.name "GitHub Action"
+        git config --global user.email "actions@github.com"
+        git clone https://x-access-token:${{ secrets.RPG_PAT }}@github.com/baki2211/rpg.git monorepo
+
+    - name: Copy backend code to RPG
+      run: |
+        rm -rf rpg/backend/*
+        cp -r . rpg/backend/
+        cd rpg
+        git add backend
+        git commit -m "🔁 Sync backend from commit $GITHUB_SHA" || echo "No changes to commit"
+        git push origin main --force

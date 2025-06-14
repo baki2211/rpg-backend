@@ -20,6 +20,8 @@ import { Event } from './models/eventModel.js';
 import { EngineLog } from './models/engineLogModel.js';
 import { StatDefinition } from './models/statDefinitionModel.js';
 import { Rank } from './models/rankModel.js';
+import { WikiSection } from './models/wikiSectionModel.js';
+import { WikiEntry } from './models/wikiEntryModel.js';
 
 dotenv.config();
 
@@ -51,7 +53,9 @@ export const AppDataSource = new DataSource({
     Event,
     EngineLog,
     StatDefinition,
-    Rank
+    Rank,
+    WikiSection,
+    WikiEntry
   ],
   migrations: ['./src/migrations/*.js'],
   migrationsTableName: 'migrations'

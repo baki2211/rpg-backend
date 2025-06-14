@@ -32,6 +32,7 @@ import statDefinitionRoutes from './routes/statDefinition.js';
 import { SessionExpirationJob } from './jobs/sessionExpiration.js';
 import { logger } from './utils/logger.js';
 import rankRoutes from './routes/rank.js';
+import wikiRoutes from './routes/wikiRoutes.js';
 
 dotenv.config();
 
@@ -95,6 +96,7 @@ app.use('/api/events', eventRoutes);
 app.use('/api/engine-logs', engineLogRoutes);
 app.use('/api/stat-definitions', statDefinitionRoutes);
 app.use('/api/ranks', rankRoutes);
+app.use('/api/wiki', wikiRoutes);
 
 // Static files
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
