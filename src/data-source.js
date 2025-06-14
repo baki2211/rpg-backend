@@ -30,7 +30,7 @@ export const AppDataSource = new DataSource({
   username: process.env.DB_USER || 'postgres',
   password: process.env.DB_PASSWORD || 'postgres',
   database: process.env.DB_NAME || 'rpg',
-  synchronize: true,
+  synchronize: false, // Disabled to prevent schema conflicts
   logging: false, // Disable SQL query logging
   entities: [
     Character,

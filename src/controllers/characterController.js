@@ -49,16 +49,17 @@ export class CharacterController {
   static async activateCharacter(req, res) {
     try {
       const userId = req.user.id; // From auth middleware
-      const {characterId} = req.params;
-      const id = Number(characterId);
-      if (isNaN(id)) {
-        return res.status(400).json({ error: 'Invalid characterId provided' });
+      const { id } = req.params; // Route parameter is 'id', not 'characterId'
+      const characterId = Number(id);
+      if (isNaN(characterId)) {
+        return res.status(400).json({ error: 'Invalid character ID provided' });
       }
   
-      await characterService.activateCharacter(id, userId);
+      await characterService.activateCharacter(characterId, userId);
       res.status(204).send();
     } catch (error) {
-      res.status(400).json({ error: (error).message });
+      console.error('Activate character error:', error);
+      res.status(400).json({ error: error.message });
     }
   }
 
@@ -209,5 +210,188 @@ export class CharacterController {
     } catch (error) {
       res.status(400).json({ error: error.message });
     }
+  }
+
+  /**
+   * Create an NPC character (admin/master only)
+   */
+  async createNPC(req, res) {
+    try {
+      // Check permissions
+      if (!['admin', 'master'].includes(req.user.role)) {
+        return res.status(403).json({ error: 'Admin or Master access required' });
+      }
+
+             const npc = await this.characterService.createNPC(req.body, req.user.id, req.body.imageUrl);
+      res.status(201).json(npc);
+    } catch (error) {
+      console.error('Error creating NPC:', error);
+      res.status(400).json({ error: error.message });
+    }
+  }
+
+  /**
+   * Get all NPCs (admin/master only)
+   */
+  async getAllNPCs(req, res) {
+    try {
+      // Check permissions
+      if (!['admin', 'master'].includes(req.user.role)) {
+        return res.status(403).json({ error: 'Admin or Master access required' });
+      }
+
+             const npcs = await this.characterService.getAllNPCs();
+      res.json(npcs);
+    } catch (error) {
+      console.error('Error fetching NPCs:', error);
+      res.status(500).json({ error: 'Failed to fetch NPCs' });
+    }
+  }
+
+  /**
+   * Update an NPC character (admin/master only)
+   */
+  async updateNPC(req, res) {
+    try {
+      // Check permissions
+      if (!['admin', 'master'].includes(req.user.role)) {
+        return res.status(403).json({ error: 'Admin or Master access required' });
+      }
+
+      const { id } = req.params;
+             const updatedNPC = await this.characterService.updateNPC(parseInt(id), req.body);
+      res.json(updatedNPC);
+    } catch (error) {
+      console.error('Error updating NPC:', error);
+      res.status(400).json({ error: error.message });
+    }
+  }
+
+  /**
+   * Delete an NPC character (admin/master only)
+   */
+  async deleteNPC(req, res) {
+    try {
+      // Check permissions
+      if (!['admin', 'master'].includes(req.user.role)) {
+        return res.status(403).json({ error: 'Admin or Master access required' });
+      }
+
+      const { id } = req.params;
+             await this.characterService.deleteNPC(parseInt(id));
+      res.json({ message: 'NPC deleted successfully' });
+    } catch (error) {
+      console.error('Error deleting NPC:', error);
+      res.status(400).json({ error: error.message });
+    }
+  }
+
+  /**
+   * Get available NPCs for activation
+   */
+  async getAvailableNPCs(req, res) {
+    try {
+             const npcs = await this.characterService.getAvailableNPCs();
+      res.json(npcs);
+    } catch (error) {
+      console.error('Error fetching available NPCs:', error);
+      res.status(500).json({ error: 'Failed to fetch available NPCs' });
+    }
+  }
+
+  /**
+   * Get the active NPC for the current user
+   */
+  async getActiveNPC(req, res) {
+    try {
+      const userId = req.user.id;
+      const activeNPC = await this.characterService.getActiveNPCForUser(userId);
+      res.json(activeNPC);
+    } catch (error) {
+      console.error('Error fetching active NPC:', error);
+      res.status(500).json({ error: 'Failed to fetch active NPC' });
+    }
+  }
+
+  /**
+   * Activate an NPC for the current user
+   */
+  async activateNPC(req, res) {
+    try {
+      const { id } = req.params;
+             const activatedNPC = await this.characterService.activateNPC(parseInt(id), req.user.id);
+      res.json(activatedNPC);
+    } catch (error) {
+      console.error('Error activating NPC:', error);
+      res.status(400).json({ error: error.message });
+    }
+  }
+
+  /**
+   * Deactivate an NPC for the current user
+   */
+  async deactivateNPC(req, res) {
+    try {
+      const { id } = req.params;
+      await this.characterService.deactivateNPC(parseInt(id), req.user.id);
+      res.json({ message: 'NPC deactivated successfully' });
+    } catch (error) {
+      console.error('Error deactivating NPC:', error);
+      res.status(400).json({ error: error.message });
+    }
+  }
+
+  /**
+   * Get character by ID (instance method)
+   */
+  async getCharacterById(req, res) {
+    try {
+      const userId = req.user.id;
+      const { id } = req.params;
+      const character = await this.characterService.getCharacterById(parseInt(id), userId);
+      
+      if (!character) {
+        return res.status(404).json({ error: 'Character not found' });
+      }
+      
+      res.json(character);
+    } catch (error) {
+      console.error('Error fetching character:', error);
+      res.status(400).json({ error: error.message });
+    }
+  }
+
+  /**
+   * Get acquired skills for a character (instance method)
+   */
+  async getAcquiredSkills(req, res) {
+    try {
+      const userId = req.user.id;
+      const { id } = req.params;
+      const skills = await this.characterService.getAcquiredSkills(parseInt(id), userId);
+      res.json(skills);
+    } catch (error) {
+      console.error('Error fetching acquired skills:', error);
+      res.status(400).json({ error: error.message });
+    }
+  }
+
+  /**
+   * Get character stats with definitions (instance method)
+   */
+  async getCharacterStatsWithDefinitions(req, res) {
+    try {
+      const userId = req.user.id;
+      const { id } = req.params;
+      const characterStats = await this.characterService.getCharacterStatsWithDefinitions(parseInt(id), userId);
+      res.json(characterStats);
+    } catch (error) {
+      console.error('Error fetching character stats:', error);
+      res.status(400).json({ error: error.message });
+    }
+  }
+
+  constructor() {
+    this.characterService = new CharacterService();
   }
 }

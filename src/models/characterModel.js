@@ -14,6 +14,7 @@ export const Character = new EntitySchema({
     },
     userId: {
       type: 'int',
+      nullable: true, // Allow null for NPCs
     },
     name: {
       type: 'varchar',
@@ -77,6 +78,15 @@ export const Character = new EntitySchema({
       type: 'int',
       nullable: false,
       default: 0
+    },
+    isNPC: {
+      type: 'boolean',
+      nullable: false,
+      default: false
+    },
+    createdBy: {
+      type: 'int',
+      nullable: true, // User ID of admin/master who created the NPC
     }
   },
   relations: {
@@ -86,6 +96,7 @@ export const Character = new EntitySchema({
       inverseSide: 'characters',
       joinColumn: { name: 'userId' },
       onDelete: 'CASCADE',
+      nullable: true, // Allow null for NPCs
     },
     race: {
       target: 'Race',
@@ -102,6 +113,12 @@ export const Character = new EntitySchema({
         joinColumn: { name: 'characterId' },
         inverseJoinColumn: { name: 'skillId' }
       }
+    },
+    creator: {
+      target: 'User',
+      type: 'many-to-one',
+      joinColumn: { name: 'createdBy' },
+      nullable: true,
     }
   },
 });

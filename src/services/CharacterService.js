@@ -224,14 +224,35 @@ export class CharacterService {
   
 
   async activateCharacter(characterId, userId) {
-    // Deactivate all characters first
-    await this.characterRepository.update({ user: { id: userId } }, { isActive: false });
+    // First, verify the character exists and belongs to the user
+    const character = await this.characterRepository.findOne({
+      where: { id: characterId, user: { id: userId } }
+    });
+
+    if (!character) {
+      throw new Error('Character not found or you do not have permission to activate this character');
+    }
+
+    // Deactivate ALL characters and NPCs for this user first
+    // Handle user's own characters
+    await this.characterRepository.update(
+      { user: { id: userId } }, 
+      { isActive: false }
+    );
+
+    // Handle any NPCs currently assigned to this user
+    await this.characterRepository.update(
+      { userId: userId, isNPC: true }, 
+      { isActive: false, userId: null }
+    );
 
     // Activate the chosen character
     await this.characterRepository.update(
-      { id: characterId, user: { id: userId } },
+      { id: characterId },
       { isActive: true }
     );
+
+    logger.character(`User ${userId} activated character ${character.name} (ID: ${characterId})`);
   }
 
   async deleteCharacter(characterId, userId) {
@@ -244,6 +265,11 @@ export class CharacterService {
 
       if (!character) {
         throw new Error('Character not found or you do not have permission to delete this character');
+      }
+
+      // Prevent deletion of active characters
+      if (character.isActive) {
+        throw new Error('Cannot delete an active character. Please deactivate it first.');
       }
 
       logger.character(`Deleting character ${character.name} (ID: ${characterId}) for user ${userId}`);
@@ -298,11 +324,64 @@ export class CharacterService {
     });
   }
 
+  /**
+   * Get the active character for a user (could be player character or NPC)
+   * @param {number} userId - User ID
+   * @returns {Promise<Object|null>} Active character or null
+   */
   async getActiveCharacter(userId) {
+    // First, check for any conflicts and fix them
+    await this.fixActivationConflicts(userId);
+    
+    // Look for active characters - either user's own characters or NPCs assigned to them
     return this.characterRepository.findOne({
-      where: { user: { id: userId }, isActive: true },
-      relations: ['skills', 'race'] // Load both skills and race relations
+      where: [
+        { user: { id: userId }, isActive: true }, // User's own characters
+        { userId: userId, isNPC: true, isActive: true } // NPCs assigned to this user
+      ],
+      relations: ['skills', 'race']
     });
+  }
+
+  /**
+   * Check for and fix any activation conflicts for a user
+   * Ensures only one character (regular or NPC) is active at a time
+   * @param {number} userId - User ID
+   * @returns {Promise<void>}
+   */
+  async fixActivationConflicts(userId) {
+    // Get all active characters/NPCs for this user
+    const activeCharacters = await this.characterRepository.find({
+      where: [
+        { user: { id: userId }, isActive: true }, // User's own characters
+        { userId: userId, isNPC: true, isActive: true } // NPCs assigned to this user
+      ]
+    });
+
+    // If more than one is active, deactivate all but the most recently updated
+    if (activeCharacters.length > 1) {
+      logger.character(`Found ${activeCharacters.length} active characters for user ${userId}, fixing conflicts`);
+      
+      // Sort by updatedAt descending to keep the most recent
+      activeCharacters.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+      
+      // Keep the first (most recent), deactivate the rest
+      const toKeep = activeCharacters[0];
+      const toDeactivate = activeCharacters.slice(1);
+      
+      for (const character of toDeactivate) {
+        await this.characterRepository.update(
+          { id: character.id },
+          { 
+            isActive: false, 
+            userId: character.isNPC ? null : character.userId // Clear userId for NPCs
+          }
+        );
+        logger.character(`Deactivated conflicting character: ${character.name} (ID: ${character.id})`);
+      }
+      
+      logger.character(`Kept active character: ${toKeep.name} (ID: ${toKeep.id})`);
+    }
   }
 
   async acquireSkill(skillId, userId) {
@@ -539,5 +618,359 @@ export class CharacterService {
     const aether = Math.floor(baseAE * (1 + (rank.aetherPercent || 0) / 100));
 
     return { reactions: Math.floor(reactions), speed: Math.floor(speed), hp, aether };
+  }
+
+  /**
+   * Create an NPC character (admin/master only)
+   * @param {Object} data - NPC character data
+   * @param {number} createdBy - User ID of admin/master creating the NPC
+   * @param {string} imageUrl - Optional image URL
+   * @returns {Promise<Object>} Created NPC character
+   */
+  async createNPC(data, createdBy, imageUrl = null) {
+    const race = await AppDataSource.getRepository(Race).findOneBy({ id: data.race?.id });
+    if (!race) {
+      throw new Error('Race not found');
+    }
+    
+    // Initialize stats using stat definitions (no validation for NPCs)
+    const initializedStats = await this.initializeCharacterStats(data.stats || {});
+    
+    // Compute derived resource stats and merge
+    const derived = await this.computeDerivedStats(initializedStats, race, data.rank || 1);
+    Object.assign(initializedStats, derived);
+    
+    // Create the NPC character with no stat limitations
+    const newNPC = this.characterRepository.create({
+      ...data,
+      stats: initializedStats,
+      userId: null, // NPCs don't belong to users
+      race,
+      imageUrl: imageUrl,
+      isNPC: true,
+      createdBy,
+      isActive: false, // NPCs start inactive
+      experience: data.experience || 0,
+      skillPoints: data.skillPoints || 5,
+      rank: data.rank || 1,
+      statPoints: data.statPoints || 0
+    });
+
+    logger.character(`Creating NPC character`, { 
+      characterName: data.name, 
+      race: race.name,
+      stats: initializedStats,
+      createdBy
+    });
+
+    return this.characterRepository.save(newNPC);
+  }
+
+  /**
+   * Get all NPC characters (admin/master only)
+   * @returns {Promise<Array>} All NPC characters
+   */
+  async getAllNPCs() {
+    return this.characterRepository.find({
+      where: { isNPC: true },
+      relations: ['race', 'creator'],
+      select: {
+        id: true,
+        name: true,
+        surname: true,
+        stats: true,
+        rank: true,
+        experience: true,
+        skillPoints: true,
+        statPoints: true,
+        isActive: true,
+        background: true,
+        imageUrl: true,
+        createdAt: true,
+        race: {
+          id: true,
+          name: true
+        },
+        creator: {
+          id: true,
+          username: true
+        }
+      },
+      order: { name: 'ASC' }
+    });
+  }
+
+  /**
+   * Update an NPC character (admin/master only)
+   * @param {number} npcId - NPC character ID
+   * @param {Object} updateData - Data to update
+   * @returns {Promise<Object>} Updated NPC character
+   */
+  async updateNPC(npcId, updateData) {
+    const npc = await this.characterRepository.findOne({
+      where: { id: npcId, isNPC: true },
+      relations: ['race']
+    });
+
+    if (!npc) {
+      throw new Error('NPC not found');
+    }
+
+    // Handle stat updates
+    if (updateData.stats) {
+      const updatedStats = { ...npc.stats, ...updateData.stats };
+      // Recompute derived stats
+      const derived = await this.computeDerivedStats(updatedStats, npc.race, updateData.rank || npc.rank);
+      Object.assign(updatedStats, derived);
+      updateData.stats = updatedStats;
+    }
+
+    // Handle rank changes
+    if (updateData.rank && updateData.rank !== npc.rank) {
+      // Recompute derived stats with new rank
+      const derived = await this.computeDerivedStats(updateData.stats || npc.stats, npc.race, updateData.rank);
+      updateData.stats = { ...(updateData.stats || npc.stats), ...derived };
+    }
+
+    await this.characterRepository.update(npcId, updateData);
+    return this.characterRepository.findOne({
+      where: { id: npcId },
+      relations: ['race', 'creator']
+    });
+  }
+
+  /**
+   * Delete an NPC character (admin/master only)
+   * @param {number} npcId - NPC character ID
+   * @returns {Promise<boolean>} Success status
+   */
+  async deleteNPC(npcId) {
+    return await AppDataSource.transaction(async (manager) => {
+      const characterRepo = manager.getRepository(Character);
+      const npc = await characterRepo.findOne({
+        where: { id: npcId, isNPC: true }
+      });
+
+      if (!npc) {
+        throw new Error('NPC not found');
+      }
+
+      // Prevent deletion of active NPCs
+      if (npc.isActive) {
+        throw new Error('Cannot delete an active NPC. Please deactivate it first.');
+      }
+
+      logger.character(`Deleting NPC ${npc.name} (ID: ${npcId})`);
+
+      // Clean up related data (same as regular character deletion)
+      const { SessionParticipant } = await import('../models/sessionParticipantModel.js');
+      const sessionParticipantRepo = manager.getRepository(SessionParticipant);
+      await sessionParticipantRepo.delete({ characterId: npcId });
+
+      const { CharacterSkill } = await import('../models/characterSkillModel.js');
+      const characterSkillRepo = manager.getRepository(CharacterSkill);
+      await characterSkillRepo.delete({ characterId: npcId });
+
+      const { CharacterSkillBranch } = await import('../models/characterSkillBranchModel.js');
+      const characterSkillBranchRepo = manager.getRepository(CharacterSkillBranch);
+      await characterSkillBranchRepo.delete({ characterId: npcId });
+
+      try {
+        const { CombatAction } = await import('../models/combatActionModel.js');
+        const combatActionRepo = manager.getRepository(CombatAction);
+        await combatActionRepo.delete({ characterId: npcId });
+        await combatActionRepo.delete({ targetId: npcId });
+      } catch (error) {
+        // Combat module might not exist, that's ok
+      }
+
+      const result = await characterRepo.delete({ id: npcId, isNPC: true });
+
+      if (result.affected === 0) {
+        throw new Error('Failed to delete NPC');
+      }
+
+      logger.character(`Successfully deleted NPC ${npc.name} (ID: ${npcId})`);
+      return true;
+    });
+  }
+
+  /**
+   * Activate an NPC for a user (deactivates all other characters)
+   * @param {number} npcId - NPC character ID
+   * @param {number} userId - User ID activating the NPC
+   * @returns {Promise<Object>} Activated NPC
+   */
+  async activateNPC(npcId, userId) {
+    const npc = await this.characterRepository.findOne({
+      where: { id: npcId, isNPC: true },
+      relations: ['race', 'skills']
+    });
+
+    if (!npc) {
+      throw new Error('NPC not found');
+    }
+
+    // Deactivate ALL characters and NPCs for this user first
+    // Handle user's own characters
+    await this.characterRepository.update(
+      { user: { id: userId } }, 
+      { isActive: false }
+    );
+
+    // Handle any NPCs currently assigned to this user
+    await this.characterRepository.update(
+      { userId: userId, isNPC: true }, 
+      { isActive: false, userId: null }
+    );
+
+    // Activate the NPC and temporarily assign it to the user
+    await this.characterRepository.update(
+      { id: npcId },
+      { 
+        isActive: true,
+        userId: userId // Temporarily assign to user for session management
+      }
+    );
+
+    logger.character(`User ${userId} activated NPC ${npc.name} (ID: ${npcId})`);
+
+    return this.characterRepository.findOne({
+      where: { id: npcId },
+      relations: ['race', 'skills']
+    });
+  }
+
+  /**
+   * Deactivate an NPC and remove user assignment
+   * @param {number} npcId - NPC character ID
+   * @param {number} userId - User ID deactivating the NPC
+   * @returns {Promise<boolean>} Success status
+   */
+  async deactivateNPC(npcId, userId) {
+    const npc = await this.characterRepository.findOne({
+      where: { id: npcId, isNPC: true, userId: userId, isActive: true }
+    });
+
+    if (!npc) {
+      throw new Error('NPC not found or not active for this user');
+    }
+
+    await this.characterRepository.update(
+      { id: npcId },
+      { 
+        isActive: false,
+        userId: null // Remove user assignment
+      }
+    );
+
+    logger.character(`User ${userId} deactivated NPC ${npc.name} (ID: ${npcId})`);
+    return true;
+  }
+
+  /**
+   * Get available NPCs for a user to activate
+   * @returns {Promise<Array>} Available NPCs
+   */
+  async getAvailableNPCs() {
+    return this.characterRepository.find({
+      where: { isNPC: true, isActive: false },
+      relations: ['race'],
+      select: {
+        id: true,
+        name: true,
+        surname: true,
+        background: true,
+        imageUrl: true,
+        rank: true,
+        experience: true,
+        skillPoints: true,
+        race: {
+          id: true,
+          name: true
+        }
+      },
+      order: { name: 'ASC' }
+    });
+  }
+
+  /**
+   * Get the active NPC assigned to a specific user
+   * @param {number} userId - User ID
+   * @returns {Promise<Object|null>} Active NPC or null
+   */
+  async getActiveNPCForUser(userId) {
+    return this.characterRepository.findOne({
+      where: { userId: userId, isNPC: true, isActive: true },
+      relations: ['skills', 'race']
+    });
+  }
+
+  /**
+   * Check if a character is an NPC
+   * @param {number} characterId - Character ID
+   * @returns {Promise<boolean>} True if character is an NPC
+   */
+  async isNPC(characterId) {
+    const character = await this.characterRepository.findOne({
+      where: { id: characterId },
+      select: ['isNPC']
+    });
+    return character?.isNPC || false;
+  }
+
+  /**
+   * Get all characters and NPCs associated with a user (for debugging/admin)
+   * @param {number} userId - User ID
+   * @returns {Promise<Object>} Object with user's characters and active NPCs
+   */
+  async getUserCharacterStatus(userId) {
+    // Get user's own characters
+    const userCharacters = await this.characterRepository.find({
+      where: { user: { id: userId } },
+      relations: ['race'],
+      select: {
+        id: true,
+        name: true,
+        surname: true,
+        isActive: true,
+        isNPC: true,
+        userId: true,
+        updatedAt: true,
+        race: {
+          name: true
+        }
+      }
+    });
+
+    // Get any NPCs currently assigned to this user
+    const assignedNPCs = await this.characterRepository.find({
+      where: { userId: userId, isNPC: true },
+      relations: ['race'],
+      select: {
+        id: true,
+        name: true,
+        surname: true,
+        isActive: true,
+        isNPC: true,
+        userId: true,
+        updatedAt: true,
+        race: {
+          name: true
+        }
+      }
+    });
+
+    const activeCount = [...userCharacters, ...assignedNPCs].filter(c => c.isActive).length;
+
+    return {
+      userId,
+      userCharacters,
+      assignedNPCs,
+      totalCharacters: userCharacters.length,
+      totalAssignedNPCs: assignedNPCs.length,
+      activeCount,
+      hasConflict: activeCount > 1
+    };
   }
 }
