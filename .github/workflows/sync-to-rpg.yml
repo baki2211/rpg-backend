@@ -20,6 +20,7 @@ jobs:
 
     - name: Copy backend code to RPG
       run: |
+        mkdir -p rpg/backend
         rm -rf rpg/backend/*
         cp -r . rpg/backend/
         cd rpg
