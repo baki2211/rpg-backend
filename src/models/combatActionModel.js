@@ -42,11 +42,11 @@ export const CombatAction = new EntitySchema({
     },
     skillData: {
       type: 'jsonb',
-      nullable: false  // Store skill name, type, branch info
+      nullable: true  // Store skill name, type, branch info
     },
     characterData: {
       type: 'jsonb',
-      nullable: false  // Store character name and relevant stats
+      nullable: true  // Store character name and relevant stats
     },
     targetData: {
       type: 'jsonb',
