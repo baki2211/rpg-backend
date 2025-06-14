@@ -22,7 +22,7 @@ jobs:
       run: |
         mkdir -p rpg/backend
         rm -rf rpg/backend/*
-        cp -r . rpg/backend/
+        rsync -av --exclude='rpg' ./ rpg/backend/
         cd rpg
         git add backend
         git commit -m "🔁 Sync backend from commit $GITHUB_SHA" || echo "No changes to commit"
