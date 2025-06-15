@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import jwt from 'jsonwebtoken';
 import { UserService } from '../services/UserService.js';
-import { authLimiter } from '../middleware/rateLimiter.js';
+// import { authLimiter } from '../middleware/rateLimiter.js'; // Temporarily disabled for deployment
 
 const router = Router();
 const userService = new UserService();
@@ -9,7 +9,7 @@ const userService = new UserService();
 const JWT_SECRET = process.env.JWT_SECRET;
 
 // Register route
-router.post('/register', authLimiter, async (req, res) => {
+router.post('/register', async (req, res) => {
     const { username, password } = req.body;
 
     if (!username || !password) {
@@ -44,7 +44,7 @@ router.post('/register', authLimiter, async (req, res) => {
 });
 
 // Login route
-router.post('/login', authLimiter, async (req, res) => {
+router.post('/login', async (req, res) => {
     const { username, password } = req.body;
 
     try {
