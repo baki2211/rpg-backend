@@ -70,7 +70,7 @@ export const setupWebSocketServer = () => {
     if (existingConnection && existingConnection.readyState === WebSocket.OPEN) {
       logger.debug(`Closing existing chat connection for user ${userId} in location ${locationId}`);
       existingConnection.close(1000, 'New connection established');
-      totalConnections--;
+      if (totalConnections > 0) totalConnections--;
     }
 
     // Verify location exists (with timeout)
@@ -235,7 +235,7 @@ export const setupWebSocketServer = () => {
       }
       
       userConnections.delete(userKey);
-      totalConnections--;
+      if (totalConnections > 0) totalConnections--;
       
       // Clear intervals
       clearInterval(rateLimitReset);
@@ -257,7 +257,7 @@ export const setupWebSocketServer = () => {
         connections.delete(ws);
       }
       userConnections.delete(userKey);
-      totalConnections--;
+      if (totalConnections > 0) totalConnections--;
       clearInterval(rateLimitReset);
       clearInterval(pingInterval);
     });
@@ -290,7 +290,7 @@ export const setupWebSocketServer = () => {
         // Remove from user connections
         const userKey = `${ws.userId}-${ws.locationId}`;
         userConnections.delete(userKey);
-        totalConnections--;
+        if (totalConnections > 0) totalConnections--;
         cleanedCount++;
       });
       

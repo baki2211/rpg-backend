@@ -59,7 +59,7 @@ export const setupPresenceWebSocketServer = (server) => {
     if (existingUser && existingUser.ws.readyState === WebSocket.OPEN) {
       logger.debug(`Closing existing connection for user ${userId}`);
       existingUser.ws.close(1000, 'New connection established');
-      connectionCount--;
+      if (connectionCount > 0) connectionCount--;
     }
 
     connectionCount++;
@@ -180,7 +180,7 @@ export const setupPresenceWebSocketServer = (server) => {
 
     ws.on('close', () => {
       onlineUsers.delete(userId);
-      connectionCount--;
+      if (connectionCount > 0) connectionCount--;
       logger.debug(`Connection closed for user ${userId}. Total connections: ${connectionCount}`);
       clearInterval(pingInterval);
       clearInterval(resetCountInterval);
@@ -190,7 +190,7 @@ export const setupPresenceWebSocketServer = (server) => {
     ws.on('error', (err) => {
       logger.error(`Presence WebSocket error for user ${userId}:`, { error: err.message });
       onlineUsers.delete(userId);
-      connectionCount--;
+      if (connectionCount > 0) connectionCount--;
       clearInterval(pingInterval);
       clearInterval(resetCountInterval);
     });
@@ -241,7 +241,7 @@ export const setupPresenceWebSocketServer = (server) => {
           user.ws.close();
         }
         onlineUsers.delete(userId);
-        connectionCount--;
+        if (connectionCount > 0) connectionCount--;
         cleanedCount++;
       }
     }
