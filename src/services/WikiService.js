@@ -229,6 +229,25 @@ export class WikiService {
   // ============ ENTRY METHODS ============
 
   /**
+   * Get all entries across all sections
+   * @param {boolean} includeUnpublished - Include unpublished entries
+   * @returns {Promise<Array>} Array of entries
+   */
+  async getAllEntries(includeUnpublished = false) {
+    const whereCondition = includeUnpublished ? {} : { isPublished: true };
+    
+    return await this.entryRepository.find({
+      where: whereCondition,
+      relations: ['creator', 'section'],
+      order: { 
+        section: { position: 'ASC' },
+        position: 'ASC',
+        title: 'ASC'
+      }
+    });
+  }
+
+  /**
    * Get all entries for a section
    * @param {number} sectionId - Section ID
    * @param {boolean} includeUnpublished - Include unpublished entries

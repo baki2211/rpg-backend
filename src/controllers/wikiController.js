@@ -175,6 +175,29 @@ export const adminGetEntries = async (req, res) => {
   }
 };
 
+export const adminGetAllEntries = async (req, res) => {
+  try {
+    const includeUnpublished = req.query.includeUnpublished === 'true';
+    
+    const entries = await wikiService.getAllEntries(includeUnpublished);
+    
+    res.json({
+      success: true,
+      data: entries,
+      meta: {
+        total: entries.length
+      }
+    });
+  } catch (error) {
+    logger.error('Error fetching all admin entries:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch entries',
+      error: error.message
+    });
+  }
+};
+
 export const adminGetEntry = async (req, res) => {
   try {
     const { id } = req.params;

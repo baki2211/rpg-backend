@@ -10,6 +10,7 @@ import {
   
   // Admin Entry endpoints
   adminGetEntries,
+  adminGetAllEntries,
   adminGetEntry,
   adminCreateEntry,
   adminUpdateEntry,
@@ -42,13 +43,15 @@ router.put('/admin/sections/reorder', authenticateToken, requireRole(['admin', '
 
 // Entry management
 router.get('/admin/sections/:sectionId/entries', authenticateToken, requireRole(['admin', 'master']), adminGetEntries);
+router.get('/admin/entries', authenticateToken, requireRole(['admin', 'master']), adminGetAllEntries);
 router.get('/admin/entries/:id', authenticateToken, requireRole(['admin', 'master']), adminGetEntry);
 router.post('/admin/entries', authenticateToken, requireRole(['admin', 'master']), adminCreateEntry);
 router.put('/admin/entries/:id', authenticateToken, requireRole(['admin', 'master']), adminUpdateEntry);
 router.delete('/admin/entries/:id', authenticateToken, requireRole(['admin', 'master']), adminDeleteEntry);
 router.put('/admin/sections/:sectionId/entries/reorder', authenticateToken, requireRole(['admin', 'master']), adminReorderEntries);
 
-
+// Utility endpoints
+router.get('/admin/stats', authenticateToken, requireRole(['admin', 'master']), adminGetWikiStats);
 router.get('/admin/tags', authenticateToken, requireRole(['admin', 'master']), adminGetAllTags);
 
 // ============ PUBLIC ROUTES (No authentication required) ============
