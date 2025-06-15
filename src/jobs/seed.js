@@ -15,6 +15,7 @@ import { Session } from '../models/sessionModel.js';
 import { SessionParticipant } from '../models/sessionParticipantModel.js';
 import { ChatMessage } from '../models/chatMessageModel.js';
 import { Rank } from '../models/rankModel.js';
+import { StatDefinition } from '../models/statDefinitionModel.js';
 
 async function seed() {
   try {
@@ -34,6 +35,7 @@ async function seed() {
     const sessionParticipantRepo = AppDataSource.getRepository(SessionParticipant);
     const chatMessageRepo = AppDataSource.getRepository(ChatMessage);
     const rankRepo = AppDataSource.getRepository(Rank);
+    const statDefinitionRepo = AppDataSource.getRepository(StatDefinition);
 
     const userCount = await userRepo.count();
     if (userCount > 0) {
@@ -49,6 +51,104 @@ async function seed() {
       userRepo.create({ username: 'admin', password: adminPasswordHash, role: 'admin' }),
       userRepo.create({ username: 'user', password: userPasswordHash, role: 'user' })
     ]);
+
+    // Create stat definitions
+    const statDefinitionCount = await statDefinitionRepo.count();
+    if (statDefinitionCount === 0) {
+      const statDefinitions = await statDefinitionRepo.save([
+        // Primary Stats (used in character creation and skill scaling)
+        statDefinitionRepo.create({
+          internalName: 'foc',
+          displayName: 'Focus',
+          description: 'Mental clarity and precision in channeling Aether. Affects skill success chance, quality of skill outcome, resistance to debuffs.',
+          category: 'primary_stat',
+          defaultValue: 5,
+          maxValue: 15,
+          minValue: 0,
+          sortOrder: 1,
+          isActive: true
+        }),
+        statDefinitionRepo.create({
+          internalName: 'con',
+          displayName: 'Control',
+          description: 'Finesse and subtle manipulation of Aether\'s form. Affects buff/debuff potency, stealth skills, crafting enhancement.',
+          category: 'primary_stat',
+          defaultValue: 5,
+          maxValue: 15,
+          minValue: 0,
+          sortOrder: 2,
+          isActive: true
+        }),
+        statDefinitionRepo.create({
+          internalName: 'res',
+          displayName: 'Resilience',
+          description: 'Endurance and toughness of the body enhanced by Aether. Affects max HP, damage resistance, stamina for actions.',
+          category: 'primary_stat',
+          defaultValue: 5,
+          maxValue: 15,
+          minValue: 0,
+          sortOrder: 3,
+          isActive: true
+        }),
+        statDefinitionRepo.create({
+          internalName: 'ins',
+          displayName: 'Instinct',
+          description: 'Reflexive and subconscious reaction with Aether. Affects turn initiative, reaction speed, dodge/block efficiency.',
+          category: 'primary_stat',
+          defaultValue: 5,
+          maxValue: 15,
+          minValue: 0,
+          sortOrder: 4,
+          isActive: true
+        }),
+        statDefinitionRepo.create({
+          internalName: 'pre',
+          displayName: 'Presence',
+          description: 'Ability to project personality and intent through Aether. Affects charm, persuasion, deception, threat/intimidation.',
+          category: 'primary_stat',
+          defaultValue: 5,
+          maxValue: 15,
+          minValue: 0,
+          sortOrder: 5,
+          isActive: true
+        }),
+        statDefinitionRepo.create({
+          internalName: 'for',
+          displayName: 'Force',
+          description: 'Raw power when manifesting Aether externally. Affects offensive skill power, damage scaling, physical feats.',
+          category: 'primary_stat',
+          defaultValue: 5,
+          maxValue: 15,
+          minValue: 0,
+          sortOrder: 6,
+          isActive: true
+        }),
+        // Resource Stats (derived from primary stats)
+        statDefinitionRepo.create({
+          internalName: 'hp',
+          displayName: 'Health Points',
+          description: 'Physical vitality and life force. Derived from Resilience and character level.',
+          category: 'resource',
+          defaultValue: 100,
+          maxValue: null, // No upper limit
+          minValue: 0,
+          sortOrder: 1,
+          isActive: true
+        }),
+        statDefinitionRepo.create({
+          internalName: 'aether',
+          displayName: 'Aether',
+          description: 'Magical energy used to power skills and abilities. Derived from Focus and character level.',
+          category: 'resource',
+          defaultValue: 50,
+          maxValue: null, // No upper limit
+          minValue: 0,
+          sortOrder: 2,
+          isActive: true
+        })
+      ]);
+      console.log('Stat definitions seeded');
+    }
 
     // Create race
     const race = await raceRepo.save(raceRepo.create({
@@ -67,7 +167,7 @@ async function seed() {
     const map = await mapRepo.save(mapRepo.create({
       name: 'Main Map',
       description: 'The main map of the game.',
-      imageUrl: '/uploads/1746351601017-486054461-1745352337710-226738127-v2hg7xy9ty811.jpg',
+      imageUrl: '/uploads/map-placeholder.jpg',
       isMainMap: true
     }));
 
@@ -111,51 +211,88 @@ async function seed() {
     const skills = await skillRepo.save([
       skillRepo.create({
         name: 'Fireball',
-        description: 'A basic fire attack that hurls a ball of flame at the target.',
+        description: 'Channel raw Force through focused Aether to hurl a blazing sphere of fire at your target. The intensity scales with your Force and Focus.',
         branchId: pyromancyBranch.id,
         typeId: attackType.id,
-        basePower: 10,
+        basePower: 12,
         duration: 0,
         activation: 'BonusAction',
-        requiredStats: { FOC: 0, CON: 0, RES: 0, INS: 0, PRE: 0, FOR: 0 },
-        scalingStats: ['FOR', 'FOC'],
-        aetherCost: 5,
+        requiredStats: { foc: 3, con: 0, res: 0, ins: 0, pre: 0, for: 2 },
+        scalingStats: ['for', 'foc'],
+        aetherCost: 8,
         skillPointCost: 1,
         target: 'other',
         rank: 1,
-        isPassive: false
+        isPassive: false,
+        unlockConditions: { uses: 0, combinations: [] }
       }),
       skillRepo.create({
         name: 'Ice Shield',
-        description: 'A defensive ice barrier that protects the caster.',
+        description: 'Weave Control and Resilience to manifest a protective barrier of crystalline ice around yourself. Duration and strength scale with mastery.',
         branchId: cryomancyBranch.id,
         typeId: defenseType.id,
-        basePower: 5,
+        basePower: 8,
         duration: 3,
         activation: 'FullAction',
-        requiredStats: { FOC: 0, CON: 0, RES: 0, INS: 0, PRE: 0, FOR: 0 },
-        scalingStats: ['CON', 'RES'],
-        aetherCost: 8,
+        requiredStats: { foc: 2, con: 3, res: 2, ins: 0, pre: 0, for: 0 },
+        scalingStats: ['con', 'res'],
+        aetherCost: 12,
         skillPointCost: 2,
         target: 'self',
         rank: 1,
-        isPassive: false
+        isPassive: false,
+        unlockConditions: { uses: 0, combinations: [] }
       }),
       skillRepo.create({
         name: 'Time Warp',
-        description: 'A support skill that manipulates the flow of time around allies.',
+        description: 'Manipulate the flow of temporal Aether to accelerate allies or slow enemies. Requires precise Focus, commanding Presence, and steady Control.',
         branchId: chronomancyBranch.id,
         typeId: supportType.id,
-        basePower: 0,
+        basePower: 6,
         duration: 2,
         activation: 'TwoTurns',
-        requiredStats: { FOC: 0, CON: 0, RES: 0, INS: 0, PRE: 0, FOR: 0 },
-        scalingStats: ['FOC', 'PRE', 'CON'],
-        aetherCost: 12,
+        requiredStats: { foc: 4, con: 2, res: 0, ins: 1, pre: 3, for: 0 },
+        scalingStats: ['foc', 'pre', 'con'],
+        aetherCost: 18,
         skillPointCost: 3,
-        target: 'none',
+        target: 'any',
         rank: 1,
-        isPassive: false
+        isPassive: false,
+        unlockConditions: { uses: 0, combinations: [] }
+      }),
+      skillRepo.create({
+        name: 'Flame Burst',
+        description: 'An advanced pyromancy technique that creates an explosive burst of fire around the caster. Requires mastery of basic fire manipulation.',
+        branchId: pyromancyBranch.id,
+        typeId: attackType.id,
+        basePower: 18,
+        duration: 0,
+        activation: 'FullAction',
+        requiredStats: { foc: 5, con: 2, res: 1, ins: 0, pre: 0, for: 4 },
+        scalingStats: ['for', 'foc', 'con'],
+        aetherCost: 15,
+        skillPointCost: 2,
+        target: 'other',
+        rank: 2,
+        isPassive: false,
+        unlockConditions: { uses: 10, combinations: ['Fireball'] }
+      }),
+      skillRepo.create({
+        name: 'Frost Armor',
+        description: 'A passive enhancement that continuously reinforces the body with protective ice crystals. Provides ongoing damage reduction.',
+        branchId: cryomancyBranch.id,
+        typeId: defenseType.id,
+        basePower: 4,
+        duration: 0,
+        activation: 'Passive',
+        requiredStats: { foc: 3, con: 4, res: 4, ins: 0, pre: 0, for: 0 },
+        scalingStats: ['res', 'con'],
+        aetherCost: 0,
+        skillPointCost: 3,
+        target: 'self',
+        rank: 2,
+        isPassive: true,
+        unlockConditions: { uses: 8, combinations: ['Ice Shield'] }
       })
     ]);
 
@@ -184,13 +321,23 @@ async function seed() {
       age: 25,
       gender: 'Non-binary',
       raceId: race.id,
-      stats: { foc: 10, con: 8, res: 7, ins: 9, pre: 8, for: 8, hp:100, aether:50 },
+      stats: { 
+        foc: 10,    // Focus - High for magical aptitude
+        con: 8,     // Control - Good precision
+        res: 7,     // Resilience - Moderate toughness
+        ins: 9,     // Instinct - High reflexes
+        pre: 8,     // Presence - Good leadership
+        for: 8,     // Force - Good raw power
+        hp: 120,    // Health Points - Enhanced for admin
+        aether: 80  // Aether - High magical energy
+      },
       isActive: true,
-      background: 'An administrator with access to powerful abilities.',
+      background: 'An administrator with access to powerful abilities and deep understanding of Aether manipulation.',
       experience: 0,
-      rank:1,
-      statPoints:0,
-      skillPoints: 10 // Extra skill points for admin
+      rank: 1,
+      statPoints: 0,
+      skillPoints: 10, // Extra skill points for admin
+      imageUrl: '/uploads/placeholder.jpg'
     }));
 
     const userCharacter = await characterRepo.save(characterRepo.create({
@@ -200,13 +347,23 @@ async function seed() {
       age: 22,
       gender: 'Female',
       raceId: race.id,
-      stats: { foc: 8, con: 7, res: 9, ins: 8, pre: 10, for: 8, hp:100, aether:50 },
+      stats: { 
+        foc: 8,     // Focus - Good magical potential
+        con: 7,     // Control - Developing precision
+        res: 9,     // Resilience - High endurance
+        ins: 8,     // Instinct - Good reflexes
+        pre: 10,    // Presence - Excellent charisma
+        for: 6,     // Force - Moderate raw power
+        hp: 110,    // Health Points - Good vitality
+        aether: 60  // Aether - Standard magical energy
+      },
       isActive: true,
-      background: 'A regular user exploring the world.',
+      background: 'A promising adventurer with natural charisma and strong resilience, beginning to explore the mysteries of Aether.',
       experience: 0,
-      rank:1,
-      statPoints:0,
-      skillPoints: 5 // Starting skill points
+      rank: 1,
+      statPoints: 0,
+      skillPoints: 5, // Starting skill points
+      imageUrl: '/uploads/placeholder.jpg'
     }));
 
     // Assign skills to admin character
