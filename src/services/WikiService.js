@@ -126,9 +126,10 @@ export class WikiService {
 
     // Get next position if not provided
     if (!sectionData.position) {
-      const lastSection = await this.sectionRepository.findOne({
-        order: { position: 'DESC' }
-      });
+      const lastSection = await this.sectionRepository
+        .createQueryBuilder('section')
+        .orderBy('section.position', 'DESC')
+        .getOne();
       sectionData.position = (lastSection?.position || 0) + 1;
     }
 
