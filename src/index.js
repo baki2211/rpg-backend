@@ -33,6 +33,7 @@ import { SessionExpirationJob } from './jobs/sessionExpiration.js';
 import { logger } from './utils/logger.js';
 import rankRoutes from './routes/rank.js';
 import wikiRoutes from './routes/wikiRoutes.js';
+import healthRoutes, { setWebSocketServers } from './routes/healthRoutes.js';
 
 dotenv.config();
 
@@ -48,6 +49,9 @@ let sessionExpirationInterval; // Declare but don't start yet
 
 // Connect chat and presence WebSockets for real-time updates
 chatWS.setPresenceBroadcaster(presenceWS.broadcastOnlineUsers);
+
+// Set WebSocket servers for health monitoring
+setWebSocketServers(presenceWS, chatWS);
 
 // Middleware for WebSocket connections
 server.on('upgrade', (req, socket, head) => {
@@ -97,6 +101,7 @@ app.use('/api/engine-logs', engineLogRoutes);
 app.use('/api/stat-definitions', statDefinitionRoutes);
 app.use('/api/ranks', rankRoutes);
 app.use('/api/wiki', wikiRoutes);
+app.use('/api', healthRoutes);
 
 // Static files
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
@@ -119,6 +124,47 @@ AppDataSource.initialize()
     process.exit(1);
   });
 
-process.on('SIGTERM', () => {
-  clearInterval(sessionExpirationInterval);
-});
+// Graceful shutdown handling
+const gracefulShutdown = (signal) => {
+  logger.info(`Received ${signal}. Starting graceful shutdown...`);
+  
+  // Stop accepting new connections
+  server.close(() => {
+    logger.info('HTTP server closed');
+    
+    // Clean up WebSocket connections
+    if (presenceWS?.cleanup) {
+      presenceWS.cleanup();
+      logger.info('Presence WebSocket connections closed');
+    }
+    
+    if (chatWS?.cleanup) {
+      chatWS.cleanup();
+      logger.info('Chat WebSocket connections closed');
+    }
+    
+    // Stop background jobs
+    if (sessionExpirationInterval) {
+      clearInterval(sessionExpirationInterval);
+      logger.info('Session expiration job stopped');
+    }
+    
+    // Close database connection
+    AppDataSource.destroy().then(() => {
+      logger.info('Database connection closed');
+      process.exit(0);
+    }).catch((error) => {
+      logger.error('Error closing database connection:', { error: error.message });
+      process.exit(1);
+    });
+  });
+  
+  // Force exit after 30 seconds
+  setTimeout(() => {
+    logger.error('Forced shutdown after timeout');
+    process.exit(1);
+  }, 30000);
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
