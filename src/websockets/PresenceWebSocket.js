@@ -163,12 +163,12 @@ export const setupPresenceWebSocketServer = (server) => {
       }
     });
 
-    // Optimized ping interval - less frequent
+    // Optimized ping interval - less frequent to save resources
     const pingInterval = setInterval(() => {
       if (ws.readyState === WebSocket.OPEN) {
         ws.ping();
       }
-    }, 45000); // Ping every 45 seconds instead of 30
+    }, 60000); // Ping every 60 seconds to reduce resource usage
 
     // Reset message count every minute
     const resetCountInterval = setInterval(() => {

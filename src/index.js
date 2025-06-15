@@ -31,6 +31,7 @@ import engineLogRoutes from './routes/engineLogs.js';
 import statDefinitionRoutes from './routes/statDefinition.js';
 import { SessionExpirationJob } from './jobs/sessionExpiration.js';
 import { logger } from './utils/logger.js';
+import memoryManager from './utils/memoryManager.js';
 import rankRoutes from './routes/rank.js';
 import wikiRoutes from './routes/wikiRoutes.js';
 import healthRoutes, { setWebSocketServers } from './routes/healthRoutes.js';
@@ -76,10 +77,7 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 // Routes
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date().toISOString() });
-});
-
+app.use('/api', healthRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/admin', adminRoutes);
@@ -101,7 +99,6 @@ app.use('/api/engine-logs', engineLogRoutes);
 app.use('/api/stat-definitions', statDefinitionRoutes);
 app.use('/api/ranks', rankRoutes);
 app.use('/api/wiki', wikiRoutes);
-app.use('/api', healthRoutes);
 
 // Static files
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
@@ -112,11 +109,15 @@ AppDataSource.initialize()
   .then(() => {
     logger.startup('App connected to the database');
     
+    // Start memory monitoring
+    memoryManager.startMonitoring();
+    
     // Start session expiration job after database is ready
     sessionExpirationInterval = SessionExpirationJob.startJob();
     
     server.listen(PORT, () => {
       logger.startup(`App Server running on http://localhost:${PORT}`);
+      logger.startup('Memory monitoring active');
     });
   })
   .catch(error => {
@@ -142,6 +143,9 @@ const gracefulShutdown = (signal) => {
       chatWS.cleanup();
       logger.info('Chat WebSocket connections closed');
     }
+    
+    // Stop memory monitoring
+    memoryManager.stopMonitoring();
     
     // Stop background jobs
     if (sessionExpirationInterval) {

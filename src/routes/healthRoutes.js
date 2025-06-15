@@ -1,5 +1,6 @@
 import express from 'express';
 import { logger } from '../utils/logger.js';
+import memoryManager from '../utils/memoryManager.js';
 
 const router = express.Router();
 
@@ -12,38 +13,46 @@ export const setWebSocketServers = (presence, chat) => {
   chatWebSocketServer = chat;
 };
 
-// Basic health check
+// Basic health check with detailed memory monitoring
 router.get('/health', (req, res) => {
-  const memoryUsage = process.memoryUsage();
   const uptime = process.uptime();
+  const memoryStats = memoryManager.getMemoryStats();
   
   const health = {
-    status: 'healthy',
+    status: memoryStats.status === 'critical' ? 'critical' : 
+            memoryStats.status === 'warning' ? 'warning' : 'healthy',
     timestamp: new Date().toISOString(),
     uptime: Math.floor(uptime),
     memory: {
-      used: Math.round(memoryUsage.heapUsed / 1024 / 1024),
-      total: Math.round(memoryUsage.heapTotal / 1024 / 1024),
-      external: Math.round(memoryUsage.external / 1024 / 1024),
-      rss: Math.round(memoryUsage.rss / 1024 / 1024)
+      used: memoryStats.heap.used,
+      total: memoryStats.heap.total,
+      external: memoryStats.external,
+      rss: memoryStats.rss.mb,
+      usage_percent: memoryStats.rss.percent,
+      heap_percent: memoryStats.heap.percent,
+      limit_mb: memoryStats.limit,
+      status: memoryStats.status
     },
     connections: {
       presence: presenceWebSocketServer?.getConnectionCount?.() || 0,
-      chat: chatWebSocketServer?.getConnectionCount?.() || 0
-    }
+      chat: chatWebSocketServer?.getConnectionCount?.() || 0,
+      total: (presenceWebSocketServer?.getConnectionCount?.() || 0) + (chatWebSocketServer?.getConnectionCount?.() || 0)
+    },
+    gc_available: memoryStats.gcAvailable
   };
 
-  // Check if memory usage is high
-  if (memoryUsage.heapUsed / memoryUsage.heapTotal > 0.9) {
-    health.status = 'warning';
-    health.warning = 'High memory usage';
+  // Set warnings based on memory status
+  if (memoryStats.status === 'critical') {
+    health.warning = `CRITICAL: Memory usage at ${memoryStats.rss.percent}% (${memoryStats.rss.mb}MB/${memoryStats.limit}MB)`;
+  } else if (memoryStats.status === 'warning') {
+    health.warning = `WARNING: Memory usage at ${memoryStats.rss.percent}% (${memoryStats.rss.mb}MB/${memoryStats.limit}MB)`;
   }
 
   // Check if too many connections
-  const totalConnections = health.connections.presence + health.connections.chat;
+  const totalConnections = health.connections.total;
   if (totalConnections > 100) {
     health.status = 'warning';
-    health.warning = 'High connection count';
+    health.warning = (health.warning ? health.warning + '; ' : '') + `High connection count: ${totalConnections}`;
   }
 
   res.json(health);
@@ -90,10 +99,25 @@ router.get('/status', (req, res) => {
 
 // Force garbage collection (for debugging)
 router.post('/gc', (req, res) => {
-  if (global.gc) {
-    global.gc();
-    logger.info('Garbage collection forced');
-    res.json({ message: 'Garbage collection executed' });
+  const beforeStats = memoryManager.getMemoryStats();
+  const success = memoryManager.performGarbageCollection(true);
+  
+  if (success) {
+    const afterStats = memoryManager.getMemoryStats();
+    const freedMB = beforeStats.rss.mb - afterStats.rss.mb;
+    
+    res.json({ 
+      message: 'Garbage collection executed',
+      before: {
+        rss: `${beforeStats.rss.mb}MB`,
+        heap: `${beforeStats.heap.used}MB`
+      },
+      after: {
+        rss: `${afterStats.rss.mb}MB`,
+        heap: `${afterStats.heap.used}MB`
+      },
+      freed: `${freedMB}MB`
+    });
   } else {
     res.status(400).json({ error: 'Garbage collection not available. Start with --expose-gc flag.' });
   }

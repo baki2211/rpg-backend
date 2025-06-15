@@ -121,12 +121,12 @@ export const setupWebSocketServer = () => {
       ws.messageCount = 0;
     }, 60000); // Reset every minute
 
-    // Keep-alive ping
+    // Keep-alive ping - reduced frequency to save resources
     const pingInterval = setInterval(() => {
       if (ws.readyState === WebSocket.OPEN) {
         ws.ping();
       }
-    }, 45000);
+    }, 60000); // Ping every 60 seconds to reduce resource usage
 
     ws.on('message', async (data) => {
       // Rate limiting - max 30 messages per minute
