@@ -19,7 +19,7 @@ local.properties
 node_modules/
 .env
 src/tsconfig.json
-src/uploads/
+data-source.js
 
 # External tool builders
 .externalToolBuilders/
