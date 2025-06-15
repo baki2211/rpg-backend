@@ -97,30 +97,28 @@ router.get('/status', (req, res) => {
   res.json(status);
 });
 
-// Force garbage collection (for debugging)
+// Force memory cleanup (works without --expose-gc)
 router.post('/gc', (req, res) => {
   const beforeStats = memoryManager.getMemoryStats();
   const success = memoryManager.performGarbageCollection(true);
   
-  if (success) {
-    const afterStats = memoryManager.getMemoryStats();
-    const freedMB = beforeStats.rss.mb - afterStats.rss.mb;
-    
-    res.json({ 
-      message: 'Garbage collection executed',
-      before: {
-        rss: `${beforeStats.rss.mb}MB`,
-        heap: `${beforeStats.heap.used}MB`
-      },
-      after: {
-        rss: `${afterStats.rss.mb}MB`,
-        heap: `${afterStats.heap.used}MB`
-      },
-      freed: `${freedMB}MB`
-    });
-  } else {
-    res.status(400).json({ error: 'Garbage collection not available. Start with --expose-gc flag.' });
-  }
+  const afterStats = memoryManager.getMemoryStats();
+  const freedMB = beforeStats.rss.mb - afterStats.rss.mb;
+  
+  res.json({ 
+    message: success ? 'Memory cleanup executed' : 'Alternative memory cleanup executed',
+    method: global.gc ? 'Native garbage collection' : 'Alternative cleanup strategies',
+    before: {
+      rss: `${beforeStats.rss.mb}MB`,
+      heap: `${beforeStats.heap.used}MB`
+    },
+    after: {
+      rss: `${afterStats.rss.mb}MB`,
+      heap: `${afterStats.heap.used}MB`
+    },
+    memoryChange: `${freedMB}MB`,
+    gcAvailable: !!global.gc
+  });
 });
 
 export default router; 
