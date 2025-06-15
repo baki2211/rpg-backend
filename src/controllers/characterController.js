@@ -293,7 +293,7 @@ export class CharacterController {
   async getActiveNPC(req, res) {
     try {
       const userId = req.user.id;
-      const activeNPC = await characterService.getActiveNPC(userId);
+      const activeNPC = await characterService.getActiveNPCForUser(userId);
       res.status(200).json(activeNPC);
     } catch (error) {
       res.status(400).json({ error: error.message });
