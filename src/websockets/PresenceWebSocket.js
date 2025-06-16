@@ -69,41 +69,54 @@ export const setupPresenceWebSocketServer = (server) => {
       return;
     }
 
-    // Check for existing connection and close it BEFORE checking connection limit
+    // Check for existing connection and ensure it's fully closed
     const existingUser = onlineUsers.get(userId);
     if (existingUser) {
-      logger.debug(`Closing existing connection for user ${userId} before new connection`);
+      logger.debug(`Found existing connection for user ${userId}, ensuring cleanup`);
+      
+      // Force close the existing connection
       if (existingUser.ws.readyState === WebSocket.OPEN) {
-        existingUser.ws.close(1000, 'Connection refreshed');
-        // Wait for the old connection to be fully closed
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        // Double check the connection was removed
-        if (connectionCount > 0) connectionCount--;
+        existingUser.ws.terminate(); // Use terminate() instead of close() for immediate closure
+      }
+      
+      // Remove from tracking immediately
+      onlineUsers.delete(userId);
+      if (connectionCount > 0) {
+        connectionCount--;
+        logger.debug(`Decremented connection count to ${connectionCount} after cleanup`);
+      }
+      
+      // Wait a moment to ensure cleanup is complete
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Double check cleanup
+      if (onlineUsers.has(userId)) {
+        logger.warn(`Failed to cleanup existing connection for user ${userId}, forcing removal`);
         onlineUsers.delete(userId);
+        if (connectionCount > 0) connectionCount--;
       }
     }
 
-    // Now check connection limit after old connection is closed
+    // Now check connection limit after cleanup
     if (connectionCount >= MAX_CONNECTIONS) {
-      logger.warn('Connection limit reached, forcing cleanup before new connection');
+      logger.warn(`Connection limit reached (${connectionCount}/${MAX_CONNECTIONS}), forcing cleanup`);
       cleanupStaleConnections();
-      logConnectionState();
       
-      // If still at limit after cleanup, try one more time with a delay
+      // If still at limit after cleanup, reject with specific message
       if (connectionCount >= MAX_CONNECTIONS) {
-        logger.warn(`Connection limit reached (${MAX_CONNECTIONS}) after first cleanup, trying one more time`);
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        cleanupStaleConnections();
-        logConnectionState();
-        
-        // If still at limit after second cleanup, reject with a more specific message
-        if (connectionCount >= MAX_CONNECTIONS) {
-          logger.warn(`Connection limit reached (${MAX_CONNECTIONS}) after second cleanup, rejecting new connection`);
-          ws.close(1013, 'Server at capacity - please try again in a few moments');
-          return;
-        }
+        logger.warn(`Connection limit still reached after cleanup (${connectionCount}/${MAX_CONNECTIONS})`);
+        ws.close(1013, 'Server at capacity - please try again in a few moments');
+        return;
       }
     }
+
+    // Log connection state before incrementing
+    logger.debug(`Connection state before new connection:`, {
+      userId,
+      currentCount: connectionCount,
+      maxConnections: MAX_CONNECTIONS,
+      existingConnections: Array.from(onlineUsers.keys())
+    });
 
     connectionCount++;
     logger.debug(`New presence connection for user ${userId}. Total connections: ${connectionCount}`);
@@ -287,23 +300,35 @@ export const setupPresenceWebSocketServer = (server) => {
     const now = new Date();
     let cleanedCount = 0;
     
-    logger.info('Starting cleanup of stale connections...');
+    logger.info('Starting aggressive cleanup of stale connections...');
     
+    // First pass: close any non-OPEN connections
     for (const [userId, user] of onlineUsers.entries()) {
-      const timeSinceLastSeen = now - user.lastSeen;
-      // Reduced stale timeout from 2 minutes to 1 minute
-      const isStale = timeSinceLastSeen > 60 * 1000 || user.ws.readyState !== WebSocket.OPEN;
-      
-      if (isStale) {
-        logger.info(`Cleaning up stale connection for user ${userId}:`, {
-          timeSinceLastSeen: `${Math.round(timeSinceLastSeen / 1000)}s`,
+      if (user.ws.readyState !== WebSocket.OPEN) {
+        logger.info(`Cleaning up non-OPEN connection for user ${userId}:`, {
           connectionState: user.ws.readyState,
           username: user.username
         });
         
-        if (user.ws.readyState === WebSocket.OPEN) {
-          user.ws.close(1000, 'Connection timed out');
-        }
+        user.ws.terminate(); // Force immediate closure
+        onlineUsers.delete(userId);
+        if (connectionCount > 0) connectionCount--;
+        cleanedCount++;
+      }
+    }
+    
+    // Second pass: check for stale connections
+    for (const [userId, user] of onlineUsers.entries()) {
+      const timeSinceLastSeen = now - user.lastSeen;
+      const isStale = timeSinceLastSeen > 30 * 1000; // Reduced from 60s to 30s
+      
+      if (isStale) {
+        logger.info(`Cleaning up stale connection for user ${userId}:`, {
+          timeSinceLastSeen: `${Math.round(timeSinceLastSeen / 1000)}s`,
+          username: user.username
+        });
+        
+        user.ws.terminate();
         onlineUsers.delete(userId);
         if (connectionCount > 0) connectionCount--;
         cleanedCount++;
@@ -311,11 +336,18 @@ export const setupPresenceWebSocketServer = (server) => {
     }
     
     if (cleanedCount > 0) {
-      logger.info(`Cleaned up ${cleanedCount} stale connections. Active connections: ${connectionCount}`);
+      logger.info(`Cleaned up ${cleanedCount} connections. Active connections: ${connectionCount}`);
       broadcastOnlineUsers();
     } else {
       logger.info('No stale connections found during cleanup');
     }
+    
+    // Log final connection state
+    logger.debug('Connection state after cleanup:', {
+      totalConnections: connectionCount,
+      maxConnections: MAX_CONNECTIONS,
+      activeUsers: Array.from(onlineUsers.keys())
+    });
   };
 
   const broadcastOnlineUsers = () => {

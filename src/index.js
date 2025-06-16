@@ -35,6 +35,7 @@ import memoryManager from './utils/memoryManager.js';
 import rankRoutes from './routes/rank.js';
 import wikiRoutes from './routes/wikiRoutes.js';
 import healthRoutes, { setWebSocketServers } from './routes/healthRoutes.js';
+import presenceRoutes from './routes/presenceRoutes.js';
 
 dotenv.config();
 
@@ -60,28 +61,12 @@ memoryManager.setWebSocketServers(presenceWS, chatWS);
 // Middleware for WebSocket connections
 server.on('upgrade', (req, socket, head) => {
   try {
-    // Check memory usage before allowing WebSocket upgrades
-    const memUsage = process.memoryUsage();
-    const memUsagePercent = (memUsage.rss / (512 * 1024 * 1024)) * 100; // 512MB limit
-    
-    if (memUsagePercent > 85) { // If using more than 85% of memory
-      logger.warn(`WebSocket upgrade rejected - high memory usage: ${memUsagePercent.toFixed(1)}%`);
-      socket.write('HTTP/1.1 503 Service Unavailable\r\n' +
-                   'Connection: close\r\n' +
-                   'Content-Type: text/plain\r\n' +
-                   'Content-Length: 21\r\n' +
-                   '\r\n' +
-                   'Insufficient resources');
-      socket.destroy();
-      return;
-    }
-
     const pathname = req.url?.split('?')[0];
 
     if (pathname === '/ws/chat') {
       // Check chat connection count before upgrade
       const chatConnections = chatWS.getConnectionCount();
-      if (chatConnections >= 20) { // Max chat connections
+      if (chatConnections >= 5) { // Max chat connections
         logger.warn(`Chat WebSocket upgrade rejected - connection limit reached: ${chatConnections}`);
         socket.write('HTTP/1.1 503 Service Unavailable\r\n' +
                      'Connection: close\r\n' +
@@ -93,21 +78,6 @@ server.on('upgrade', (req, socket, head) => {
         return;
       }
       chatWS.handleUpgrade(req, socket, head);
-    } else if (pathname === '/ws/presence') {
-      // Check presence connection count before upgrade
-      const presenceConnections = presenceWS.getConnectionCount();
-      if (presenceConnections >= 10) { // Max presence connections
-        logger.warn(`Presence WebSocket upgrade rejected - connection limit reached: ${presenceConnections}`);
-        socket.write('HTTP/1.1 503 Service Unavailable\r\n' +
-                     'Connection: close\r\n' +
-                     'Content-Type: text/plain\r\n' +
-                     'Content-Length: 21\r\n' +
-                     '\r\n' +
-                     'Insufficient resources');
-        socket.destroy();
-        return;
-      }
-      presenceWS.handleUpgrade(req, socket, head);
     } else {
       socket.destroy();
     }
@@ -155,6 +125,7 @@ app.use('/api/engine-logs', engineLogRoutes);
 app.use('/api/stat-definitions', statDefinitionRoutes);
 app.use('/api/ranks', rankRoutes);
 app.use('/api/wiki', wikiRoutes);
+app.use('/api/presence', presenceRoutes);
 
 // Static files
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));

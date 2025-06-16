@@ -13,49 +13,125 @@ export const setWebSocketServers = (presence, chat) => {
   chatWebSocketServer = chat;
 };
 
-// Basic health check with detailed memory monitoring
-router.get('/health', (req, res) => {
-  const uptime = process.uptime();
-  const memoryStats = memoryManager.getMemoryStats();
+// Add rate limiting to prevent health check spam
+const healthCheckRequests = new Map();
+const HEALTH_CHECK_WINDOW = 5000; // 5 seconds
+const MAX_HEALTH_CHECKS = 3; // Max 3 requests per window
+
+// Middleware to rate limit health checks
+const rateLimitHealthChecks = (req, res, next) => {
+  const clientIp = req.ip;
+  const now = Date.now();
   
-  const health = {
-    status: memoryStats.status === 'critical' ? 'critical' : 
-            memoryStats.status === 'warning' ? 'warning' : 'healthy',
-    timestamp: new Date().toISOString(),
-    uptime: Math.floor(uptime),
-    memory: {
-      used: memoryStats.heap.used,
-      total: memoryStats.heap.total,
-      external: memoryStats.external,
-      rss: memoryStats.rss.mb,
-      usage_percent: memoryStats.rss.percent,
-      heap_percent: memoryStats.heap.percent,
-      limit_mb: memoryStats.limit,
-      status: memoryStats.status
-    },
-    connections: {
-      presence: presenceWebSocketServer?.getConnectionCount?.() || 0,
-      chat: chatWebSocketServer?.getConnectionCount?.() || 0,
-      total: (presenceWebSocketServer?.getConnectionCount?.() || 0) + (chatWebSocketServer?.getConnectionCount?.() || 0)
-    },
-    gc_available: memoryStats.gcAvailable
-  };
-
-  // Set warnings based on memory status
-  if (memoryStats.status === 'critical') {
-    health.warning = `CRITICAL: Memory usage at ${memoryStats.rss.percent}% (${memoryStats.rss.mb}MB/${memoryStats.limit}MB)`;
-  } else if (memoryStats.status === 'warning') {
-    health.warning = `WARNING: Memory usage at ${memoryStats.rss.percent}% (${memoryStats.rss.mb}MB/${memoryStats.limit}MB)`;
+  // Clean up old entries
+  for (const [ip, data] of healthCheckRequests.entries()) {
+    if (now - data.timestamp > HEALTH_CHECK_WINDOW) {
+      healthCheckRequests.delete(ip);
+    }
   }
-
-  // Check if too many connections
-  const totalConnections = health.connections.total;
-  if (totalConnections > 100) {
-    health.status = 'warning';
-    health.warning = (health.warning ? health.warning + '; ' : '') + `High connection count: ${totalConnections}`;
+  
+  // Check if client has exceeded rate limit
+  const clientData = healthCheckRequests.get(clientIp);
+  if (clientData) {
+    if (clientData.count >= MAX_HEALTH_CHECKS) {
+      // If client has exceeded limit, return cached health data
+      if (clientData.cachedResponse) {
+        return res.json(clientData.cachedResponse);
+      }
+      // If no cached data, return 503
+      return res.status(503).json({
+        status: 'rate_limited',
+        message: 'Too many health checks, please wait',
+        retryAfter: Math.ceil((HEALTH_CHECK_WINDOW - (now - clientData.timestamp)) / 1000)
+      });
+    }
+    clientData.count++;
+  } else {
+    healthCheckRequests.set(clientIp, { count: 1, timestamp: now });
   }
+  
+  next();
+};
 
-  res.json(health);
+// Health check endpoint with rate limiting
+router.get('/', rateLimitHealthChecks, async (req, res) => {
+  try {
+    // Get memory usage with timeout
+    const memoryPromise = memoryManager.getMemoryUsage();
+    const memoryTimeout = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Memory check timeout')), 2000)
+    );
+    
+    const memory = await Promise.race([memoryPromise, memoryTimeout])
+      .catch(error => {
+        logger.warn('Memory check failed:', error.message);
+        return { usage_percent: 0, status: 'unknown' };
+      });
+
+    // Get connection counts with timeout
+    const getConnectionCounts = () => {
+      try {
+        return {
+          presence: presenceWebSocketServer?.getConnectionCount?.() || 0,
+          chat: chatWebSocketServer?.getConnectionCount?.() || 0,
+          total: (presenceWebSocketServer?.getConnectionCount?.() || 0) + 
+                 (chatWebSocketServer?.getConnectionCount?.() || 0)
+        };
+      } catch (error) {
+        logger.warn('Connection count check failed:', error.message);
+        return { presence: 0, chat: 0, total: 0 };
+      }
+    };
+
+    const connections = getConnectionCounts();
+
+    // Determine overall health status
+    const isHealthy = memory.usage_percent < 90 && connections.total < 20;
+
+    const healthData = {
+      status: isHealthy ? 'healthy' : 'degraded',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      memory: {
+        ...memory,
+        limit_mb: process.env.MEMORY_LIMIT_MB || 512,
+        status: memory.usage_percent < 90 ? 'healthy' : 'warning'
+      },
+      connections,
+      gc_available: typeof global.gc === 'function'
+    };
+
+    // Cache the response for rate-limited clients
+    const clientIp = req.ip;
+    const clientData = healthCheckRequests.get(clientIp);
+    if (clientData) {
+      clientData.cachedResponse = healthData;
+    }
+
+    // If server is under heavy load, return 503
+    if (memory.usage_percent > 95 || connections.total >= 20) {
+      res.status(503).json({
+        ...healthData,
+        status: 'overloaded',
+        message: 'Server is under heavy load, please try again later'
+      });
+      return;
+    }
+
+    res.json(healthData);
+  } catch (error) {
+    logger.error('Health check error:', error);
+    // Return a degraded status instead of 500
+    res.json({
+      status: 'degraded',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      memory: { status: 'unknown' },
+      connections: { presence: 0, chat: 0, total: 0 },
+      gc_available: false,
+      error: 'Health check failed'
+    });
+  }
 });
 
 // Detailed status for monitoring

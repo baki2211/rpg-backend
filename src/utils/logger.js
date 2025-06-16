@@ -19,23 +19,82 @@ class Logger {
     if (!fs.existsSync(this.logDir)) {
       fs.mkdirSync(this.logDir, { recursive: true });
     }
+
+    // Set up log rotation
+    this.maxLogFiles = 7; // Keep 7 days of logs
+    this.rotateLogs();
+  }
+
+  rotateLogs() {
+    try {
+      const files = fs.readdirSync(this.logDir);
+      const logFiles = files.filter(file => file.endsWith('.log'));
+      
+      // Sort by date (newest first)
+      logFiles.sort((a, b) => b.localeCompare(a));
+      
+      // Remove old log files
+      if (logFiles.length > this.maxLogFiles) {
+        logFiles.slice(this.maxLogFiles).forEach(file => {
+          fs.unlinkSync(path.join(this.logDir, file));
+        });
+      }
+    } catch (error) {
+      console.error('Error rotating logs:', error);
+    }
   }
 
   formatMessage(level, message, context = null) {
     const timestamp = new Date().toISOString();
-    const contextStr = context ? ` [${JSON.stringify(context)}]` : '';
+    // Only include non-empty context
+    const contextStr = context && Object.keys(context).length > 0 
+      ? ` [${JSON.stringify(context)}]` 
+      : '';
     return `[${timestamp}] ${level}: ${message}${contextStr}`;
   }
 
   writeToFile(level, message, context) {
+    // Skip debug logs in production
+    if (process.env.NODE_ENV === 'production' && level === 'DEBUG') {
+      return;
+    }
+
     const logFile = path.join(this.logDir, `${new Date().toISOString().split('T')[0]}.log`);
     const formattedMessage = this.formatMessage(level, message, context) + '\n';
     
-    fs.appendFileSync(logFile, formattedMessage);
+    try {
+      fs.appendFileSync(logFile, formattedMessage);
+    } catch (error) {
+      console.error('Error writing to log file:', error);
+    }
+  }
+
+  shouldLog(level, context) {
+    const levelValue = this.logLevels[level] || this.logLevels.INFO;
+    
+    // Always log critical errors
+    if (level === 'CRITICAL') return true;
+    
+    // Skip debug logs in production
+    if (process.env.NODE_ENV === 'production' && level === 'DEBUG') {
+      return false;
+    }
+    
+    // Skip certain noisy contexts in production
+    if (process.env.NODE_ENV === 'production') {
+      const noisyContexts = ['heartbeat', 'ping', 'pong', 'cleanup'];
+      if (context && noisyContexts.some(nc => JSON.stringify(context).includes(nc))) {
+        return false;
+      }
+    }
+    
+    return levelValue >= this.consoleLevel;
   }
 
   log(level, message, context = null, forceConsole = false) {
-    const levelValue = this.logLevels[level] || this.logLevels.INFO;
+    if (!this.shouldLog(level, context) && !forceConsole) {
+      return;
+    }
     
     // Always write to file if enabled
     if (process.env.ENABLE_FILE_LOGGING === 'true') {
@@ -43,7 +102,7 @@ class Logger {
     }
     
     // Only log to console based on level or force flag
-    if (levelValue >= this.consoleLevel || forceConsole) {
+    if (this.logLevels[level] >= this.consoleLevel || forceConsole) {
       const formattedMessage = this.formatMessage(level, message, context);
       
       switch (level) {
