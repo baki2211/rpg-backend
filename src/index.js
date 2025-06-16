@@ -95,7 +95,7 @@ server.on('upgrade', (req, socket, head) => {
 
 // Middleware
 app.use(cors({
-  origin: ['http://localhost:3000', 'http://localhost:3001'], 
+  origin: ['http://localhost:3000', 'http://localhost:3001', 'https://arcanerealms.org'],
   credentials: true,
 }));
 app.use(cookieParser());
