@@ -7,26 +7,26 @@ import { logger } from '../utils/logger.js';
 export const setupWebSocketServer = () => {
   const wss = new WebSocketServer({ 
     noServer: true,
-    maxPayload: 1024 * 32, // Limit payload size to 32KB for chat
+    maxPayload: 1024 * 16, // Limit payload size to 16KB for chat
     perMessageDeflate: {
       zlibDeflateOptions: {
         level: 1, // Fast compression
-        chunkSize: 1024,
+        chunkSize: 512, // Smaller chunks
       },
-      threshold: 1024,
-      concurrencyLimit: 10,
-      serverMaxWindowBits: 13,
-      clientMaxWindowBits: 13,
-      serverMaxNoContextTakeover: false,
-      clientMaxNoContextTakeover: false,
+      threshold: 512, // Lower threshold
+      concurrencyLimit: 5, // Reduce concurrency
+      serverMaxWindowBits: 12, // Smaller window
+      clientMaxWindowBits: 12, // Smaller window
+      serverMaxNoContextTakeover: true, // No context takeover for memory
+      clientMaxNoContextTakeover: true, // No context takeover for memory
     }
   });
   
   const locationConnections = new Map();
   const userConnections = new Map(); // Track user connections to prevent duplicates
   let presenceBroadcaster = null;
-  const MAX_CONNECTIONS_PER_LOCATION = 20;
-  const MAX_TOTAL_CONNECTIONS = 100;
+  const MAX_CONNECTIONS_PER_LOCATION = 5; // Reduce per-location limit
+  const MAX_TOTAL_CONNECTIONS = 20; // Reduce total connection limit
   let totalConnections = 0;
 
   const setPresenceBroadcaster = (broadcaster) => {

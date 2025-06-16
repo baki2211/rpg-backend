@@ -5,29 +5,34 @@ class MemoryManager {
     this.memoryCheckInterval = null;
     this.gcInterval = null;
     this.isMonitoring = false;
+    this.webSocketServers = null; // Will be set by setWebSocketServers
     
     // Memory thresholds (in bytes)
     this.WARNING_THRESHOLD = 400 * 1024 * 1024; // 400MB
     this.CRITICAL_THRESHOLD = 450 * 1024 * 1024; // 450MB
     this.STARTER_LIMIT = 512 * 1024 * 1024; // 512MB
+
+    // Memory thresholds for Render.com (512MB limit)
+    this.thresholds = {
+      warning: 350 * 1024 * 1024,    // 350MB - 68% of limit
+      critical: 400 * 1024 * 1024,   // 400MB - 78% of limit
+      emergency: 450 * 1024 * 1024   // 450MB - 88% of limit
+    };
+  }
+
+  setWebSocketServers(presenceWS, chatWS) {
+    this.webSocketServers = { presenceWS, chatWS };
   }
 
   startMonitoring() {
     if (this.isMonitoring) return;
     
     this.isMonitoring = true;
-    logger.info('Memory monitoring started');
+    logger.info('🔍 Memory monitoring started with WebSocket integration');
     
-    // Check memory every 30 seconds
-    this.memoryCheckInterval = setInterval(() => {
-      this.checkMemoryUsage();
-    }, 30000);
-    
-    // Force garbage collection every 2 minutes if available
-    // Note: global.gc is not available on Render.com, so we'll use alternative methods
     this.gcInterval = setInterval(() => {
-      this.performAlternativeCleanup();
-    }, 120000);
+      this.checkMemory(); // Use the new checkMemory method
+    }, 15000); // Check every 15 seconds for more aggressive monitoring
   }
 
   stopMonitoring() {
@@ -48,46 +53,7 @@ class MemoryManager {
     logger.info('Memory monitoring stopped');
   }
 
-  checkMemoryUsage() {
-    const memUsage = process.memoryUsage();
-    const rss = memUsage.rss;
-    const heapUsed = memUsage.heapUsed;
-    const heapTotal = memUsage.heapTotal;
-    
-    // Log memory stats
-    const rssPercent = ((rss / this.STARTER_LIMIT) * 100).toFixed(1);
-    const heapPercent = ((heapUsed / heapTotal) * 100).toFixed(1);
-    
-    if (rss > this.CRITICAL_THRESHOLD) {
-      logger.error('CRITICAL: Memory usage very high!', {
-        rss: `${Math.round(rss / 1024 / 1024)}MB (${rssPercent}%)`,
-        heap: `${Math.round(heapUsed / 1024 / 1024)}MB (${heapPercent}%)`,
-        limit: `${Math.round(this.STARTER_LIMIT / 1024 / 1024)}MB`
-      });
-      
-      // Emergency cleanup
-      this.performAlternativeCleanup(true);
-      
-    } else if (rss > this.WARNING_THRESHOLD) {
-      logger.warn('WARNING: Memory usage high', {
-        rss: `${Math.round(rss / 1024 / 1024)}MB (${rssPercent}%)`,
-        heap: `${Math.round(heapUsed / 1024 / 1024)}MB (${heapPercent}%)`
-      });
-      
-      // Preventive cleanup
-      this.performAlternativeCleanup();
-    }
-    
-    return {
-      rss,
-      heapUsed,
-      heapTotal,
-      external: memUsage.external,
-      rssPercent: parseFloat(rssPercent),
-      heapPercent: parseFloat(heapPercent),
-      status: this.getMemoryStatus(rss)
-    };
-  }
+
 
   performGarbageCollection(force = false) {
     if (!global.gc) {
@@ -167,8 +133,9 @@ class MemoryManager {
   }
 
   getMemoryStatus(rss) {
-    if (rss > this.CRITICAL_THRESHOLD) return 'critical';
-    if (rss > this.WARNING_THRESHOLD) return 'warning';
+    if (rss > this.thresholds.emergency) return 'emergency';
+    if (rss > this.thresholds.critical) return 'critical';
+    if (rss > this.thresholds.warning) return 'warning';
     return 'healthy';
   }
 
@@ -199,19 +166,91 @@ class MemoryManager {
   emergencyCleanup() {
     logger.warn('Performing emergency memory cleanup');
     
-    // Force cleanup multiple times
-    for (let i = 0; i < 3; i++) {
-      this.performAlternativeCleanup(true);
+    // Close all WebSocket connections immediately
+    if (this.webSocketServers) {
+      try {
+        if (this.webSocketServers.presenceWS?.cleanup) {
+          this.webSocketServers.presenceWS.cleanup();
+          logger.info('🚨 Emergency: Closed all presence WebSocket connections');
+        }
+        if (this.webSocketServers.chatWS?.cleanup) {
+          this.webSocketServers.chatWS.cleanup();
+          logger.info('🚨 Emergency: Closed all chat WebSocket connections');
+        }
+      } catch (error) {
+        logger.error('Error during emergency WebSocket cleanup:', { error: error.message });
+      }
     }
     
-    // Clear any large caches or temporary data
-    // This would be application-specific
-    
+    // Perform multiple cleanup cycles
+    this.performAlternativeCleanup(true);
+    setTimeout(() => this.performAlternativeCleanup(true), 1000);
+    setTimeout(() => this.performAlternativeCleanup(true), 2000);
+  }
+
+  checkMemory() {
     const memUsage = process.memoryUsage();
-    logger.info('Emergency cleanup completed', {
-      currentRSS: `${Math.round(memUsage.rss / 1024 / 1024)}MB`,
-      currentHeap: `${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`
-    });
+    const rssPercent = (memUsage.rss / (512 * 1024 * 1024)) * 100;
+    
+    if (memUsage.rss > this.thresholds.emergency) {
+      logger.error('🚨 EMERGENCY: Memory usage at 88%', {
+        rss: `${Math.round(memUsage.rss / 1024 / 1024)}MB`,
+        percent: rssPercent.toFixed(1)
+      });
+      this.emergencyCleanup();
+    } else if (memUsage.rss > this.thresholds.critical) {
+      logger.error('⚠️ CRITICAL: Memory usage at 78%', {
+        rss: `${Math.round(memUsage.rss / 1024 / 1024)}MB`,
+        percent: rssPercent.toFixed(1)
+      });
+      this.aggressiveCleanup();
+    } else if (memUsage.rss > this.thresholds.warning) {
+      logger.warn('⚠️ WARNING: Memory usage at 68%', {
+        rss: `${Math.round(memUsage.rss / 1024 / 1024)}MB`,
+        percent: rssPercent.toFixed(1)
+      });
+      this.performAlternativeCleanup();
+    }
+  }
+
+  aggressiveCleanup() {
+    logger.warn('⚠️ Performing aggressive cleanup...');
+    
+    // Close some WebSocket connections if we have too many
+    if (this.webSocketServers) {
+      try {
+        const presenceCount = this.webSocketServers.presenceWS?.getConnectionCount?.() || 0;
+        const chatCount = this.webSocketServers.chatWS?.getConnectionCount?.() || 0;
+        
+        if (presenceCount > 5) {
+          logger.warn(`⚠️ Too many presence connections (${presenceCount}), forcing cleanup`);
+          // Force cleanup of stale connections
+          if (this.webSocketServers.presenceWS?.wss) {
+            this.webSocketServers.presenceWS.wss.clients.forEach(ws => {
+              if (ws.readyState !== ws.OPEN) {
+                ws.terminate();
+              }
+            });
+          }
+        }
+        
+        if (chatCount > 10) {
+          logger.warn(`⚠️ Too many chat connections (${chatCount}), forcing cleanup`);
+          // Force cleanup of stale connections
+          if (this.webSocketServers.chatWS?.wss) {
+            this.webSocketServers.chatWS.wss.clients.forEach(ws => {
+              if (ws.readyState !== ws.OPEN) {
+                ws.terminate();
+              }
+            });
+          }
+        }
+      } catch (error) {
+        logger.error('Error during aggressive WebSocket cleanup:', { error: error.message });
+      }
+    }
+    
+    this.performAlternativeCleanup();
   }
 }
 

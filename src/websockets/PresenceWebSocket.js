@@ -5,24 +5,24 @@ import { logger } from '../utils/logger.js';
 export const setupPresenceWebSocketServer = (server) => {
   const wss = new WebSocketServer({ 
     noServer: true,
-    maxPayload: 1024 * 16, // Limit payload size to 16KB
+    maxPayload: 1024 * 8, // Reduce payload size to 8KB
     perMessageDeflate: {
       zlibDeflateOptions: {
         level: 1, // Fast compression
-        chunkSize: 1024,
+        chunkSize: 512, // Smaller chunks
       },
-      threshold: 1024,
-      concurrencyLimit: 10,
-      serverMaxWindowBits: 13, // Value must be 8..15
-      clientMaxWindowBits: 13, // Value must be 8..15
-      serverMaxNoContextTakeover: false,
-      clientMaxNoContextTakeover: false,
+      threshold: 512, // Lower threshold
+      concurrencyLimit: 5, // Reduce concurrency
+      serverMaxWindowBits: 12, // Smaller window
+      clientMaxWindowBits: 12, // Smaller window
+      serverMaxNoContextTakeover: true, // No context takeover for memory
+      clientMaxNoContextTakeover: true, // No context takeover for memory
     }
   });
   
   const onlineUsers = new Map(); // userId => WebSocket
   const characterService = new CharacterService();
-  const MAX_CONNECTIONS = 50; // Limit concurrent connections
+  const MAX_CONNECTIONS = 10; // Drastically reduce connection limit for Render.com
   let connectionCount = 0;
 
   // Optimized periodic broadcast - less frequent to save resources
