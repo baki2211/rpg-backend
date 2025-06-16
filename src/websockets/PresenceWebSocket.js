@@ -22,7 +22,7 @@ export const setupPresenceWebSocketServer = (server) => {
   
   const onlineUsers = new Map(); // userId => WebSocket
   const characterService = new CharacterService();
-  const MAX_CONNECTIONS = 10; // Drastically reduce connection limit for Render.com
+  const MAX_CONNECTIONS = 20; // Increased from 10 to 20 for better capacity
   let connectionCount = 0;
   let lastCleanupTime = Date.now();
 
@@ -40,17 +40,17 @@ export const setupPresenceWebSocketServer = (server) => {
     });
   };
 
-  // More aggressive cleanup interval - every 30 seconds
+  // More aggressive cleanup interval - every 15 seconds
   const cleanupInterval = setInterval(() => {
     const now = Date.now();
-    // Only run cleanup if it's been at least 30 seconds since last cleanup
-    if (now - lastCleanupTime >= 30000) {
+    // Only run cleanup if it's been at least 15 seconds since last cleanup
+    if (now - lastCleanupTime >= 15000) {
       logger.info('Running scheduled cleanup...');
       cleanupStaleConnections();
       logConnectionState();
       lastCleanupTime = now;
     }
-  }, 30000);
+  }, 15000);
 
   // Optimized periodic broadcast - less frequent to save resources
   const periodicBroadcast = setInterval(() => {
@@ -291,7 +291,8 @@ export const setupPresenceWebSocketServer = (server) => {
     
     for (const [userId, user] of onlineUsers.entries()) {
       const timeSinceLastSeen = now - user.lastSeen;
-      const isStale = timeSinceLastSeen > 2 * 60 * 1000 || user.ws.readyState !== WebSocket.OPEN;
+      // Reduced stale timeout from 2 minutes to 1 minute
+      const isStale = timeSinceLastSeen > 60 * 1000 || user.ws.readyState !== WebSocket.OPEN;
       
       if (isStale) {
         logger.info(`Cleaning up stale connection for user ${userId}:`, {
