@@ -121,4 +121,32 @@ router.post('/gc', (req, res) => {
   });
 });
 
+// Add cleanup endpoint
+router.post('/cleanup', (req, res) => {
+  try {
+    if (presenceWebSocketServer?.cleanup) {
+      logger.info('Manual cleanup requested via API');
+      presenceWebSocketServer.cleanup();
+      res.json({ 
+        success: true, 
+        message: 'WebSocket connections cleaned up',
+        presenceConnections: presenceWebSocketServer.getConnectionCount?.() || 0,
+        chatConnections: chatWebSocketServer?.getConnectionCount?.() || 0
+      });
+    } else {
+      res.status(503).json({ 
+        success: false, 
+        message: 'WebSocket servers not available' 
+      });
+    }
+  } catch (error) {
+    logger.error('Error during manual cleanup:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error during cleanup',
+      error: error.message 
+    });
+  }
+});
+
 export default router; 

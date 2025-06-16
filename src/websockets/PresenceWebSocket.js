@@ -24,25 +24,62 @@ export const setupPresenceWebSocketServer = (server) => {
   const characterService = new CharacterService();
   const MAX_CONNECTIONS = 10; // Drastically reduce connection limit for Render.com
   let connectionCount = 0;
+  let lastCleanupTime = Date.now();
+
+  // Log current connection state
+  const logConnectionState = () => {
+    logger.info('Current WebSocket state:', {
+      totalConnections: connectionCount,
+      onlineUsers: Array.from(onlineUsers.entries()).map(([userId, user]) => ({
+        userId,
+        username: user.username,
+        lastSeen: user.lastSeen,
+        connectionState: user.ws.readyState,
+        location: user.location
+      }))
+    });
+  };
+
+  // More aggressive cleanup interval - every 30 seconds
+  const cleanupInterval = setInterval(() => {
+    const now = Date.now();
+    // Only run cleanup if it's been at least 30 seconds since last cleanup
+    if (now - lastCleanupTime >= 30000) {
+      logger.info('Running scheduled cleanup...');
+      cleanupStaleConnections();
+      logConnectionState();
+      lastCleanupTime = now;
+    }
+  }, 30000);
 
   // Optimized periodic broadcast - less frequent to save resources
   const periodicBroadcast = setInterval(() => {
     if (onlineUsers.size > 0) {
       broadcastOnlineUsers();
     }
-  }, 60000); // Broadcast every 60 seconds instead of 30
-
-  // Connection cleanup interval
-  const cleanupInterval = setInterval(() => {
-    cleanupStaleConnections();
-  }, 120000); // Cleanup every 2 minutes
+  }, 120000); // Broadcast every 2 minutes instead of 60 seconds
 
   wss.on('connection', async (ws, req) => {
-    // Check connection limit
+    // Force cleanup before checking connection limit
     if (connectionCount >= MAX_CONNECTIONS) {
-      logger.warn(`Connection limit reached (${MAX_CONNECTIONS}), rejecting new connection`);
-      ws.close(1013, 'Server overloaded');
-      return;
+      logger.warn('Connection limit reached, forcing cleanup before new connection');
+      cleanupStaleConnections();
+      logConnectionState();
+      
+      // If still at limit after cleanup, try one more time with a delay
+      if (connectionCount >= MAX_CONNECTIONS) {
+        logger.warn(`Connection limit reached (${MAX_CONNECTIONS}) after first cleanup, trying one more time`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        cleanupStaleConnections();
+        logConnectionState();
+        
+        // If still at limit after second cleanup, reject with a more specific message
+        if (connectionCount >= MAX_CONNECTIONS) {
+          logger.warn(`Connection limit reached (${MAX_CONNECTIONS}) after second cleanup, rejecting new connection`);
+          ws.close(1013, 'Server at capacity - please try again in a few moments');
+          return;
+        }
+      }
     }
 
     const params = new URLSearchParams(req.url?.split('?')[1]);
@@ -54,12 +91,16 @@ export const setupPresenceWebSocketServer = (server) => {
       return;
     }
 
-    // Check for existing connection and close it
+    // Check for existing connection and close it with a more graceful message
     const existingUser = onlineUsers.get(userId);
-    if (existingUser && existingUser.ws.readyState === WebSocket.OPEN) {
+    if (existingUser) {
       logger.debug(`Closing existing connection for user ${userId}`);
-      existingUser.ws.close(1000, 'New connection established');
-      if (connectionCount > 0) connectionCount--;
+      if (existingUser.ws.readyState === WebSocket.OPEN) {
+        existingUser.ws.close(1000, 'Connection refreshed');
+        if (connectionCount > 0) connectionCount--;
+      }
+      // Add a longer delay to ensure the old connection is properly closed
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
 
     connectionCount++;
@@ -178,21 +219,32 @@ export const setupPresenceWebSocketServer = (server) => {
       }
     }, 60000);
 
-    ws.on('close', () => {
+    ws.on('close', (code, reason) => {
+      logger.info(`Connection closed for user ${userId}:`, {
+        code,
+        reason,
+        username,
+        totalConnections: connectionCount
+      });
       onlineUsers.delete(userId);
       if (connectionCount > 0) connectionCount--;
-      logger.debug(`Connection closed for user ${userId}. Total connections: ${connectionCount}`);
       clearInterval(pingInterval);
       clearInterval(resetCountInterval);
       debouncedBroadcast();
+      logConnectionState();
     });
 
     ws.on('error', (err) => {
-      logger.error(`Presence WebSocket error for user ${userId}:`, { error: err.message });
+      logger.error(`Presence WebSocket error for user ${userId}:`, { 
+        error: err.message,
+        username,
+        totalConnections: connectionCount
+      });
       onlineUsers.delete(userId);
       if (connectionCount > 0) connectionCount--;
       clearInterval(pingInterval);
       clearInterval(resetCountInterval);
+      logConnectionState();
     });
 
     ws.on('pong', () => {
@@ -233,12 +285,21 @@ export const setupPresenceWebSocketServer = (server) => {
     const now = new Date();
     let cleanedCount = 0;
     
+    logger.info('Starting cleanup of stale connections...');
+    
     for (const [userId, user] of onlineUsers.entries()) {
-      // Remove connections older than 5 minutes or with closed WebSocket
-      if (now - user.lastSeen > 5 * 60 * 1000 || user.ws.readyState !== WebSocket.OPEN) {
-        logger.debug(`Cleaning up stale connection for user ${userId}`);
+      const timeSinceLastSeen = now - user.lastSeen;
+      const isStale = timeSinceLastSeen > 2 * 60 * 1000 || user.ws.readyState !== WebSocket.OPEN;
+      
+      if (isStale) {
+        logger.info(`Cleaning up stale connection for user ${userId}:`, {
+          timeSinceLastSeen: `${Math.round(timeSinceLastSeen / 1000)}s`,
+          connectionState: user.ws.readyState,
+          username: user.username
+        });
+        
         if (user.ws.readyState === WebSocket.OPEN) {
-          user.ws.close();
+          user.ws.close(1000, 'Connection timed out');
         }
         onlineUsers.delete(userId);
         if (connectionCount > 0) connectionCount--;
@@ -247,8 +308,10 @@ export const setupPresenceWebSocketServer = (server) => {
     }
     
     if (cleanedCount > 0) {
-      logger.debug(`Cleaned up ${cleanedCount} stale connections. Active connections: ${connectionCount}`);
+      logger.info(`Cleaned up ${cleanedCount} stale connections. Active connections: ${connectionCount}`);
       broadcastOnlineUsers();
+    } else {
+      logger.info('No stale connections found during cleanup');
     }
   };
 
