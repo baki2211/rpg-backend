@@ -96,12 +96,17 @@ router.post('/login', async (req, res) => {
 
 // Logout route
 router.post('/logout', (req, res) => {
+    // Clear the cookie if it exists
     res.clearCookie('token', {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
         domain: process.env.NODE_ENV === 'production' ? '.onrender.com' : undefined,
     });
+
+    // Also clear any Authorization header
+    res.set('Authorization', '');
+
     res.status(200).json({ message: 'Logged out successfully!' });
 });
 
