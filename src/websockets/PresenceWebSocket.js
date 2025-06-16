@@ -60,7 +60,30 @@ export const setupPresenceWebSocketServer = (server) => {
   }, 120000); // Broadcast every 2 minutes instead of 60 seconds
 
   wss.on('connection', async (ws, req) => {
-    // Force cleanup before checking connection limit
+    const params = new URLSearchParams(req.url?.split('?')[1]);
+    const userId = params.get('userId');
+    const username = params.get('username') || userId;
+
+    if (!userId) {
+      ws.close(1008, 'Missing userId');
+      return;
+    }
+
+    // Check for existing connection and close it BEFORE checking connection limit
+    const existingUser = onlineUsers.get(userId);
+    if (existingUser) {
+      logger.debug(`Closing existing connection for user ${userId} before new connection`);
+      if (existingUser.ws.readyState === WebSocket.OPEN) {
+        existingUser.ws.close(1000, 'Connection refreshed');
+        // Wait for the old connection to be fully closed
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Double check the connection was removed
+        if (connectionCount > 0) connectionCount--;
+        onlineUsers.delete(userId);
+      }
+    }
+
+    // Now check connection limit after old connection is closed
     if (connectionCount >= MAX_CONNECTIONS) {
       logger.warn('Connection limit reached, forcing cleanup before new connection');
       cleanupStaleConnections();
@@ -80,27 +103,6 @@ export const setupPresenceWebSocketServer = (server) => {
           return;
         }
       }
-    }
-
-    const params = new URLSearchParams(req.url?.split('?')[1]);
-    const userId = params.get('userId');
-    const username = params.get('username') || userId;
-
-    if (!userId) {
-      ws.close(1008, 'Missing userId');
-      return;
-    }
-
-    // Check for existing connection and close it with a more graceful message
-    const existingUser = onlineUsers.get(userId);
-    if (existingUser) {
-      logger.debug(`Closing existing connection for user ${userId}`);
-      if (existingUser.ws.readyState === WebSocket.OPEN) {
-        existingUser.ws.close(1000, 'Connection refreshed');
-        if (connectionCount > 0) connectionCount--;
-      }
-      // Add a longer delay to ensure the old connection is properly closed
-      await new Promise(resolve => setTimeout(resolve, 500));
     }
 
     connectionCount++;
@@ -125,7 +127,7 @@ export const setupPresenceWebSocketServer = (server) => {
       characterName: activeCharacter?.name || null,
       location: 'Dashboard',
       lastSeen: new Date(),
-      messageCount: 0, // Track message frequency
+      messageCount: 0,
     };
 
     onlineUsers.set(userId, userInfo);
