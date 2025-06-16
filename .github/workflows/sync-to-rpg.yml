@@ -21,6 +21,8 @@ jobs:
     - name: Copy backend code to RPG
       run: |
         mkdir -p rpg/backend
+        # Create uploads directory if it doesn't exist
+        mkdir -p rpg/backend/uploads
         # Backup deployment-specific files
         if [ -f rpg/backend/src/data-source.js ]; then
           cp rpg/backend/src/data-source.js /tmp/data-source-deploy.js
@@ -38,7 +40,6 @@ jobs:
           --exclude='.env' \
           --exclude='*.log' \
           --exclude='.DS_Store' \
-          --exclude='uploads' \
           --exclude='logs' \
           ./ rpg/backend/
           
