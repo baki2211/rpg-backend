@@ -36,6 +36,7 @@ import rankRoutes from './routes/rank.js';
 import wikiRoutes from './routes/wikiRoutes.js';
 import healthRoutes, { setWebSocketServers } from './routes/healthRoutes.js';
 import presenceRoutes from './routes/presenceRoutes.js';
+import fs from 'fs';
 
 dotenv.config();
 
@@ -128,6 +129,11 @@ app.use('/api/wiki', wikiRoutes);
 app.use('/api/presence', presenceRoutes);
 
 // Static files
+const uploadsDir = path.join(__dirname, '../uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 app.use(errorHandler);
 

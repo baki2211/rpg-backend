@@ -1,11 +1,10 @@
-import { Router } from 'express';
+import express from 'express';
+import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { UserService } from '../services/UserService.js';
-// import { authLimiter } from '../middleware/rateLimiter.js'; // Temporarily disabled for deployment
 
-const router = Router();
+const router = express.Router();
 const userService = new UserService();
-
 const JWT_SECRET = process.env.JWT_SECRET;
 
 // Register route
