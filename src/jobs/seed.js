@@ -16,6 +16,8 @@ import { SessionParticipant } from '../models/sessionParticipantModel.js';
 import { ChatMessage } from '../models/chatMessageModel.js';
 import { Rank } from '../models/rankModel.js';
 import { StatDefinition } from '../models/statDefinitionModel.js';
+import { WikiSection } from '../models/wikiSectionModel.js';
+import { WikiEntry } from '../models/wikiEntryModel.js';
 
 async function seed() {
   try {
@@ -36,6 +38,8 @@ async function seed() {
     const chatMessageRepo = AppDataSource.getRepository(ChatMessage);
     const rankRepo = AppDataSource.getRepository(Rank);
     const statDefinitionRepo = AppDataSource.getRepository(StatDefinition);
+    const wikiSectionRepo = AppDataSource.getRepository(WikiSection);
+    const wikiEntryRepo = AppDataSource.getRepository(WikiEntry);
 
     const userCount = await userRepo.count();
     if (userCount > 0) {
@@ -445,6 +449,330 @@ async function seed() {
       createdAt: new Date(),
       updatedAt: new Date()
     }));
+
+    // Create wiki sections
+    const wikiSectionCount = await wikiSectionRepo.count();
+    if (wikiSectionCount === 0) {
+      const worldSection = await wikiSectionRepo.save(wikiSectionRepo.create({
+        name: 'World Lore',
+        slug: 'world-lore',
+        description: 'The history, mythology, and fundamental truths of our world.',
+        position: 1,
+        isActive: true,
+        createdBy: admin.id
+      }));
+
+      const racesSection = await wikiSectionRepo.save(wikiSectionRepo.create({
+        name: 'Races & Peoples',
+        slug: 'races-peoples',
+        description: 'The various races and cultures that inhabit the world.',
+        position: 2,
+        isActive: true,
+        createdBy: admin.id
+      }));
+
+      const magicSection = await wikiSectionRepo.save(wikiSectionRepo.create({
+        name: 'Magic & Aether',
+        slug: 'magic-aether',
+        description: 'Understanding the mystical forces that shape reality.',
+        position: 3,
+        isActive: true,
+        createdBy: admin.id
+      }));
+
+      const geographySection = await wikiSectionRepo.save(wikiSectionRepo.create({
+        name: 'Geography',
+        slug: 'geography',
+        description: 'Locations, landmarks, and territories of the known world.',
+        position: 4,
+        isActive: true,
+        createdBy: admin.id
+      }));
+
+      // Create wiki entries
+      await wikiEntryRepo.save([
+        // World Lore entries
+        wikiEntryRepo.create({
+          sectionId: worldSection.id,
+          title: 'The Great Convergence',
+          slug: 'great-convergence',
+          content: `# The Great Convergence
+
+The Great Convergence marks the defining moment in our world's history when the mystical energy known as **Aether** first merged with the physical realm. This event fundamentally changed the nature of reality itself, imbuing all living beings with the potential to manipulate the very fabric of existence.
+
+## The Time Before
+
+Before the Convergence, the world was governed by purely physical laws. Magic existed only in distant realms, separated from our reality by impenetrable barriers. Civilizations rose and fell based on technological advancement, political cunning, and military might alone.
+
+## The Event
+
+Approximately 1,000 years ago, reality experienced what scholars call "The Thinning" - a gradual weakening of the barriers between dimensions. This culminated in the Great Convergence, when Aether first flooded into our world.
+
+The initial contact was catastrophic. Entire kingdoms vanished overnight, while others found themselves transformed beyond recognition. The survivors were those who could adapt to this new reality - learning to harmonize with Aether rather than resist it.
+
+## Aftermath and Transformation
+
+The Convergence reshaped everything:
+
+- **Physical Laws**: Matter could now be altered through focused will and Aether manipulation
+- **Biology**: All living creatures gained the ability to channel Aether, though to varying degrees
+- **Society**: New hierarchies emerged based on Aether mastery rather than birthright or wealth
+- **Technology**: Ancient devices powered by steam and clockwork gave way to Aether-infused artifacts`,
+          excerpt: 'The defining moment when Aether merged with our reality, forever changing the world.',
+          tags: ['history', 'aether', 'convergence', 'ancient'],
+          isPublished: true,
+          position: 1,
+          viewCount: 0,
+          createdBy: admin.id
+        }),
+
+        wikiEntryRepo.create({
+          sectionId: worldSection.id,
+          title: 'The Age of Exploration',
+          slug: 'age-of-exploration',
+          content: `# The Age of Exploration
+
+Following the Great Convergence, survivors found themselves in a world both familiar and utterly foreign. The Age of Exploration began as scattered communities ventured forth to rediscover their transformed world.
+
+## Rediscovering the World
+
+The Convergence had not only changed the laws of physics but also the geography itself. Mountains floated in mid-air, sustained by Aether currents. Forests grew in impossible spirals, their trees reaching between dimensions. Seas became navigable through both water and air, as skilled navigators learned to sail on currents of pure energy.
+
+## The First Explorers
+
+Brave souls who first mastered basic Aether manipulation became the pathfinders of this new era. They mapped the shifted continents, catalogued the new flora and fauna, and established contact between isolated survivor settlements.
+
+These early explorers developed the first systematic approaches to Aether mastery, creating the foundation for what would become modern skill branches like Pyromancy, Cryomancy, and Chronomancy.
+
+## Establishing Trade Routes
+
+As communities reconnected, new forms of commerce emerged. Traditional goods remained valuable, but Aether-infused materials became the cornerstone of the new economy. Routes were established not just across land and sea, but through dimensional rifts that experienced navigators could access.`,
+          excerpt: 'How survivors rebuilt civilization after the Convergence, exploring and mapping the transformed world.',
+          tags: ['history', 'exploration', 'post-convergence', 'civilization'],
+          isPublished: true,
+          position: 2,
+          viewCount: 0,
+          createdBy: admin.id
+        }),
+
+        // Races & Peoples entries
+        wikiEntryRepo.create({
+          sectionId: racesSection.id,
+          title: 'Humans',
+          slug: 'humans',
+          content: `# Humans
+
+Humans represent the most adaptable and diverse of all races in the post-Convergence world. While they lack the specialized bonuses of other races, their versatility and natural balance make them capable of mastering any aspect of Aether manipulation.
+
+## Physical Characteristics
+
+Post-Convergence humans retain most of their pre-Convergence appearance, though subtle changes have occurred over the generations. Many humans now display faint luminescent patterns in their eyes when channeling Aether, and their lifespans have increased by approximately 20-30 years.
+
+## Aether Affinity
+
+Humans show remarkable balance across all six primary stats:
+- **Focus**: Natural mental clarity allows for precise Aether channeling
+- **Control**: Inherent dexterity translates well to subtle energy manipulation  
+- **Resilience**: Adaptability helps resist both physical and magical stresses
+- **Instinct**: Survival instincts enhanced by Aether sensitivity
+- **Presence**: Social nature amplified by energy projection abilities
+- **Force**: Moderate but reliable capacity for raw power expression
+
+## Cultural Diversity
+
+Human settlements vary dramatically in their approach to Aether mastery:
+
+### The Academy Cities
+Centers of learning where systematic study of Aether has produced the most advanced magical techniques.
+
+### Nomadic Tribes
+Groups that have embraced a more intuitive, nature-connected approach to energy manipulation.
+
+### Merchant Republics
+Communities focused on the practical applications of Aether for trade and industry.`,
+          excerpt: 'The most adaptable race, capable of balanced mastery across all Aether disciplines.',
+          tags: ['races', 'humans', 'aether', 'adaptable'],
+          isPublished: true,
+          position: 1,
+          viewCount: 0,
+          createdBy: admin.id
+        }),
+
+        // Magic & Aether entries
+        wikiEntryRepo.create({
+          sectionId: magicSection.id,
+          title: 'Understanding Aether',
+          slug: 'understanding-aether',
+          content: `# Understanding Aether
+
+Aether is the fundamental force that permeates all existence since the Great Convergence. It is both energy and information, matter and spirit, existing simultaneously in multiple states until directed by conscious will.
+
+## The Nature of Aether
+
+Aether defies traditional categorization. Scholars describe it as:
+
+- **Responsive**: It reacts to conscious intention and emotional state
+- **Persistent**: Once shaped, it maintains form until actively altered
+- **Interconnected**: All Aether is part of a vast, universal network
+- **Transformative**: It can become any form of energy or matter needed
+
+## The Six Aspects
+
+Aether manipulation is understood through six primary aspects, each corresponding to fundamental approaches to energy work:
+
+### Focus (Mental Clarity)
+The ability to direct attention and intent with precision. High Focus allows for:
+- More accurate targeting of abilities
+- Resistance to mental interference
+- Enhanced learning of new techniques
+
+### Control (Subtle Manipulation)
+Finesse in shaping Aether's form and function. High Control enables:
+- More efficient energy usage
+- Complex multi-layered effects
+- Precise timing of ability activation
+
+### Resilience (Endurance & Resistance)
+The capacity to withstand and work with powerful energies. High Resilience provides:
+- Greater tolerance for energy strain
+- Natural armor against hostile effects
+- Faster recovery from exertion
+
+### Instinct (Reflexive Response)
+Unconscious attunement to Aether flows and dangers. High Instinct grants:
+- Faster reaction times in combat
+- Intuitive understanding of energy patterns
+- Early warning of approaching threats
+
+### Presence (Projected Will)
+The ability to extend one's influence through Aether. High Presence allows:
+- More effective social manipulation
+- Stronger leadership abilities
+- Enhanced intimidation or inspiration
+
+### Force (Raw Power)
+The capacity for dramatic, high-energy manifestations. High Force enables:
+- More devastating offensive abilities
+- Overwhelming defensive barriers
+- Impressive displays of power`,
+          excerpt: 'A comprehensive guide to the mystical energy that shapes reality.',
+          tags: ['aether', 'magic', 'theory', 'fundamentals'],
+          isPublished: true,
+          position: 1,
+          viewCount: 0,
+          createdBy: admin.id
+        }),
+
+        wikiEntryRepo.create({
+          sectionId: magicSection.id,
+          title: 'Pyromancy - The Art of Fire',
+          slug: 'pyromancy',
+          content: `# Pyromancy - The Art of Fire
+
+Pyromancy represents one of the most visually dramatic and immediately powerful branches of Aether manipulation. By channeling raw Force through focused intention, practitioners can manifest and control flames that burn hotter and longer than any natural fire.
+
+## Fundamental Principles
+
+Pyromancy operates on three core principles:
+
+### Ignition
+The initial manifestation of Aether as thermal energy. This requires significant Force to overcome the natural state of matter, but only minimal Focus to maintain once established.
+
+### Intensity
+The control of flame temperature and energy output. Higher Force creates more intense fires, while Control determines precision and efficiency.
+
+### Direction
+The ability to guide and shape flame without losing control. This primarily relies on Control and Focus working in harmony.
+
+## Basic Techniques
+
+### Fireball
+The foundational pyromancy technique, creating a sphere of concentrated flame that can be hurled at targets. Requires:
+- **Force**: 2+ for basic manifestation
+- **Focus**: 3+ for accurate targeting
+- **Aether Cost**: 8 per cast
+
+### Flame Burst
+An advanced technique creating an explosive area effect. The practitioner becomes the center of an expanding ring of fire. Requires:
+- **Force**: 4+ for sufficient power
+- **Focus**: 5+ for maintaining control during explosion
+- **Control**: 2+ for avoiding self-harm
+- **Aether Cost**: 15 per cast
+
+## Advanced Applications
+
+Master pyromancers can achieve effects impossible through conventional means:
+- Flames that burn underwater or in vacuum
+- Fire that freezes rather than burns
+- Emotional resonance flames that respond to the target's feelings
+- Persistent fires that burn for days without fuel`,
+          excerpt: 'The dangerous art of manifesting and controlling supernatural flames.',
+          tags: ['magic', 'pyromancy', 'fire', 'combat', 'techniques'],
+          isPublished: true,
+          position: 2,
+          viewCount: 0,
+          createdBy: admin.id
+        }),
+
+        // Geography entries
+        wikiEntryRepo.create({
+          sectionId: geographySection.id,
+          title: 'The Starting Village',
+          slug: 'starting-village',
+          content: `# The Starting Village
+
+Nestled in a protected valley where Aether currents flow gently and predictably, the Starting Village serves as a sanctuary for those beginning their journey into the transformed world. This peaceful settlement has become the traditional launching point for new adventurers.
+
+## Location and Geography
+
+The village sits at coordinates (55, 35) on the main continental map, positioned at the confluence of three minor Aether streams. This natural arrangement creates a stable magical environment ideal for learning and growth.
+
+### The Valley
+- **Protected**: High ridges on three sides shield from harsh weather and dangerous Aether storms
+- **Fertile**: The soil has been enriched by centuries of gentle Aether infusion
+- **Accessible**: Multiple paths lead out of the valley toward different regions
+
+## Notable Features
+
+### The Training Grounds
+An open area where newcomers can safely practice basic Aether manipulation without risk to themselves or others. The ground here has been specially treated to absorb excess energy.
+
+### The Welcome Hall
+The village's central building, where new arrivals receive orientation about the transformed world and basic instruction in Aether safety.
+
+### The Mentor Circle
+A ring of simple stone monuments where experienced practitioners offer guidance to beginners. Each stone is inscribed with fundamental principles of Aether mastery.
+
+### The Safe House
+Emergency shelter with Aether-dampening properties, providing refuge if someone loses control during practice.
+
+## The Community
+
+The village is home to approximately 200 residents, most of whom are either:
+- **Mentors**: Experienced practitioners who have chosen to help newcomers
+- **Artisans**: Crafters who create basic equipment and supplies for adventurers
+- **Scholars**: Researchers documenting the ongoing changes to the world
+- **Newcomers**: Recent arrivals learning the fundamentals before venturing forth
+
+## Departure Traditions
+
+When someone feels ready to leave the Starting Village, they participate in the "First Step" ceremony. This involves demonstrating basic competency in at least one Aether technique and receiving a blessing from the village elders.
+
+Most departing adventurers choose one of three traditional paths:
+- **The Scholar's Road**: Leading to the Academy Cities
+- **The Merchant Trail**: Connecting to major trade routes
+- **The Wild Path**: Into unexplored territories`,
+          excerpt: 'A peaceful sanctuary where new adventurers begin their journey into the Aether-transformed world.',
+          tags: ['geography', 'village', 'starting-area', 'safe', 'training'],
+          isPublished: true,
+          position: 1,
+          viewCount: 0,
+          createdBy: admin.id
+        })
+      ]);
+
+      console.log('Wiki content seeded successfully');
+    }
 
     console.log('Seed data inserted successfully.');
   } catch (err) {

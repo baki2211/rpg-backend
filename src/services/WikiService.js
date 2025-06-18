@@ -556,7 +556,7 @@ export class WikiService {
       order: { position: 'ASC' }
     });
 
-    const navigation = [];
+    const navigationSections = [];
     
     for (const section of sections) {
       const entries = await this.entryRepository.find({
@@ -565,13 +565,15 @@ export class WikiService {
         order: { position: 'ASC' }
       });
 
-      navigation.push({
+      navigationSections.push({
         ...section,
         entryCount: entries.length,
         entries: entries
       });
     }
 
-    return navigation;
+    return {
+      sections: navigationSections
+    };
   }
 } 
