@@ -5,6 +5,9 @@ import { isAdmin } from '../middleware/adminMiddleware.js';
 
 const router = Router();
 
+// Get location by ID - accessible to all logged-in users
+router.get('/byId/:locationId', authenticateToken, LocationController.getLocationById);
+
 // Admin-only actions
 router.post('/:mapId/new', (req, _res, next) => {
     console.log('Route matched for POST /api/locations/:mapId/new', req.params);
