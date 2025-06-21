@@ -8,6 +8,12 @@ export class RaceService {
         return this.raceRepository.find();
     }
 
+    async getPlayableRaces() {
+        return this.raceRepository.find({ 
+            where: { isPlayable: true }
+        });
+    }
+
     async getRaceById(id) {
         return this.raceRepository.findOne({ where: { id } });
     }

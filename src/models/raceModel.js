@@ -66,6 +66,10 @@ export const Race = new EntitySchema({
             type: 'int',
             default: 0,
         },
+        isPlayable: {
+            type: 'boolean',
+            default: true,
+        },
     },
     relations: {
         characters: {

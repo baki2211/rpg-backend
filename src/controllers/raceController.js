@@ -13,6 +13,16 @@ export class RaceController {
         }
     }
 
+    static async getPlayableRaces(req, res) {
+        try {
+            const races = await raceService.getPlayableRaces();
+            res.status(200).json(races);
+        } catch (error) {
+            const err = error;
+            res.status(500).json({ message: 'Error fetching playable races', error: err.message });
+        }
+    }
+
     static async getRaceById(req, res) {
         try {
             const race = await raceService.getRaceById(parseInt(req.params.id));

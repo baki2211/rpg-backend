@@ -9,6 +9,9 @@ const router = Router();
 // Get all races
 router.get('/', authenticateToken, RaceController.getAllRaces);
 
+// Get playable races only (for character creation)
+router.get('/playable', authenticateToken, RaceController.getPlayableRaces);
+
 // Get a race by ID
 router.get('/:id', authenticateToken, RaceController.getRaceById);
 
