@@ -175,6 +175,31 @@ export const adminGetEntries = async (req, res) => {
   }
 };
 
+export const adminGetEntriesHierarchical = async (req, res) => {
+  try {
+    const { sectionId } = req.params;
+    const includeUnpublished = req.query.includeUnpublished === 'true';
+    
+    const entries = await wikiService.getEntriesHierarchical(parseInt(sectionId), includeUnpublished);
+    
+    res.json({
+      success: true,
+      data: entries,
+      meta: {
+        total: entries.length,
+        sectionId: parseInt(sectionId)
+      }
+    });
+  } catch (error) {
+    logger.error('Error fetching hierarchical entries:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch hierarchical entries',
+      error: error.message
+    });
+  }
+};
+
 export const adminGetAllEntries = async (req, res) => {
   try {
     const includeUnpublished = req.query.includeUnpublished === 'true';
@@ -227,7 +252,7 @@ export const adminGetEntry = async (req, res) => {
 
 export const adminCreateEntry = async (req, res) => {
   try {
-    const { sectionId, title, content, excerpt, tags, isPublished, position } = req.body;
+    const { sectionId, title, content, excerpt, tags, isPublished, position, parentEntryId } = req.body;
     
     if (!sectionId || !title || !content) {
       return res.status(400).json({
@@ -243,7 +268,8 @@ export const adminCreateEntry = async (req, res) => {
       excerpt,
       tags: Array.isArray(tags) ? tags : (tags ? [tags] : []),
       isPublished: isPublished !== undefined ? isPublished : true,
-      position
+      position,
+      parentEntryId: parentEntryId ? parseInt(parentEntryId) : null
     };
 
     const entry = await wikiService.createEntry(entryData, req.user.id);
@@ -260,6 +286,20 @@ export const adminCreateEntry = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: 'Section not found'
+      });
+    }
+
+    if (error.message === 'Parent entry not found') {
+      return res.status(404).json({
+        success: false,
+        message: 'Parent entry not found'
+      });
+    }
+
+    if (error.message === 'Maximum nesting level (4) exceeded') {
+      return res.status(400).json({
+        success: false,
+        message: 'Maximum nesting level (4) exceeded'
       });
     }
 

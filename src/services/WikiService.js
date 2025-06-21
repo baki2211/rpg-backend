@@ -262,9 +262,41 @@ export class WikiService {
 
     return await this.entryRepository.find({
       where: whereCondition,
-      relations: ['creator', 'section'],
-      order: { position: 'ASC', title: 'ASC' }
+      relations: ['creator', 'section', 'parentEntry', 'childEntries'],
+      order: { level: 'ASC', position: 'ASC', title: 'ASC' }
     });
+  }
+
+  /**
+   * Get entries in hierarchical structure
+   * @param {number} sectionId - Section ID
+   * @param {boolean} includeUnpublished - Include unpublished entries
+   * @returns {Promise<Array>} Hierarchical entries
+   */
+  async getEntriesHierarchical(sectionId, includeUnpublished = false) {
+    const entries = await this.getEntriesBySection(sectionId, includeUnpublished);
+    
+    // Build hierarchy
+    const entryMap = new Map();
+    const rootEntries = [];
+
+    // First pass: create map and identify root entries
+    entries.forEach(entry => {
+      entryMap.set(entry.id, { ...entry, children: [] });
+      if (!entry.parentEntryId) {
+        rootEntries.push(entry.id);
+      }
+    });
+
+    // Second pass: build parent-child relationships
+    entries.forEach(entry => {
+      if (entry.parentEntryId && entryMap.has(entry.parentEntryId)) {
+        entryMap.get(entry.parentEntryId).children.push(entryMap.get(entry.id));
+      }
+    });
+
+    // Return root entries with their children
+    return rootEntries.map(id => entryMap.get(id)).filter(Boolean);
   }
 
   /**
@@ -315,6 +347,22 @@ export class WikiService {
       throw new Error('Section not found');
     }
 
+    // Handle parent entry and level validation
+    let level = 1;
+    if (entryData.parentEntryId) {
+      const parentEntry = await this.getEntryById(entryData.parentEntryId);
+      if (!parentEntry) {
+        throw new Error('Parent entry not found');
+      }
+      if (parentEntry.sectionId !== entryData.sectionId) {
+        throw new Error('Parent entry must be in the same section');
+      }
+      level = parentEntry.level + 1;
+      if (level > 4) {
+        throw new Error('Maximum nesting level (4) exceeded');
+      }
+    }
+
     // Generate slug
     const baseSlug = this.generateSlug(entryData.title);
     const slug = await this.ensureUniqueSlug(baseSlug, 'entry', entryData.sectionId);
@@ -324,10 +372,20 @@ export class WikiService {
       entryData.excerpt = this.generateExcerpt(entryData.content);
     }
 
-    // Get next position if not provided
+    // Get next position if not provided (within parent level)
     if (!entryData.position) {
+      const whereCondition = { 
+        sectionId: entryData.sectionId, 
+        level: level 
+      };
+      if (entryData.parentEntryId) {
+        whereCondition.parentEntryId = entryData.parentEntryId;
+      } else {
+        whereCondition.parentEntryId = null;
+      }
+
       const lastEntry = await this.entryRepository.findOne({
-        where: { sectionId: entryData.sectionId },
+        where: whereCondition,
         order: { position: 'DESC' }
       });
       entryData.position = (lastEntry?.position || 0) + 1;
@@ -336,14 +394,17 @@ export class WikiService {
     const entry = this.entryRepository.create({
       ...entryData,
       slug,
+      level,
       createdBy
     });
 
     const savedEntry = await this.entryRepository.save(entry);
     
-    logger.info(`Wiki entry created: ${savedEntry.title} in ${section.name}`, {
+    logger.info(`Wiki entry created: ${savedEntry.title} in ${section.name} - Level ${level}`, {
       entryId: savedEntry.id,
       sectionId: entryData.sectionId,
+      parentEntryId: entryData.parentEntryId,
+      level,
       createdBy
     });
 
@@ -547,7 +608,7 @@ export class WikiService {
   }
 
   /**
-   * Get navigation structure for public view
+   * Get navigation structure for public view with hierarchy
    * @returns {Promise<Object>} Navigation structure
    */
   async getPublicNavigation() {
@@ -559,16 +620,39 @@ export class WikiService {
     const navigationSections = [];
     
     for (const section of sections) {
+      // Get all entries for the section with hierarchy info
       const entries = await this.entryRepository.find({
         where: { sectionId: section.id, isPublished: true },
-        select: ['id', 'title', 'slug', 'excerpt'],
-        order: { position: 'ASC' }
+        select: ['id', 'title', 'slug', 'excerpt', 'parentEntryId', 'level'],
+        order: { level: 'ASC', position: 'ASC' }
       });
+
+      // Build hierarchical structure
+      const entryMap = new Map();
+      const rootEntries = [];
+
+      // First pass: create map and identify root entries
+      entries.forEach(entry => {
+        entryMap.set(entry.id, { ...entry, children: [] });
+        if (!entry.parentEntryId) {
+          rootEntries.push(entry.id);
+        }
+      });
+
+      // Second pass: build parent-child relationships
+      entries.forEach(entry => {
+        if (entry.parentEntryId && entryMap.has(entry.parentEntryId)) {
+          entryMap.get(entry.parentEntryId).children.push(entryMap.get(entry.id));
+        }
+      });
+
+      // Get the hierarchical entries
+      const hierarchicalEntries = rootEntries.map(id => entryMap.get(id)).filter(Boolean);
 
       navigationSections.push({
         ...section,
         entryCount: entries.length,
-        entries: entries
+        entries: hierarchicalEntries
       });
     }
 

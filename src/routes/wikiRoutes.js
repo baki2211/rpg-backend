@@ -10,6 +10,7 @@ import {
   
   // Admin Entry endpoints
   adminGetEntries,
+  adminGetEntriesHierarchical,
   adminGetAllEntries,
   adminGetEntry,
   adminCreateEntry,
@@ -43,6 +44,7 @@ router.put('/admin/sections/reorder', authenticateToken, requireRole(['admin', '
 
 // Entry management
 router.get('/admin/sections/:sectionId/entries', authenticateToken, requireRole(['admin', 'master']), adminGetEntries);
+router.get('/admin/sections/:sectionId/entries/hierarchical', authenticateToken, requireRole(['admin', 'master']), adminGetEntriesHierarchical);
 router.get('/admin/entries', authenticateToken, requireRole(['admin', 'master']), adminGetAllEntries);
 router.get('/admin/entries/:id', authenticateToken, requireRole(['admin', 'master']), adminGetEntry);
 router.post('/admin/entries', authenticateToken, requireRole(['admin', 'master']), adminCreateEntry);
