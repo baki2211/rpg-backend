@@ -321,6 +321,13 @@ export const adminUpdateEntry = async (req, res) => {
       updateData.tags = [updateData.tags];
     }
 
+    // Handle parentEntryId conversion
+    if (updateData.parentEntryId === '') {
+      updateData.parentEntryId = null;
+    } else if (updateData.parentEntryId && typeof updateData.parentEntryId === 'string') {
+      updateData.parentEntryId = parseInt(updateData.parentEntryId);
+    }
+
     const entry = await wikiService.updateEntry(parseInt(id), updateData);
     
     res.json({
@@ -335,6 +342,35 @@ export const adminUpdateEntry = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: 'Entry not found'
+      });
+    }
+
+    if (error.message === 'Parent entry not found') {
+      return res.status(404).json({
+        success: false,
+        message: 'Parent entry not found'
+      });
+    }
+
+    if (error.message === 'Parent entry must be in the same section') {
+      return res.status(400).json({
+        success: false,
+        message: 'Parent entry must be in the same section'
+      });
+    }
+
+    if (error.message === 'Cannot set parent: would create circular reference') {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot set parent: would create circular reference'
+      });
+    }
+
+    if (error.message === 'Maximum nesting level (4) exceeded' || 
+        error.message.includes('Update would exceed maximum nesting level')) {
+      return res.status(400).json({
+        success: false,
+        message: 'Maximum nesting level (4) exceeded'
       });
     }
 

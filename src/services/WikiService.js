@@ -418,30 +418,146 @@ export class WikiService {
    * @returns {Promise<Object>} Updated entry
    */
   async updateEntry(id, updateData) {
-    const entry = await this.getEntryById(id);
-    if (!entry) {
-      throw new Error('Entry not found');
-    }
+    return await AppDataSource.transaction(async (manager) => {
+      const entryRepo = manager.getRepository(WikiEntry);
+      
+      const entry = await entryRepo.findOne({
+        where: { id },
+        relations: ['childEntries']
+      });
+      
+      if (!entry) {
+        throw new Error('Entry not found');
+      }
 
-    // Generate new slug if title changed
-    if (updateData.title && updateData.title !== entry.title) {
-      const baseSlug = this.generateSlug(updateData.title);
-      updateData.slug = await this.ensureUniqueSlug(baseSlug, 'entry', entry.sectionId, id);
-    }
+      // Handle parent entry changes and level recalculation
+      let newLevel = entry.level;
+      let levelChanged = false;
+      
+      if (updateData.parentEntryId !== undefined) {
+        // Validate parent change
+        if (updateData.parentEntryId !== null && updateData.parentEntryId !== entry.parentEntryId) {
+          const newParent = await entryRepo.findOne({ where: { id: updateData.parentEntryId } });
+          
+          if (!newParent) {
+            throw new Error('Parent entry not found');
+          }
+          
+          if (newParent.sectionId !== entry.sectionId) {
+            throw new Error('Parent entry must be in the same section');
+          }
+          
+          // Prevent circular references
+          if (await this.wouldCreateCircularReference(id, updateData.parentEntryId, manager)) {
+            throw new Error('Cannot set parent: would create circular reference');
+          }
+          
+          newLevel = newParent.level + 1;
+          
+          if (newLevel > 4) {
+            throw new Error('Maximum nesting level (4) exceeded');
+          }
+          
+          levelChanged = newLevel !== entry.level;
+        } else if (updateData.parentEntryId === null && entry.parentEntryId !== null) {
+          // Moving to root level
+          newLevel = 1;
+          levelChanged = newLevel !== entry.level;
+        }
+      }
 
-    // Update excerpt if content changed
-    if (updateData.content && !updateData.excerpt) {
-      updateData.excerpt = this.generateExcerpt(updateData.content);
-    }
+      // Generate new slug if title changed
+      if (updateData.title && updateData.title !== entry.title) {
+        const baseSlug = this.generateSlug(updateData.title);
+        updateData.slug = await this.ensureUniqueSlug(baseSlug, 'entry', entry.sectionId, id);
+      }
 
-    await this.entryRepository.update(id, updateData);
-    
-    logger.info(`Wiki entry updated: ${entry.title}`, {
-      entryId: id,
-      changes: Object.keys(updateData)
+      // Update excerpt if content changed
+      if (updateData.content && !updateData.excerpt) {
+        updateData.excerpt = this.generateExcerpt(updateData.content);
+      }
+
+      // Update the entry with the new level if it changed
+      if (levelChanged) {
+        updateData.level = newLevel;
+      }
+
+      await entryRepo.update(id, updateData);
+      
+      // If level changed, recursively update all descendant levels
+      if (levelChanged) {
+        await this.updateDescendantLevels(id, newLevel, manager);
+      }
+      
+      logger.info(`Wiki entry updated: ${entry.title}`, {
+        entryId: id,
+        changes: Object.keys(updateData),
+        levelChanged,
+        newLevel: levelChanged ? newLevel : entry.level
+      });
+
+      return this.getEntryById(id);
     });
+  }
 
-    return this.getEntryById(id);
+  /**
+   * Check if changing parent would create a circular reference
+   * @param {number} entryId - Entry being moved
+   * @param {number} newParentId - Proposed new parent
+   * @param {Object} manager - Transaction manager
+   * @returns {Promise<boolean>} True if would create circular reference
+   */
+  async wouldCreateCircularReference(entryId, newParentId, manager) {
+    const entryRepo = manager.getRepository(WikiEntry);
+    
+    // Walk up the tree from the new parent to see if we encounter the entry being moved
+    let currentParentId = newParentId;
+    
+    while (currentParentId) {
+      if (currentParentId === entryId) {
+        return true; // Circular reference detected
+      }
+      
+      const parent = await entryRepo.findOne({ 
+        where: { id: currentParentId },
+        select: ['parentEntryId']
+      });
+      
+      if (!parent) break;
+      currentParentId = parent.parentEntryId;
+    }
+    
+    return false;
+  }
+
+  /**
+   * Recursively update levels of all descendant entries
+   * @param {number} parentId - Parent entry ID
+   * @param {number} parentLevel - Parent's new level
+   * @param {Object} manager - Transaction manager
+   */
+  async updateDescendantLevels(parentId, parentLevel, manager) {
+    const entryRepo = manager.getRepository(WikiEntry);
+    
+    // Find all direct children
+    const children = await entryRepo.find({
+      where: { parentEntryId: parentId },
+      select: ['id', 'level']
+    });
+    
+    // Update each child's level and recursively update their children
+    for (const child of children) {
+      const newChildLevel = parentLevel + 1;
+      
+      if (newChildLevel > 4) {
+        throw new Error(`Update would exceed maximum nesting level for entry ${child.id}`);
+      }
+      
+      await entryRepo.update(child.id, { level: newChildLevel });
+      
+      // Recursively update this child's descendants
+      await this.updateDescendantLevels(child.id, newChildLevel, manager);
+    }
   }
 
   /**
@@ -562,23 +678,80 @@ export class WikiService {
    * @returns {Promise<Object>} Wiki statistics
    */
   async getWikiStats() {
-    const [sectionCount, entryCount, publishedCount] = await Promise.all([
+    const [
+      totalSections,
+      activeSections,
+      totalEntries,
+      publishedEntries,
+      totalViews,
+      popularTags,
+      levelDistribution
+    ] = await Promise.all([
+      this.sectionRepository.count(),
       this.sectionRepository.count({ where: { isActive: true } }),
       this.entryRepository.count(),
-      this.entryRepository.count({ where: { isPublished: true } })
+      this.entryRepository.count({ where: { isPublished: true } }),
+      this.entryRepository
+        .createQueryBuilder('entry')
+        .select('SUM(entry.viewCount)', 'totalViews')
+        .getRawOne(),
+      this.getPopularTags(),
+      this.getLevelDistribution()
     ]);
 
-    const totalViews = await this.entryRepository
-      .createQueryBuilder('entry')
-      .select('SUM(entry.viewCount)', 'totalViews')
-      .getRawOne();
-
     return {
-      sections: sectionCount,
-      totalEntries: entryCount,
-      publishedEntries: publishedCount,
-      totalViews: parseInt(totalViews.totalViews) || 0
+      totalSections,
+      activeSections,
+      totalEntries,
+      publishedEntries,
+      totalViews: parseInt(totalViews.totalViews) || 0,
+      popularTags,
+      levelDistribution
     };
+  }
+
+  /**
+   * Get popular tags with counts
+   * @returns {Promise<Array>} Popular tags
+   */
+  async getPopularTags() {
+    const entries = await this.entryRepository.find({
+      where: { isPublished: true },
+      select: ['tags']
+    });
+
+    const tagCounts = new Map();
+    entries.forEach(entry => {
+      if (entry.tags && Array.isArray(entry.tags)) {
+        entry.tags.forEach(tag => {
+          tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1);
+        });
+      }
+    });
+
+    return Array.from(tagCounts.entries())
+      .map(([tag, count]) => ({ tag, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 20);
+  }
+
+  /**
+   * Get distribution of entries by level
+   * @returns {Promise<Array>} Level distribution
+   */
+  async getLevelDistribution() {
+    const distribution = await this.entryRepository
+      .createQueryBuilder('entry')
+      .select('entry.level', 'level')
+      .addSelect('COUNT(*)', 'count')
+      .groupBy('entry.level')
+      .orderBy('entry.level', 'ASC')
+      .getRawMany();
+
+    return distribution.map(item => ({
+      level: parseInt(item.level),
+      count: parseInt(item.count)
+    }));
   }
 
   /**
