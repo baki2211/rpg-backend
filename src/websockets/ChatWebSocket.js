@@ -180,7 +180,9 @@ export const setupWebSocketServer = () => {
             id: savedMessage.skillId,
             name: savedMessage.skillName,
             branch: savedMessage.skillBranch,
-            type: savedMessage.skillType
+            type: savedMessage.skillType,
+            output: savedMessage.skillOutput,
+            roll: savedMessage.skillRoll
           } : null
         });
 

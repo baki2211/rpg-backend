@@ -16,6 +16,33 @@ export class ChatService {
   characterService = new CharacterService();
   sessionService = new SessionService();
 
+  /**
+   * Categorize skill types into broad categories for validation
+   * @param {string} skillTypeName - The name of the skill type
+   * @returns {string} The category
+   */
+  getSkillTypeCategory(skillTypeName) {
+    if (!skillTypeName) return 'Unknown';
+    
+    const name = skillTypeName.toLowerCase();
+    
+    if (name.includes('attack') || name.includes('offensive') || name.includes('damage')) {
+      return 'Attack';
+    } else if (name.includes('debuff') || name.includes('curse') || name.includes('weaken')) {
+      return 'Debuff';
+    } else if (name.includes('defence') || name.includes('defensive') || name.includes('block') || name.includes('shield')) {
+      return 'Defence';
+    } else if (name.includes('buff') || name.includes('enhance') || name.includes('boost')) {
+      return 'Buff';
+    } else if (name.includes('heal') || name.includes('restore') || name.includes('recovery')) {
+      return 'Heal';
+    } else if (name.includes('support')) {
+      return 'Support';
+    } else {
+      return 'Other';
+    }
+  }
+
   async getMessagesByLocation(locationId) {
     // Fetch messages from the past 5 hours
     const fiveHoursAgo = new Date(Date.now() - 5 * 60 * 60 * 1000);
@@ -31,7 +58,9 @@ export class ChatService {
         id: message.skillId,
         name: message.skillName,
         branch: message.skillBranch,
-        type: message.skillType
+        type: message.skillType,
+        output: message.skillOutput,
+        roll: message.skillRoll
       } : null
     }));
   }
@@ -43,6 +72,89 @@ export class ChatService {
     });
     if (!character) {
       throw new Error('No active character found for this user.');
+    }
+
+    // If skill is provided, validate and process it
+    if (skill && skill.id) {
+      try {
+        // Get the full skill data if we only have basic info
+        const fullSkill = await AppDataSource.getRepository('Skill').findOne({
+          where: { id: skill.id },
+          relations: ['branch', 'type']
+        });
+
+        if (fullSkill) {
+          // Check context for skill validation
+          const { CombatService } = await import('./CombatService.js');
+          const { EventService } = await import('./EventService.js');
+          
+          const combatService = new CombatService();
+          const eventService = new EventService();
+          
+          const [activeRound, activeEvent] = await Promise.all([
+            combatService.getActiveRound(locationId).catch(() => null),
+            eventService.getActiveEvent(locationId).catch(() => null)
+          ]);
+
+          // Validate skill usage based on context
+          const skillTypeCategory = this.getSkillTypeCategory(fullSkill.type?.name);
+          const isAttackOrDebuff = skillTypeCategory === 'Attack' || skillTypeCategory === 'Debuff';
+          const hasOtherTarget = fullSkill.target === 'other' && skill.selectedTarget;
+
+          // Attack/Debuff skills with 'other' target require active combat round
+          if (isAttackOrDebuff && hasOtherTarget && !activeRound) {
+            throw new Error('Attack and Debuff skills targeting other players can only be used during active combat rounds');
+          }
+
+          // Skills with 'other' target require at least an active event (unless it's self/none/any target)
+          if (hasOtherTarget && !activeEvent && !activeRound) {
+            throw new Error('Skills targeting other players can only be used during active events or combat rounds');
+          }
+
+          const { SkillEngine } = await import('./SkillEngine.js');
+          const skillEngine = new SkillEngine(character, fullSkill);
+          const finalOutput = await skillEngine.computeFinalOutput();
+          const outcomeMultiplier = skillEngine.rollOutcome();
+
+          // Determine roll quality
+          let rollQuality = 'Standard';
+          if (outcomeMultiplier <= 0.6) rollQuality = 'Poor';
+          else if (outcomeMultiplier >= 1.4) rollQuality = 'Critical';
+          
+          // Add the results to the skill data for chat display
+          skill = {
+            ...skill,
+            output: finalOutput,
+            roll: `${rollQuality} Success`
+          };
+
+          // If there's an active combat round and this skill targets others, submit to combat
+          if (activeRound && hasOtherTarget) {
+            try {
+              // Submit action to combat with pre-calculated values
+              await combatService.submitAction(
+                activeRound.id,
+                character.id,
+                fullSkill.id,
+                skill.selectedTarget?.characterId || null,
+                {
+                  finalOutput,
+                  rollQuality
+                }
+              );
+            } catch (error) {
+              // Log but don't fail the chat message if combat submission fails
+              logger.error('Failed to submit action to combat:', { error: error.message });
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error processing skill:', error);
+        // Re-throw validation errors to prevent invalid skills from being sent
+        if (error.message.includes('can only be used during')) {
+          throw error;
+        }
+      }
     }
 
     // Determine if this is a "valid message" (more than 800 characters)
@@ -117,6 +229,8 @@ export class ChatService {
         skillName: skill.name,
         skillBranch: skill.branch?.name || skill.branch,
         skillType: skill.type?.name || skill.type,
+        skillOutput: skill.output,
+        skillRoll: skill.roll,
       }),
     });
 
@@ -156,7 +270,18 @@ export class ChatService {
       throw new Error('Skill not found');
     }
 
-    // Create skill engine instance and calculate output
+    // Only increment skill usage counters for experience-gaining messages
+    // Combat/event skill usage is handled by CombatService and EventService
+    const usageResult = await SkillUsageService.incrementSkillUsage(
+      character.id, 
+      skill.id, 
+      skill.branchId
+    );
+    
+    logger.skill(`Updated skill usage for ${fullSkill.name}: ${usageResult.skillUses} uses`);
+    logger.skill(`Updated branch usage for branch ${skill.branchId}: ${usageResult.branchUses} uses`);
+
+    // Create skill engine instance and calculate output for the chat message
     const skillEngine = new SkillEngine(character, fullSkill);
     const finalOutput = await skillEngine.computeFinalOutput();
     const outcomeMultiplier = skillEngine.rollOutcome();
@@ -166,7 +291,7 @@ export class ChatService {
     if (outcomeMultiplier <= 0.6) rollQuality = 'Poor';
     else if (outcomeMultiplier >= 1.4) rollQuality = 'Critical';
 
-    // Create engine log for skill usage
+    // Create engine log for skill usage in chat (outside combat/events)
     const engineData = {
       basePower: fullSkill.basePower,
       finalOutput,
@@ -192,7 +317,7 @@ export class ChatService {
       targetName = character.name;
     }
 
-    // Create the engine log
+    // Create the engine log for chat-based skill usage
     await this.engineLogService.logSkillUsage(
       locationId,
       character.name,
@@ -201,15 +326,5 @@ export class ChatService {
       finalOutput,
       engineData
     );
-
-    // Increment skill usage counters
-    const usageResult = await SkillUsageService.incrementSkillUsage(
-      character.id, 
-      skill.id, 
-      skill.branchId
-    );
-    
-    logger.skill(`Updated skill usage for ${fullSkill.name}: ${usageResult.skillUses} uses`);
-    logger.skill(`Updated branch usage for branch ${skill.branchId}: ${usageResult.branchUses} uses`);
   }
 }

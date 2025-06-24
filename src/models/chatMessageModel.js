@@ -12,6 +12,10 @@ export const ChatMessage = new EntitySchema({
     userId: {
       type: 'int',
     },
+    characterId: {
+      type: 'int',
+      nullable: true,
+    },
     username: {
       type: 'varchar',
       length: 100,
@@ -38,6 +42,15 @@ export const ChatMessage = new EntitySchema({
       nullable: true,
     },
     skillType: {
+      type: 'varchar',
+      length: 100,
+      nullable: true,
+    },
+    skillOutput: {
+      type: 'int',
+      nullable: true,
+    },
+    skillRoll: {
       type: 'varchar',
       length: 100,
       nullable: true,

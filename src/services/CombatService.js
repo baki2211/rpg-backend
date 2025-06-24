@@ -82,9 +82,10 @@ export class CombatService {
      * @param {number} characterId - The character performing the action
      * @param {number} skillId - The skill being used
      * @param {number} targetId - The target character (null for self/area skills)
+     * @param {Object|null} preCalculatedValues - Pre-calculated skill values from ChatService
      * @returns {Promise<Object>} The created combat action
      */
-    async submitAction(roundId, characterId, skillId, targetId = null) {
+    async submitAction(roundId, characterId, skillId, targetId = null, preCalculatedValues = null) {
         // Verify round exists and is active
         const round = await this.roundRepository.findOne({
             where: { id: roundId, status: 'active' }
@@ -228,15 +229,72 @@ export class CombatService {
             }
         }
 
-        // Calculate skill output using SkillEngine
-        const skillEngine = new SkillEngine(character, skill);
-        const finalOutput = await skillEngine.computeFinalOutput();
-        const outcomeMultiplier = skillEngine.rollOutcome();
+        // Use pre-calculated values if provided, otherwise calculate using SkillEngine
+        let finalOutput, outcomeMultiplier, rollQuality;
+        
+        if (preCalculatedValues) {
+          // Use pre-calculated values from ChatService
+          finalOutput = preCalculatedValues.finalOutput;
+          rollQuality = preCalculatedValues.rollQuality;
+          
+          // Calculate approximate outcomeMultiplier based on roll quality
+          if (rollQuality === 'Critical') {
+            outcomeMultiplier = 1.4;
+          } else if (rollQuality === 'Poor') {
+            outcomeMultiplier = 0.6;
+          } else {
+            outcomeMultiplier = 1.0;
+          }
+        } else {
+          // Fall back to calculating new values or looking for recent chat message
+          try {
+            const { ChatMessage } = await import('../models/chatMessageModel.js');
+            const chatRepository = AppDataSource.getRepository(ChatMessage);
+            const { MoreThanOrEqual, Not, IsNull } = await import('typeorm');
+            
+            // Look for recent chat message (within last 5 minutes) with this skill
+            const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+            
+            const recentSkillMessage = await chatRepository.findOne({
+              where: {
+                characterId: character.id,
+                skillId: skill.id,
+                skillOutput: Not(IsNull()),
+                createdAt: MoreThanOrEqual(fiveMinutesAgo)
+              },
+              order: { createdAt: 'DESC' }
+            });
 
-        // Determine roll quality
-        let rollQuality = 'Standard';
-        if (outcomeMultiplier <= 0.6) rollQuality = 'Poor';
-        else if (outcomeMultiplier >= 1.4) rollQuality = 'Critical';
+            if (recentSkillMessage && recentSkillMessage.skillOutput && recentSkillMessage.skillRoll) {
+              // Use pre-calculated values from chat
+              finalOutput = recentSkillMessage.skillOutput;
+              
+              // Parse roll quality from skillRoll (e.g., "Critical Success" -> "Critical")
+              if (recentSkillMessage.skillRoll.includes('Critical')) {
+                rollQuality = 'Critical';
+                outcomeMultiplier = 1.4;
+              } else if (recentSkillMessage.skillRoll.includes('Poor')) {
+                rollQuality = 'Poor';
+                outcomeMultiplier = 0.6;
+              } else {
+                rollQuality = 'Standard';
+                outcomeMultiplier = 1.0;
+              }
+            } else {
+              throw new Error('No recent chat values found');
+            }
+          } catch (error) {
+            // Calculate new values using SkillEngine
+            const skillEngine = new SkillEngine(character, skill);
+            finalOutput = await skillEngine.computeFinalOutput();
+            outcomeMultiplier = skillEngine.rollOutcome();
+
+            // Determine roll quality
+            rollQuality = 'Standard';
+            if (outcomeMultiplier <= 0.6) rollQuality = 'Poor';
+            else if (outcomeMultiplier >= 1.4) rollQuality = 'Critical';
+          }
+        }
 
         // Check if character already has an action in this round
         const existingAction = await this.actionRepository.findOne({
