@@ -95,6 +95,15 @@ export class CombatService {
             throw new Error('Combat round not found or not active');
         }
 
+        // Check if character already has an action in this round FIRST (before doing expensive operations)
+        const existingAction = await this.actionRepository.findOne({
+            where: { roundId, characterId }
+        });
+
+        if (existingAction) {
+            throw new Error('Character has already submitted an action for this round');
+        }
+
         // Get character and skill data
         const [character, skill] = await Promise.all([
             this.characterRepository.findOne({
@@ -124,20 +133,18 @@ export class CombatService {
                 throw new Error('This skill requires a target other than yourself');
             }
             
-            target = await this.characterRepository.findOne({ where: { id: targetId } });
+            target = await this.characterRepository.findOne({ where: { id: targetId, isActive: true } });
             if (!target) {
                 // Try to find by user ID if character ID lookup failed (common frontend mistake)
                 target = await this.characterRepository.findOne({ 
                     where: { userId: targetId, isActive: true } 
                 });
                 if (target) {
-                    console.log('Found target by user ID:', targetId, '-> Character:', target.name, 'ID:', target.id);
                     finalTargetId = target.id;
                 } else {
                     // Try to find by name if both ID lookups failed
-                    target = await this.characterRepository.findOne({ where: { name: targetId } });
+                    target = await this.characterRepository.findOne({ where: { name: targetId, isActive: true } });
                     if (target) {
-                        console.log('Found target by name:', target.name, 'ID:', target.id);
                         finalTargetId = target.id;
                     } else {
                         // Get available characters for better error message
@@ -164,18 +171,17 @@ export class CombatService {
                 target = character;
             } else {
                 // Other-targeting
-                target = await this.characterRepository.findOne({ where: { id: targetId } });
+                target = await this.characterRepository.findOne({ where: { id: targetId, isActive: true } });
                 if (!target) {
                     // Try to find by user ID if character ID lookup failed (common frontend mistake)
                     target = await this.characterRepository.findOne({ 
                         where: { userId: targetId, isActive: true } 
                     });
                     if (target) {
-                        console.log('Found target by user ID:', targetId, '-> Character:', target.name, 'ID:', target.id);
                         finalTargetId = target.id;
                     } else {
                         // Try to find by name if both ID lookups failed
-                        target = await this.characterRepository.findOne({ where: { name: targetId } });
+                        target = await this.characterRepository.findOne({ where: { name: targetId, isActive: true } });
                         if (target) {
                             finalTargetId = target.id;
                         } else {
@@ -199,18 +205,17 @@ export class CombatService {
         } else {
             // Handle any other target types or default behavior
             if (targetId) {
-                target = await this.characterRepository.findOne({ where: { id: targetId } });
+                target = await this.characterRepository.findOne({ where: { id: targetId, isActive: true } });
                 if (!target) {
                     // Try to find by user ID if character ID lookup failed (common frontend mistake)
                     target = await this.characterRepository.findOne({ 
                         where: { userId: targetId, isActive: true } 
                     });
                     if (target) {
-                        console.log('Found target by user ID:', targetId, '-> Character:', target.name, 'ID:', target.id);
                         finalTargetId = target.id;
                     } else {
                         // Try to find by name if both ID lookups failed
-                        target = await this.characterRepository.findOne({ where: { name: targetId } });
+                        target = await this.characterRepository.findOne({ where: { name: targetId, isActive: true } });
                         if (target) {
                             finalTargetId = target.id;
                         } else {
@@ -226,6 +231,10 @@ export class CombatService {
                 } else {
                     finalTargetId = targetId;
                 }
+            } else {
+                // Default to self for unknown target types
+                finalTargetId = characterId;
+                target = character;
             }
         }
 
@@ -265,6 +274,19 @@ export class CombatService {
               order: { createdAt: 'DESC' }
             });
 
+            // Also try to find ANY recent message with this skill (in case timing is off)
+            if (!recentSkillMessage) {
+              const recentMessages = await chatRepository.find({
+                where: {
+                  characterId: character.id,
+                  skillId: skill.id,
+                  skillOutput: Not(IsNull())
+                },
+                order: { createdAt: 'DESC' },
+                take: 10
+              });
+            }
+
             if (recentSkillMessage && recentSkillMessage.skillOutput && recentSkillMessage.skillRoll) {
               // Use pre-calculated values from chat
               finalOutput = recentSkillMessage.skillOutput;
@@ -294,15 +316,6 @@ export class CombatService {
             if (outcomeMultiplier <= 0.6) rollQuality = 'Poor';
             else if (outcomeMultiplier >= 1.4) rollQuality = 'Critical';
           }
-        }
-
-        // Check if character already has an action in this round
-        const existingAction = await this.actionRepository.findOne({
-            where: { roundId, characterId }
-        });
-
-        if (existingAction) {
-            throw new Error('Character has already submitted an action for this round');
         }
 
         // Create the combat action
@@ -532,7 +545,7 @@ export class CombatService {
         const action1TargetsAction2 = action1.targetId === action2.characterId;
         const action2TargetsAction1 = action2.targetId === action1.characterId;
         const targetsEachOther = action1TargetsAction2 && action2TargetsAction1;
-
+        
         // Check for clashes based on the comprehensive clash table
         
         // Attack vs Attack - Always clash if targeting each other
@@ -551,16 +564,22 @@ export class CombatService {
             const attackAction = type1 === 'Attack' ? action1 : action2;
             const defenceAction = type1 === 'Defence' ? action1 : action2;
             
-            // Clash if:
-            // - Attack targets the person being defended
-            // - Defence targets the attacker (protecting them from their own attack)
-            // - They target each other directly
+            // Clash conditions:
+            // 1. Attack targets the person being defended (most common case)
             const attackTargetsDefended = attackAction.targetId === defenceAction.targetId;
+            
+            // 2. Defence targets the attacker (protecting them from their own attack - rare but possible)
             const defenceTargetsAttacker = defenceAction.targetId === attackAction.characterId;
             
-
+            // 3. Special case: Attack targets the defender who is using self-defense
+            const attackTargetsDefender = attackAction.targetId === defenceAction.characterId;
             
-            if (targetsEachOther || attackTargetsDefended || defenceTargetsAttacker) {
+            // 4. Special case: Self-defense against attack on same target
+            const isSelfDefense = defenceAction.targetId === defenceAction.characterId;
+            const attacksDefensiveTarget = attackAction.targetId === defenceAction.characterId;
+            
+            if (targetsEachOther || attackTargetsDefended || defenceTargetsAttacker || 
+                attackTargetsDefender || (isSelfDefense && attacksDefensiveTarget)) {
                 return true;
             }
         }

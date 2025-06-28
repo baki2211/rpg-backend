@@ -8,6 +8,9 @@ import { SkillEngine } from './SkillEngine.js';
 import { SessionService } from './SessionService.js';
 import { logger } from '../utils/logger.js';
 import { CharacterService } from './CharacterService.js';
+import { CombatService } from './CombatService.js';
+import { EventService } from './EventService.js';
+import { PvPResolutionService } from './PvPResolutionService.js';
 
 export class ChatService {
   chatRepository = AppDataSource.getRepository(ChatMessage);
@@ -15,33 +18,6 @@ export class ChatService {
   engineLogService = new EngineLogService();
   characterService = new CharacterService();
   sessionService = new SessionService();
-
-  /**
-   * Categorize skill types into broad categories for validation
-   * @param {string} skillTypeName - The name of the skill type
-   * @returns {string} The category
-   */
-  getSkillTypeCategory(skillTypeName) {
-    if (!skillTypeName) return 'Unknown';
-    
-    const name = skillTypeName.toLowerCase();
-    
-    if (name.includes('attack') || name.includes('offensive') || name.includes('damage')) {
-      return 'Attack';
-    } else if (name.includes('debuff') || name.includes('curse') || name.includes('weaken')) {
-      return 'Debuff';
-    } else if (name.includes('defence') || name.includes('defensive') || name.includes('block') || name.includes('shield')) {
-      return 'Defence';
-    } else if (name.includes('buff') || name.includes('enhance') || name.includes('boost')) {
-      return 'Buff';
-    } else if (name.includes('heal') || name.includes('restore') || name.includes('recovery')) {
-      return 'Heal';
-    } else if (name.includes('support')) {
-      return 'Support';
-    } else {
-      return 'Other';
-    }
-  }
 
   async getMessagesByLocation(locationId) {
     // Fetch messages from the past 5 hours
@@ -96,15 +72,10 @@ export class ChatService {
             eventService.getActiveEvent(locationId).catch(() => null)
           ]);
 
-          // Validate skill usage based on context
-          const skillTypeCategory = this.getSkillTypeCategory(fullSkill.type?.name);
+          // Check for attack/debuff skills that target others in combat scenarios
+          const skillTypeCategory = PvPResolutionService.getSkillTypeCategory(fullSkill.type?.name);
           const isAttackOrDebuff = skillTypeCategory === 'Attack' || skillTypeCategory === 'Debuff';
           const hasOtherTarget = fullSkill.target === 'other' && skill.selectedTarget;
-
-          // Attack/Debuff skills with 'other' target require active combat round
-          if (isAttackOrDebuff && hasOtherTarget && !activeRound) {
-            throw new Error('Attack and Debuff skills targeting other players can only be used during active combat rounds');
-          }
 
           // Skills with 'other' target require at least an active event (unless it's self/none/any target)
           if (hasOtherTarget && !activeEvent && !activeRound) {
@@ -128,23 +99,61 @@ export class ChatService {
             roll: `${rollQuality} Success`
           };
 
-          // If there's an active combat round and this skill targets others, submit to combat
-          if (activeRound && hasOtherTarget) {
+          // If there's an active combat round and this skill should participate in combat, submit to combat
+          // Submit if: targeting others OR if it's a self-targeting skill that can interact in combat (like self-defense)
+          const shouldSubmitToCombat = hasOtherTarget || 
+            (activeRound && (fullSkill.target === 'self' || fullSkill.target === 'any' || fullSkill.target === 'none'));
+          
+          if (shouldSubmitToCombat) {
             try {
+              // Determine the correct target ID for combat submission
+              let combatTargetId = null;
+              
+              if (fullSkill.target === 'other' || fullSkill.target === 'any') {
+                // For skills that can target others, we need to get the target's CHARACTER ID
+                // The frontend sends userId, so we need to look up the character
+                let targetCharacter = null;
+                
+                if (skill.selectedTarget?.userId) {
+                  targetCharacter = await this.characterRepository.findOne({
+                    where: { userId: skill.selectedTarget.userId, isActive: true }
+                  });
+                  
+                  if (targetCharacter) {
+                    combatTargetId = targetCharacter.id;
+                  } else {
+                    throw new Error(`No active character found for user`);
+                  }
+                } else {
+                  throw new Error(`No target user specified`);
+                }
+                
+                // If we still don't have a target for 'other' skills, this is an error
+                if (fullSkill.target === 'other' && !combatTargetId) {
+                  throw new Error(`No valid target character found for ${fullSkill.name}`);
+                }
+              } else if (fullSkill.target === 'self') {
+                // Self-targeting skills target the character using them
+                combatTargetId = character.id;
+              }
+              // For 'none' target skills, combatTargetId remains null
+              
               // Submit action to combat with pre-calculated values
-              await combatService.submitAction(
+              const submissionResult = await combatService.submitAction(
                 activeRound.id,
                 character.id,
                 fullSkill.id,
-                skill.selectedTarget?.characterId || null,
+                combatTargetId,
                 {
                   finalOutput,
                   rollQuality
                 }
               );
             } catch (error) {
-              // Log but don't fail the chat message if combat submission fails
               logger.error('Failed to submit action to combat:', { error: error.message });
+              
+              // Re-throw the error so the user knows something went wrong
+              throw new Error(`Failed to submit ${fullSkill.name} to combat: ${error.message}`);
             }
           }
         }

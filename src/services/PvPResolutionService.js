@@ -311,31 +311,28 @@ export class PvPResolutionService {
     static getSkillTypeCategory(skillTypeName) {
         if (!skillTypeName) return 'Unknown';
         
-        const name = skillTypeName.toLowerCase();
-        
-        let result;
-        if (name.includes('attack') || name.includes('offensive') || name.includes('damage')) {
-            result = 'Attack';
-        } else if (name.includes('defence') || name.includes('defensive') || name.includes('block') || name.includes('shield')) {
-            result = 'Defence';
-        } else if (name.includes('counter') || name.includes('retaliate')) {
-            result = 'Counter';
-        } else if (name.includes('debuff') || name.includes('curse') || name.includes('weaken')) {
-            result = 'Debuff';
-        } else if (name.includes('buff') || name.includes('enhance') || name.includes('boost')) {
-            result = 'Buff';
-        } else if (name.includes('heal') || name.includes('restore') || name.includes('recovery')) {
-            result = 'Heal';
-        } else if (name.includes('craft') || name.includes('create') || name.includes('build')) {
-            result = 'Crafting';
-        } else if (name.includes('passive')) {
-            result = 'Passive';
-        } else {
-            // Default to Attack if uncertain
-            result = 'Attack';
+        // Use exact matching with official types
+        switch (skillTypeName) {
+            case 'Attack':
+                return 'Attack';
+            case 'Defence':
+                return 'Defence'; 
+            case 'Counter':
+                return 'Counter';
+            case 'Buff':
+                return 'Buff';
+            case 'Debuff':
+                return 'Debuff';
+            case 'Healing':
+                return 'Heal';
+            case 'Crafting':
+                return 'Crafting';
+            case 'Passive':
+                return 'Passive';
+            default:
+                console.warn(`Unknown skill type: "${skillTypeName}". Available types: Attack, Defense, Counter, Buff, Debuff, Healing, Crafting, Passive`);
+                return 'Unknown';
         }
-        
-        return result;
     }
 
     /**
