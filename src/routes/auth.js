@@ -2,10 +2,36 @@ import express from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { UserService } from '../services/UserService.js';
+import { authenticateToken } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 const userService = new UserService();
 const JWT_SECRET = process.env.JWT_SECRET;
+
+// Helper function to create a new token
+const createToken = (user) => {
+    return jwt.sign(
+        { 
+            id: user.id, 
+            username: user.username, 
+            role: user.role 
+        }, 
+        JWT_SECRET, 
+        { expiresIn: '1h' }
+    );
+};
+
+// Helper function to set token cookie
+const setTokenCookie = (res, token) => {
+    const cookieOptions = {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        maxAge: 3600000, // 1 hour
+        domain: process.env.NODE_ENV === 'production' ? '.onrender.com' : undefined,
+    };
+    res.cookie('token', token, cookieOptions);
+};
 
 // Register route
 router.post('/register', async (req, res) => {
@@ -64,23 +90,13 @@ router.post('/login', async (req, res) => {
             return;
         }
 
-        const token = jwt.sign({ id: user.id, username: user.username, role: user.role, }, JWT_SECRET, { expiresIn: '1h' });
-
-        // Set the token as a cookie (for local development)
-        const cookieOptions = {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production', // Set 'secure' only in production
-            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // Use 'none' in production, 'lax' in dev
-            maxAge: 3600000, // 1 hour
-            domain: process.env.NODE_ENV === 'production' ? '.onrender.com' : undefined, // Share across subdomains in production
-        };
-        
-        res.cookie('token', token, cookieOptions);
+        const token = createToken(user);
+        setTokenCookie(res, token);
 
         // ALSO return the token in response body for cross-domain compatibility
         res.status(200).json({ 
             message: 'Login successful!',
-            token: token, // Include token in response for cross-domain scenarios
+            token: token,
             user: {
                 id: user.id,
                 username: user.username,
@@ -92,6 +108,45 @@ router.post('/login', async (req, res) => {
     }
 });
 
+// Token refresh endpoint - extends valid tokens for active users
+router.post('/refresh', authenticateToken, async (req, res) => {
+    try {
+        const user = req.user; // From validated token
+        
+        // Check token expiration time
+        const now = Math.floor(Date.now() / 1000);
+        const tokenExp = user.exp;
+        const timeUntilExpiration = tokenExp - now;
+        
+        // Only refresh if token expires within 30 minutes (1800 seconds)
+        // This prevents unnecessary refreshes and limits refresh frequency
+        if (timeUntilExpiration > 1800) {
+            res.status(200).json({ 
+                message: 'Token still fresh',
+                refreshed: false
+            });
+            return;
+        }
+        
+        // Create new token with fresh expiration
+        const newToken = createToken(user);
+        setTokenCookie(res, newToken);
+        
+        res.status(200).json({ 
+            message: 'Token refreshed successfully',
+            token: newToken,
+            refreshed: true,
+            user: {
+                id: user.id,
+                username: user.username,
+                role: user.role
+            }
+        });
+    } catch (error) {
+        console.error('Error refreshing token:', error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
 
 // Logout route
 router.post('/logout', (req, res) => {
@@ -108,23 +163,5 @@ router.post('/logout', (req, res) => {
 
     res.status(200).json({ message: 'Logged out successfully!' });
 });
-
-// Token verification middleware
-export const authenticateToken = (req, res, next) => {
-    const token = req.cookies?.token; // Read the token from cookies
-
-    if (!token) {
-        res.status(401).json({ message: 'Unauthorized: Token missing' });
-        return;
-    }
-
-    try {
-        const decoded = jwt.verify(token, JWT_SECRET);
-        req.user = decoded; // Attach the decoded token to the req object
-        next();
-    } catch (err) {
-        res.status(403).json({ message: 'Forbidden: Invalid token' });
-    }
-};
 
 export default router;

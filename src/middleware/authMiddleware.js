@@ -29,7 +29,13 @@ export const authenticateToken = (req, res, next) => {
     req.user = decoded; // Attach the decoded token to the req object
     next();
   } catch (err) {
-    res.status(403).json({ message: 'Forbidden: Invalid token' });
+    if (err.name === 'TokenExpiredError') {
+      res.status(401).json({ message: 'Token expired' });
+    } else if (err.name === 'JsonWebTokenError') {
+      res.status(403).json({ message: 'Invalid token' });
+    } else {
+      res.status(403).json({ message: 'Token verification failed' });
+    }
   }
 };
 
@@ -60,7 +66,13 @@ export const requireAuth = (req, res, next) => {
     req.user = decoded;
     next();
   } catch (err) {
-    res.status(403).json({ message: 'Forbidden: Invalid token' });
+    if (err.name === 'TokenExpiredError') {
+      res.status(401).json({ message: 'Token expired' });
+    } else if (err.name === 'JsonWebTokenError') {
+      res.status(403).json({ message: 'Invalid token' });
+    } else {
+      res.status(403).json({ message: 'Token verification failed' });
+    }
   }
 };
 

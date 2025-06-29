@@ -1,6 +1,7 @@
 import express from 'express';
 import cookieParser from 'cookie-parser';
-import authRoutes, { authenticateToken } from '../routes/auth.js';
+import authRoutes from '../routes/auth.js';
+import { authenticateToken } from './authMiddleware.js';
 
 const app = express();
 
