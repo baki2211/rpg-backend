@@ -1,5 +1,6 @@
 import { AppDataSource } from '../data-source.js';
 import { StatDefinition } from '../models/statDefinitionModel.js';
+import staticDataCache from '../utils/staticDataCache.js';
 
 export class StatDefinitionService {
     constructor() {
@@ -13,23 +14,15 @@ export class StatDefinitionService {
      * @returns {Promise<Array>} Array of stat definitions
      */
     async getAllStatDefinitions(category = null, activeOnly = false) {
-        const whereCondition = {};
-        
-        if (category) {
-            whereCondition.category = category;
-        }
-        
-        if (activeOnly) {
-            whereCondition.isActive = true;
-        }
-
-        return await this.statDefinitionRepository.find({
-            where: whereCondition,
-            order: { 
-                category: 'ASC',
-                sortOrder: 'ASC',
-                displayName: 'ASC'
+        const allStats = await staticDataCache.getStatDefinitions(category, activeOnly);
+        return allStats.sort((a, b) => {
+            if (a.category !== b.category) {
+                return a.category.localeCompare(b.category);
             }
+            if (a.sortOrder !== b.sortOrder) {
+                return a.sortOrder - b.sortOrder;
+            }
+            return a.displayName.localeCompare(b.displayName);
         });
     }
 
@@ -85,7 +78,9 @@ export class StatDefinitionService {
         }
 
         const statDefinition = this.statDefinitionRepository.create(statData);
-        return await this.statDefinitionRepository.save(statDefinition);
+        const savedStat = await this.statDefinitionRepository.save(statDefinition);
+        staticDataCache.clearEntity('StatDefinition');
+        return savedStat;
     }
 
     /**
@@ -137,7 +132,8 @@ export class StatDefinitionService {
         }
 
         await this.statDefinitionRepository.update(id, updateData);
-        return await this.getStatDefinitionById(id);
+        staticDataCache.clearEntity('StatDefinition');
+        return await this.statDefinitionRepository.findOne({ where: { id } });
     }
 
     /**
@@ -154,6 +150,9 @@ export class StatDefinitionService {
         // Check if this stat is being used in any characters
         // This is a safety check to prevent deletion of stats that are in use
         const result = await this.statDefinitionRepository.delete(id);
+        if (result.affected > 0) {
+            staticDataCache.clearEntity('StatDefinition');
+        }
         return result.affected > 0;
     }
 

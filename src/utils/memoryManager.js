@@ -190,6 +190,15 @@ class MemoryManager {
       logger.error('Error during database cleanup:', { error: error.message });
     }
     
+    // Clear cache to free memory
+    try {
+      const { default: staticDataCache } = await import('./staticDataCache.js');
+      staticDataCache.clear();
+      logger.warn('🚨 Emergency: Static data cache cleared');
+    } catch (error) {
+      logger.error('Error during cache cleanup:', { error: error.message });
+    }
+    
     // Perform multiple cleanup cycles
     this.performAlternativeCleanup(true);
     setTimeout(() => this.performAlternativeCleanup(true), 1000);
@@ -221,8 +230,19 @@ class MemoryManager {
     }
   }
 
-  aggressiveCleanup() {
+  async aggressiveCleanup() {
     logger.warn('⚠️ Performing aggressive cleanup...');
+    
+    // Clear static data cache to free immediate memory
+    try {
+      const { default: staticDataCache } = await import('./staticDataCache.js');
+      const cleanedEntries = staticDataCache.cleanup();
+      if (cleanedEntries > 0) {
+        logger.info(`⚠️ Cleaned ${cleanedEntries} expired cache entries`);
+      }
+    } catch (error) {
+      logger.error('Error during cache cleanup:', { error: error.message });
+    }
     
     // Close some WebSocket connections if we have too many
     if (this.webSocketServers) {

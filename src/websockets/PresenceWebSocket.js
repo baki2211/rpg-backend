@@ -22,7 +22,7 @@ export const setupPresenceWebSocketServer = (server) => {
   
   const onlineUsers = new Map(); // userId => WebSocket
   const characterService = new CharacterService();
-  const MAX_CONNECTIONS = 20; // Increased from 10 to 20 for better capacity
+  const MAX_CONNECTIONS = 25; // Increased for better capacity
   let connectionCount = 0;
   let lastCleanupTime = Date.now();
 
@@ -51,6 +51,18 @@ export const setupPresenceWebSocketServer = (server) => {
       lastCleanupTime = now;
     }
   }, 15000);
+
+  // Heartbeat interval to keep connections alive and detect dead ones
+  const heartbeatInterval = setInterval(() => {
+    wss.clients.forEach((ws) => {
+      if (ws.isAlive === false) {
+        return ws.terminate();
+      }
+      
+      ws.isAlive = false;
+      ws.ping();
+    });
+  }, 30000); // Heartbeat every 30 seconds
 
   // Optimized periodic broadcast - less frequent to save resources
   const periodicBroadcast = setInterval(() => {
@@ -143,6 +155,9 @@ export const setupPresenceWebSocketServer = (server) => {
       messageCount: 0,
     };
 
+    // Add heartbeat monitoring
+    ws.isAlive = true;
+
     onlineUsers.set(userId, userInfo);
 
     // Send current online users to the new connection immediately (throttled)
@@ -217,6 +232,11 @@ export const setupPresenceWebSocketServer = (server) => {
           user.characterName = null;
         }
       }
+    });
+
+    // Handle pong responses for heartbeat
+    ws.on('pong', () => {
+      ws.isAlive = true;
     });
 
     // Optimized ping interval - less frequent to save resources
@@ -386,6 +406,7 @@ export const setupPresenceWebSocketServer = (server) => {
   const cleanup = () => {
     clearInterval(periodicBroadcast);
     clearInterval(cleanupInterval);
+    clearInterval(heartbeatInterval);
     if (broadcastTimeout) {
       clearTimeout(broadcastTimeout);
     }

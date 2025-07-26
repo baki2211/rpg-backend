@@ -1,15 +1,16 @@
 import { AppDataSource } from '../data-source.js';
 import { Skill } from '../models/skillModel.js';
+import staticDataCache from '../utils/staticDataCache.js';
 
 const skillRepository = AppDataSource.getRepository(Skill);
 
 export const SkillService = {
   async getAllSkills() {
-    return await skillRepository.find();
+    return await staticDataCache.getSkills(true);
   },
 
   async getSkillById(id) {
-    return await skillRepository.findOne({ where: { id } });
+    return await staticDataCache.getSkillById(id, true);
   },
 
   async createSkill(skillData) {
@@ -24,7 +25,9 @@ export const SkillService = {
     }
 
     const skill = skillRepository.create(skillData);
-    return await skillRepository.save(skill);
+    const savedSkill = await skillRepository.save(skill);
+    staticDataCache.clearEntity('Skill');
+    return savedSkill;
   },
 
   async updateSkill(id, skillData) {
@@ -41,13 +44,15 @@ export const SkillService = {
     }
 
     await skillRepository.update(id, skillData);
-    return await skillRepository.findOne({ where: { id } });
+    staticDataCache.clearEntity('Skill');
+    return await skillRepository.findOne({ where: { id }, relations: ['branch', 'type'] });
   },
 
   async deleteSkill(id) {
     const skill = await skillRepository.findOne({ where: { id } });
     if (skill) {
       await skillRepository.remove(skill);
+      staticDataCache.clearEntity('Skill');
       return true;
     }
     return false;

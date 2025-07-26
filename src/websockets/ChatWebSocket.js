@@ -25,18 +25,30 @@ export const setupWebSocketServer = () => {
   const locationConnections = new Map();
   const userConnections = new Map(); // Track user connections to prevent duplicates
   let presenceBroadcaster = null;
-  const MAX_CONNECTIONS_PER_LOCATION = 5; // Reduce per-location limit
-  const MAX_TOTAL_CONNECTIONS = 20; // Reduce total connection limit
+  const MAX_CONNECTIONS_PER_LOCATION = 8; // Increased per-location limit
+  const MAX_TOTAL_CONNECTIONS = 30; // Increased total connection limit
   let totalConnections = 0;
 
   const setPresenceBroadcaster = (broadcaster) => {
     presenceBroadcaster = broadcaster;
   };
 
-  // Cleanup interval for stale connections
+  // More aggressive cleanup interval for stale connections
   const cleanupInterval = setInterval(() => {
     cleanupStaleConnections();
-  }, 300000); // Cleanup every 5 minutes
+  }, 120000); // Cleanup every 2 minutes
+  
+  // Heartbeat interval to keep connections alive and detect dead ones
+  const heartbeatInterval = setInterval(() => {
+    wss.clients.forEach((ws) => {
+      if (ws.isAlive === false) {
+        return ws.terminate();
+      }
+      
+      ws.isAlive = false;
+      ws.ping();
+    });
+  }, 30000); // Heartbeat every 30 seconds
 
   wss.on('connection', async (ws, req) => {
     // Check total connection limit
@@ -110,6 +122,7 @@ export const setupWebSocketServer = () => {
     ws.username = username;
     ws.lastActivity = new Date();
     ws.messageCount = 0;
+    ws.isAlive = true; // For heartbeat monitoring
 
     // Trigger presence broadcast when user joins (debounced)
     if (presenceBroadcaster && userId) {
@@ -224,6 +237,11 @@ export const setupWebSocketServer = () => {
           ws.send(JSON.stringify({ error: 'Message could not be saved due to server load' }));
         }
       }
+    });
+
+    // Handle pong responses for heartbeat
+    ws.on('pong', () => {
+      ws.isAlive = true;
     });
 
     ws.on('close', (code, reason) => {
@@ -384,6 +402,7 @@ export const setupWebSocketServer = () => {
 
   const cleanup = () => {
     clearInterval(cleanupInterval);
+    clearInterval(heartbeatInterval);
     
     // Close all connections
     for (const connections of locationConnections.values()) {

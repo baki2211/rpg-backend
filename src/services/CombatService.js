@@ -110,10 +110,10 @@ export class CombatService {
                 where: { id: characterId },
                 relations: ['race']
             }),
-            this.skillRepository.findOne({
-                where: { id: skillId },
-                relations: ['branch', 'type']
-            })
+            (async () => {
+                const { default: staticDataCache } = await import('../utils/staticDataCache.js');
+                return staticDataCache.getSkillById(skillId, true);
+            })()
         ]);
 
         if (!character) throw new Error('Character not found');

@@ -20,32 +20,67 @@ export class ChatService {
   sessionService = new SessionService();
 
   async getMessagesByLocation(locationId) {
-    // Fetch messages from the past 5 hours
+    // Keep messages for 5 hours as intended, but optimize memory usage
     const fiveHoursAgo = new Date(Date.now() - 5 * 60 * 60 * 1000);
-    const messages = await this.chatRepository.find({
-      where: { location: { id: locationId }, createdAt: MoreThan(fiveHoursAgo) },
-      order: { createdAt: 'ASC' },
-    });
+    
+    try {
+      const messages = await this.chatRepository.find({
+        where: { location: { id: locationId }, createdAt: MoreThan(fiveHoursAgo) },
+        order: { createdAt: 'ASC' }, // Chronological order
+        select: [ // Only select needed fields to reduce memory usage
+          'id', 'message', 'username', 'createdAt', 'characterId',
+          'skillId', 'skillName', 'skillBranch', 'skillType', 'skillOutput', 'skillRoll'
+        ]
+      });
 
-    // Format the messages to include skill data in the correct structure
-    return messages.map(message => ({
-      ...message,
-      skill: message.skillId ? {
-        id: message.skillId,
-        name: message.skillName,
-        branch: message.skillBranch,
-        type: message.skillType,
-        output: message.skillOutput,
-        roll: message.skillRoll
-      } : null
-    }));
+      // Format efficiently without reversing
+      return messages.map(message => {
+        // Use more memory-efficient object creation
+        const formatted = {
+          id: message.id,
+          message: message.message,
+          username: message.username,
+          characterId: message.characterId,
+          createdAt: message.createdAt
+        };
+        
+        // Only add skill data if it exists to save memory
+        if (message.skillId) {
+          formatted.skill = {
+            id: message.skillId,
+            name: message.skillName,
+            branch: message.skillBranch,
+            type: message.skillType,
+            output: message.skillOutput,
+            roll: message.skillRoll
+          };
+        }
+        
+        return formatted;
+      });
+    } catch (error) {
+      logger.error('Error fetching messages with memory optimization:', { 
+        error: error.message, 
+        locationId 
+      });
+      // Fallback to minimal messages on error
+      return [];
+    }
   }
 
   async addMessage(locationId, userId, username, message, skill = null) {
-    const character = await this.characterRepository.findOne({ 
-      where: { userId, isActive: true },
-      relations: ['race'] // Need race for skill engine calculations
-    });
+    // Memory optimization: Use minimal query and timeout
+    const character = await Promise.race([
+      this.characterRepository.findOne({ 
+        where: { userId, isActive: true },
+        relations: ['race'], // Need race for skill engine calculations
+        select: ['id', 'name', 'userId', 'stats', 'raceId'] // Only select needed fields
+      }),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Character lookup timeout')), 3000)
+      )
+    ]);
+    
     if (!character) {
       throw new Error('No active character found for this user.');
     }

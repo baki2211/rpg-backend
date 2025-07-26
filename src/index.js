@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import bodyParser from 'body-parser';
 import dotenv from 'dotenv';
+import { createGzip, createDeflate } from 'zlib';
 import authRoutes from './routes/auth.js';
 import cookieParser from 'cookie-parser';
 import http from 'http'; 
@@ -13,6 +14,7 @@ import mapRoutes from './routes/map.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { errorHandler } from './middleware/errorHandler.js';
+import { compressionMiddleware, compressionStatsMiddleware } from './middleware/compressionMiddleware.js';
 import locationRoutes from './routes/location.js';
 import chatRoutes from './routes/chat.js';
 import { setupWebSocketServer } from './websockets/ChatWebSocket.js';
@@ -30,9 +32,11 @@ import eventRoutes from './routes/event.js';
 import engineLogRoutes from './routes/engineLogs.js';
 import statDefinitionRoutes from './routes/statDefinition.js';
 import { SessionExpirationJob } from './jobs/sessionExpiration.js';
+import { MemoryCleanupJob } from './jobs/memoryCleanup.js';
 import { logger } from './utils/logger.js';
 import memoryManager from './utils/memoryManager.js';
 import dbHealthMonitor from './utils/dbHealthMonitor.js';
+import staticDataCache from './utils/staticDataCache.js';
 import rankRoutes from './routes/rank.js';
 import wikiRoutes from './routes/wikiRoutes.js';
 import healthRoutes, { setWebSocketServers } from './routes/healthRoutes.js';
@@ -50,6 +54,7 @@ const __dirname = path.dirname(__filename);
 const chatWS = setupWebSocketServer();
 const presenceWS = setupPresenceWebSocketServer();
 let sessionExpirationInterval; // Declare but don't start yet
+let memoryCleanupInterval; // Memory cleanup job interval
 
 // Connect chat and presence WebSockets for real-time updates
 chatWS.setPresenceBroadcaster(presenceWS.broadcastOnlineUsers);
@@ -66,16 +71,27 @@ server.on('upgrade', (req, socket, head) => {
     const pathname = req.url?.split('?')[0];
 
     if (pathname === '/ws/chat') {
-      // Check chat connection count before upgrade
+      // Check chat connection count before upgrade with dynamic limits
       const chatConnections = chatWS.getConnectionCount();
-      if (chatConnections >= 5) { // Max chat connections
-        logger.warn(`Chat WebSocket upgrade rejected - connection limit reached: ${chatConnections}`);
+      const memoryUsage = process.memoryUsage();
+      const memoryUsagePercent = (memoryUsage.rss / (512 * 1024 * 1024)) * 100;
+      
+      // Dynamic connection limits based on memory usage
+      let maxConnections = 15; // Base limit (increased from 5)
+      if (memoryUsagePercent > 85) {
+        maxConnections = 8; // Reduce when memory is high
+      } else if (memoryUsagePercent > 70) {
+        maxConnections = 12; // Moderate reduction
+      }
+      
+      if (chatConnections >= maxConnections) {
+        logger.warn(`Chat WebSocket upgrade rejected - connection limit reached: ${chatConnections}/${maxConnections} (memory: ${memoryUsagePercent.toFixed(1)}%)`);
         socket.write('HTTP/1.1 503 Service Unavailable\r\n' +
                      'Connection: close\r\n' +
                      'Content-Type: text/plain\r\n' +
-                     'Content-Length: 21\r\n' +
+                     'Content-Length: 38\r\n' +
                      '\r\n' +
-                     'Insufficient resources');
+                     'Server overloaded - too many connections');
         socket.destroy();
         return;
       }
@@ -100,9 +116,14 @@ app.use(cors({
   origin: ['http://localhost:3000', 'http://localhost:3001', 'https://arcanerealms.org'],
   credentials: true,
 }));
+
+// Compression middleware - apply early for maximum benefit
+app.use(compressionMiddleware);
+app.use(compressionStatsMiddleware);
+
 app.use(cookieParser());
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
+app.use(bodyParser.json({ limit: '10mb' })); // Increased limit for compressed payloads
+app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
 
 // Routes
 app.use('/api', healthRoutes);
@@ -140,7 +161,7 @@ app.use(errorHandler);
 
 // Database connection and server startup
 AppDataSource.initialize()
-  .then(() => {
+  .then(async () => {
     logger.startup('App connected to the database');
     
     // Start memory monitoring
@@ -149,8 +170,14 @@ AppDataSource.initialize()
     // Start database health monitoring
     dbHealthMonitor.startMonitoring();
     
+    // Preload static data cache
+    await staticDataCache.preloadCache();
+    
     // Start session expiration job after database is ready
     sessionExpirationInterval = SessionExpirationJob.startJob();
+    
+    // Start memory cleanup job
+    memoryCleanupInterval = MemoryCleanupJob.startJob();
     
     server.listen(PORT, () => {
       logger.startup(`App Server running on http://localhost:${PORT}`);
@@ -192,6 +219,9 @@ const gracefulShutdown = (signal) => {
       clearInterval(sessionExpirationInterval);
       logger.info('Session expiration job stopped');
     }
+    
+    // Stop memory cleanup job
+    MemoryCleanupJob.stopJob();
     
     // Close database connection
     AppDataSource.destroy().then(() => {
