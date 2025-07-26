@@ -124,7 +124,6 @@ export class CombatService {
         if (existingAction) {
             throw new Error('Character has already submitted an action for this round');
         }
-
         // Get character and skill data
         const [character, skill] = await Promise.all([
             this.characterRepository.findOne({
@@ -374,7 +373,17 @@ export class CombatService {
                 const roundRepo = manager.getRepository(CombatRound);
                 const actionRepo = manager.getRepository(CombatAction);
 
-                // Get the round and its actions
+                // First, lock the round without relations
+                const roundLock = await roundRepo.findOne({
+                    where: { id: roundId, status: 'active' },
+                    lock: { mode: 'pessimistic_write' } // Exclusive lock during resolution
+                });
+
+                if (!roundLock) {
+                    throw new Error('Combat round not found or not active');
+                }
+
+                // Then get the round with relations (now that we have the lock)
                 const round = await roundRepo.findOne({
                     where: { id: roundId, status: 'active' },
                     relations: ['actions', 'actions.character', 'actions.skill', 'actions.target']
@@ -431,7 +440,7 @@ export class CombatService {
                         { roundId },
                         { processed: true }
                     ),
-                    // Update round status
+                    // Update round status (pessimistic lock already acquired above)
                     roundRepo.update(
                         { id: roundId },
                         {
@@ -463,12 +472,17 @@ export class CombatService {
                 return results;
             });
         } catch (mainError) {
+            logger.error(`Combat round resolution failed`, { 
+                roundId, 
+                error: mainError.message, 
+                stack: mainError.stack 
+            });
             throw mainError; // Re-throw to let the controller handle the response
         }
     }
 
     /**
-     * Identify which actions clash with each other
+     * Identify which actions clash with each other using optimized O(n) algorithm
      * @param {Array} actions - Array of combat actions
      * @returns {Object} Object with clashes and independent actions
      */
@@ -477,19 +491,68 @@ export class CombatService {
         const independentActions = [];
         const processedActions = new Set();
 
-        for (let i = 0; i < actions.length; i++) {
-            if (processedActions.has(actions[i].id)) continue;
+        // Create indexed lookups for efficient clash detection - O(n) preprocessing
+        const actionsByCharacter = new Map(); // character -> actions by that character
+        const actionsByTarget = new Map();    // target -> actions targeting that character
+        const actionsByType = new Map();      // skill type -> actions of that type
 
-            const action1 = actions[i];
+        // Build indexes - O(n)
+        actions.forEach(action => {
+            // Index by character
+            if (!actionsByCharacter.has(action.characterId)) {
+                actionsByCharacter.set(action.characterId, []);
+            }
+            actionsByCharacter.get(action.characterId).push(action);
+
+            // Index by target (if exists)
+            if (action.targetId) {
+                if (!actionsByTarget.has(action.targetId)) {
+                    actionsByTarget.set(action.targetId, []);
+                }
+                actionsByTarget.get(action.targetId).push(action);
+            }
+
+            // Index by skill type category
+            const skillType = PvPResolutionService.getSkillTypeCategory(action.skillData.type);
+            if (!actionsByType.has(skillType)) {
+                actionsByType.set(skillType, []);
+            }
+            actionsByType.get(skillType).push(action);
+        });
+
+        // Find clashes using indexed lookups - O(n) average case
+        actions.forEach(action1 => {
+            if (processedActions.has(action1.id)) return;
+
             let clashFound = false;
+            const potentialClashActions = new Set();
 
-            // Look for clashing actions
-            for (let j = i + 1; j < actions.length; j++) {
-                if (processedActions.has(actions[j].id)) continue;
+            // Get potential clash candidates based on different criteria
+            // 1. Actions targeting this character
+            const actionsTargetingChar = actionsByTarget.get(action1.characterId) || [];
+            actionsTargetingChar.forEach(a => potentialClashActions.add(a));
 
-                const action2 = actions[j];
+            // 2. Actions targeted by this character
+            if (action1.targetId) {
+                const actionsFromTarget = actionsByCharacter.get(action1.targetId) || [];
+                actionsFromTarget.forEach(a => potentialClashActions.add(a));
+            }
 
-                // Check if these actions clash
+            // 3. For attack actions, check for defenses protecting the target
+            const action1Type = PvPResolutionService.getSkillTypeCategory(action1.skillData.type);
+            if (action1Type === 'Attack' && action1.targetId) {
+                const defenseActions = actionsByType.get('Defence') || [];
+                defenseActions.forEach(defense => {
+                    if (defense.targetId === action1.targetId) {
+                        potentialClashActions.add(defense);
+                    }
+                });
+            }
+
+            // Check only potential candidates instead of all actions
+            for (const action2 of potentialClashActions) {
+                if (processedActions.has(action2.id) || action1.id === action2.id) continue;
+
                 if (this.actionsClash(action1, action2)) {
                     clashes.push([action1, action2]);
                     processedActions.add(action1.id);
@@ -503,7 +566,7 @@ export class CombatService {
                 independentActions.push(action1);
                 processedActions.add(action1.id);
             }
-        }
+        });
 
         return { clashes, independentActions };
     }
