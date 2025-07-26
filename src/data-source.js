@@ -32,8 +32,33 @@ export const AppDataSource = new DataSource({
   username: process.env.DB_USER || 'postgres',
   password: process.env.DB_PASSWORD || 'postgres',
   database: process.env.DB_NAME || 'rpg',
-  synchronize: true,
-  logging: false, // Disable SQL query logging
+  synchronize: process.env.NODE_ENV !== 'production', // Only sync in development
+  logging: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : false,
+  
+  // Connection pooling configuration for memory optimization
+  poolSize: parseInt(process.env.DB_POOL_SIZE) || 10, // Max connections
+  connectTimeoutMS: parseInt(process.env.DB_CONNECT_TIMEOUT) || 10000, // 10 seconds
+  acquireTimeoutMillis: parseInt(process.env.DB_ACQUIRE_TIMEOUT) || 10000, // 10 seconds
+  timeout: parseInt(process.env.DB_TIMEOUT) || 10000, // 10 seconds
+  
+  // Additional PostgreSQL-specific pool settings
+  extra: {
+    // Connection pool settings for node-postgres (pg)
+    max: parseInt(process.env.DB_POOL_SIZE) || 10, // Maximum connections
+    min: parseInt(process.env.DB_POOL_MIN) || 2,   // Minimum connections
+    idleTimeoutMillis: parseInt(process.env.DB_IDLE_TIMEOUT) || 30000, // 30 seconds
+    connectionTimeoutMillis: parseInt(process.env.DB_CONNECT_TIMEOUT) || 10000, // 10 seconds
+    
+    // Memory optimization settings
+    statement_timeout: parseInt(process.env.DB_STATEMENT_TIMEOUT) || 30000, // 30 seconds
+    query_timeout: parseInt(process.env.DB_QUERY_TIMEOUT) || 30000, // 30 seconds
+    
+    // SSL configuration for production
+    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  },
+  
+  // Enable connection monitoring
+  maxQueryExecutionTime: parseInt(process.env.DB_SLOW_QUERY_THRESHOLD) || 1000, // Log slow queries > 1s
   entities: [
     Character,
     User,

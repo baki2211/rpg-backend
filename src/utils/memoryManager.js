@@ -163,7 +163,7 @@ class MemoryManager {
   }
 
   // Emergency cleanup function
-  emergencyCleanup() {
+  async emergencyCleanup() {
     logger.warn('Performing emergency memory cleanup');
     
     // Close all WebSocket connections immediately
@@ -180,6 +180,14 @@ class MemoryManager {
       } catch (error) {
         logger.error('Error during emergency WebSocket cleanup:', { error: error.message });
       }
+    }
+    
+    // Release idle database connections
+    try {
+      const { default: dbHealthMonitor } = await import('./dbHealthMonitor.js');
+      await dbHealthMonitor.releaseIdleConnections();
+    } catch (error) {
+      logger.error('Error during database cleanup:', { error: error.message });
     }
     
     // Perform multiple cleanup cycles

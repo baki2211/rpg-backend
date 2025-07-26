@@ -1,6 +1,7 @@
 import express from 'express';
 import { logger } from '../utils/logger.js';
 import memoryManager from '../utils/memoryManager.js';
+import dbHealthMonitor from '../utils/dbHealthMonitor.js';
 
 const router = express.Router();
 
@@ -84,9 +85,14 @@ router.get('/', rateLimitHealthChecks, async (req, res) => {
     };
 
     const connections = getConnectionCounts();
+    
+    // Get database health information
+    const dbHealth = dbHealthMonitor.getHealthReport();
 
     // Determine overall health status
-    const isHealthy = memory.usage_percent < 90 && connections.total < 20;
+    const isHealthy = memory.usage_percent < 90 && 
+                     connections.total < 20 && 
+                     dbHealth.database.status === 'connected';
 
     const healthData = {
       status: isHealthy ? 'healthy' : 'degraded',
@@ -98,6 +104,13 @@ router.get('/', rateLimitHealthChecks, async (req, res) => {
         status: memory.usage_percent < 90 ? 'healthy' : 'warning'
       },
       connections,
+      database: {
+        status: dbHealth.database.status,
+        poolUtilization: dbHealth.database.pool.poolUtilization + '%',
+        usedConnections: dbHealth.database.pool.usedConnections,
+        maxConnections: dbHealth.database.pool.maxConnections,
+        waitingClients: dbHealth.database.pool.waitingClients
+      },
       gc_available: typeof global.gc === 'function'
     };
 
@@ -221,6 +234,44 @@ router.post('/cleanup', (req, res) => {
       success: false, 
       message: 'Error during cleanup',
       error: error.message 
+    });
+  }
+});
+
+// Database health endpoint
+router.get('/database', (req, res) => {
+  try {
+    const healthReport = dbHealthMonitor.getHealthReport();
+    res.json(healthReport);
+  } catch (error) {
+    logger.error('Database health check error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Database health check failed',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Database connection cleanup endpoint
+router.post('/database/cleanup', async (req, res) => {
+  try {
+    logger.info('Manual database cleanup requested via API');
+    const success = await dbHealthMonitor.releaseIdleConnections();
+    const healthReport = dbHealthMonitor.getHealthReport();
+    
+    res.json({
+      success,
+      message: success ? 'Database connections cleaned up' : 'Cleanup failed or not needed',
+      poolStats: healthReport.database.pool
+    });
+  } catch (error) {
+    logger.error('Error during database cleanup:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error during database cleanup',
+      error: error.message
     });
   }
 });

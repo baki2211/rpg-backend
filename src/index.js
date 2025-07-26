@@ -32,6 +32,7 @@ import statDefinitionRoutes from './routes/statDefinition.js';
 import { SessionExpirationJob } from './jobs/sessionExpiration.js';
 import { logger } from './utils/logger.js';
 import memoryManager from './utils/memoryManager.js';
+import dbHealthMonitor from './utils/dbHealthMonitor.js';
 import rankRoutes from './routes/rank.js';
 import wikiRoutes from './routes/wikiRoutes.js';
 import healthRoutes, { setWebSocketServers } from './routes/healthRoutes.js';
@@ -145,6 +146,9 @@ AppDataSource.initialize()
     // Start memory monitoring
     memoryManager.startMonitoring();
     
+    // Start database health monitoring
+    dbHealthMonitor.startMonitoring();
+    
     // Start session expiration job after database is ready
     sessionExpirationInterval = SessionExpirationJob.startJob();
     
@@ -179,6 +183,9 @@ const gracefulShutdown = (signal) => {
     
     // Stop memory monitoring
     memoryManager.stopMonitoring();
+    
+    // Stop database health monitoring
+    dbHealthMonitor.stopMonitoring();
     
     // Stop background jobs
     if (sessionExpirationInterval) {
