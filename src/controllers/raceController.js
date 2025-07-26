@@ -64,7 +64,7 @@ export class RaceController {
     static async deleteRace(req, res) {
         try {
             await raceService.deleteRace(parseInt(req.params.id));
-            res.status(204).send();
+            res.status(204).end();
         } catch (error) {
             const err = error;
             res.status(404).json({ message: err.message });

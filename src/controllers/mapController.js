@@ -74,7 +74,7 @@ export class MapController {
         const { id } = req.params;
         try {
           await mapService.deleteMap(Number(id));
-          res.status(204).send();
+          res.status(204).end();
         } catch (error) {
           res.status(400).json({ message: error.message });
         }

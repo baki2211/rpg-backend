@@ -174,7 +174,7 @@ export const compressionStatsMiddleware = (req, res, next) => {
   
   res.send = function(data) {
     const responseTime = Date.now() - startTime;
-    const size = res.getHeader('Content-Length') || Buffer.byteLength(data, 'utf8');
+    const size = res.getHeader('Content-Length') || (data ? Buffer.byteLength(data, 'utf8') : 0);
     const encoding = res.getHeader('Content-Encoding');
     
     // Log compression statistics for large responses

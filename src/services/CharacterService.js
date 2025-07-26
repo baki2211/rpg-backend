@@ -1,4 +1,6 @@
 import { AppDataSource } from '../data-source.js';
+// Uncomment the following line to enable query monitoring for this service:
+// import { monitoredRepoFactory } from '../utils/monitoredRepositories.js';
 import { Character } from '../models/characterModel.js';
 import { User } from '../models/userModel.js';
 import { Race } from '../models/raceModel.js';
@@ -6,6 +8,7 @@ import { Skill } from '../models/skillModel.js';
 import { StatDefinitionService } from './StatDefinitionService.js';
 import { logger } from '../utils/logger.js';
 import { RankService } from './RankService.js';
+import { Not } from 'typeorm';
 
 export class CharacterService {
   characterRepository = AppDataSource.getRepository(Character);
@@ -233,20 +236,21 @@ export class CharacterService {
       throw new Error('Character not found or you do not have permission to activate this character');
     }
 
-    // Deactivate ALL characters and NPCs for this user first
-    // Handle user's own characters
-    await this.characterRepository.update(
-      { user: { id: userId } }, 
-      { isActive: false }
-    );
+    // First, deactivate all other characters in parallel
+    await Promise.all([
+      // Deactivate user's own characters (excluding the target character to avoid conflicts)
+      this.characterRepository.update(
+        { user: { id: userId }, id: Not(characterId) }, 
+        { isActive: false }
+      ),
+      // Deactivate NPCs currently assigned to this user
+      this.characterRepository.update(
+        { userId: userId, isNPC: true }, 
+        { isActive: false, userId: null }
+      )
+    ]);
 
-    // Handle any NPCs currently assigned to this user
-    await this.characterRepository.update(
-      { userId: userId, isNPC: true }, 
-      { isActive: false, userId: null }
-    );
-
-    // Activate the chosen character
+    // Then activate the chosen character
     await this.characterRepository.update(
       { id: characterId },
       { isActive: true }
@@ -811,20 +815,21 @@ export class CharacterService {
       throw new Error('NPC not found');
     }
 
-    // Deactivate ALL characters and NPCs for this user first
-    // Handle user's own characters
-    await this.characterRepository.update(
-      { user: { id: userId } }, 
-      { isActive: false }
-    );
+    // First, deactivate all other characters in parallel
+    await Promise.all([
+      // Deactivate user's own characters
+      this.characterRepository.update(
+        { user: { id: userId } }, 
+        { isActive: false }
+      ),
+      // Deactivate NPCs currently assigned to this user (excluding the target NPC)
+      this.characterRepository.update(
+        { userId: userId, isNPC: true, id: Not(npcId) }, 
+        { isActive: false, userId: null }
+      )
+    ]);
 
-    // Handle any NPCs currently assigned to this user
-    await this.characterRepository.update(
-      { userId: userId, isNPC: true }, 
-      { isActive: false, userId: null }
-    );
-
-    // Activate the NPC and temporarily assign it to the user
+    // Then activate the NPC and temporarily assign it to the user
     await this.characterRepository.update(
       { id: npcId },
       { 

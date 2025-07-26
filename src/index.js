@@ -15,6 +15,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { errorHandler } from './middleware/errorHandler.js';
 import { compressionMiddleware, compressionStatsMiddleware } from './middleware/compressionMiddleware.js';
+import { queryMonitoringMiddleware, queryStatsHandler, resetQueryStatsHandler } from './middleware/queryMonitoringMiddleware.js';
 import locationRoutes from './routes/location.js';
 import chatRoutes from './routes/chat.js';
 import { setupWebSocketServer } from './websockets/ChatWebSocket.js';
@@ -120,6 +121,7 @@ app.use(cors({
 // Compression middleware - apply early for maximum benefit
 app.use(compressionMiddleware);
 app.use(compressionStatsMiddleware);
+app.use(queryMonitoringMiddleware);
 
 app.use(cookieParser());
 app.use(bodyParser.json({ limit: '10mb' })); // Increased limit for compressed payloads
@@ -127,6 +129,10 @@ app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
 
 // Routes
 app.use('/api', healthRoutes);
+
+// Query monitoring endpoints (admin only)
+app.get('/api/admin/query-stats', queryStatsHandler);
+app.post('/api/admin/query-stats/reset', resetQueryStatsHandler);
 app.use('/api/auth', authRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/admin', adminRoutes);

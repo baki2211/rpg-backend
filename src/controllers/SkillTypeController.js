@@ -49,7 +49,7 @@ export const SkillTypeController = {
       if (!success) {
         return res.status(404).json({ message: 'Skill type not found' });
       }
-      res.status(204).send();
+      res.status(204).end();
     } catch (error) {
       res.status(500).json({ message: error.message });
     }

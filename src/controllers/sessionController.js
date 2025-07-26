@@ -56,7 +56,7 @@ export class SessionController {
   async removeParticipant(req, res) {
     try {
       await this.sessionService.removeParticipant(req.params.sessionId, req.params.characterId);
-      res.status(204).send();
+      res.status(204).end();
     } catch (error) {
       console.error('Error in removeParticipant:', error);
       res.status(500).json({ error: error.message });

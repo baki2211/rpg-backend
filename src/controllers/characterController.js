@@ -56,7 +56,7 @@ export class CharacterController {
       }
   
       await characterService.activateCharacter(characterId, userId);
-      res.status(204).send();
+      res.status(204).end();
     } catch (error) {
       console.error('Activate character error:', error);
       res.status(400).json({ error: error.message });
@@ -79,7 +79,7 @@ export class CharacterController {
       }
 
       await characterService.deleteCharacter(id, userId);
-      res.status(204).send();
+      res.status(204).end();
     } catch (error) {
       console.error('Delete character error:', error);
       res.status(400).json({ error: error.message });
@@ -119,7 +119,7 @@ export class CharacterController {
       }
 
       await characterService.updateCharacterImage(characterId, userId, 'placeholder.png');
-      res.status(204).send();
+      res.status(204).end();
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
@@ -275,7 +275,7 @@ export class CharacterController {
 
       const { id } = req.params;
       await characterService.deleteNPC(Number(id));
-      res.status(204).send();
+      res.status(204).end();
     } catch (error) {
       res.status(400).json({ error: error.message });
     }
@@ -316,7 +316,7 @@ export class CharacterController {
       const userId = req.user.id;
       const { id } = req.params;
       await characterService.deactivateNPC(Number(id), userId);
-      res.status(204).send();
+      res.status(204).end();
     } catch (error) {
       res.status(400).json({ error: error.message });
     }

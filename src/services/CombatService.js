@@ -18,6 +18,27 @@ export class CombatService {
     }
 
     /**
+     * Optimized target resolution that tries multiple lookup strategies in a single query
+     * @param {string|number} targetId - Target identifier (could be ID, userID, or name)
+     * @returns {Promise<Object|null>} Found character or null
+     */
+    async findTargetCharacter(targetId) {
+        if (!targetId) return null;
+        
+        // Batch all possible lookups in a single query using OR conditions
+        const target = await this.characterRepository.findOne({
+            where: [
+                { id: targetId, isActive: true },                    // Character ID lookup
+                { userId: targetId, isActive: true },                // User ID lookup  
+                { name: targetId, isActive: true }                   // Name lookup
+            ],
+            relations: ['race', 'skills'] // Eager load commonly needed relations
+        });
+        
+        return target;
+    }
+
+    /**
      * Create a new combat round
      * @param {number} locationId - The location where combat is taking place
      * @param {number} createdBy - User ID of the master creating the round
@@ -133,32 +154,17 @@ export class CombatService {
                 throw new Error('This skill requires a target other than yourself');
             }
             
-            target = await this.characterRepository.findOne({ where: { id: targetId, isActive: true } });
+            target = await this.findTargetCharacter(targetId);
             if (!target) {
-                // Try to find by user ID if character ID lookup failed (common frontend mistake)
-                target = await this.characterRepository.findOne({ 
-                    where: { userId: targetId, isActive: true } 
+                // Get available characters for better error message
+                const availableCharacters = await this.characterRepository.find({
+                    select: ['id', 'name', 'surname', 'isActive', 'userId'],
+                    where: { isActive: true }
                 });
-                if (target) {
-                    finalTargetId = target.id;
-                } else {
-                    // Try to find by name if both ID lookups failed
-                    target = await this.characterRepository.findOne({ where: { name: targetId, isActive: true } });
-                    if (target) {
-                        finalTargetId = target.id;
-                    } else {
-                        // Get available characters for better error message
-                        const availableCharacters = await this.characterRepository.find({
-                            select: ['id', 'name', 'surname', 'isActive', 'userId'],
-                            where: { isActive: true }
-                        });
-                        const characterList = availableCharacters.map(c => `${c.name} ${c.surname || ''} (CharID: ${c.id}, UserID: ${c.userId})`).join(', ');
-                        throw new Error(`Target character not found. Searched for ID/name: ${targetId}. Available characters: ${characterList}`);
-                    }
-                }
-            } else {
-                finalTargetId = targetId;
+                const characterList = availableCharacters.map(c => `${c.name} ${c.surname || ''} (CharID: ${c.id}, UserID: ${c.userId})`).join(', ');
+                throw new Error(`Target character not found. Searched for ID/name: ${targetId}. Available characters: ${characterList}`);
             }
+            finalTargetId = target.id;
         } else if (skill.target === 'any') {
             // Skills that can target self or others
             if (!targetId) {
@@ -171,32 +177,17 @@ export class CombatService {
                 target = character;
             } else {
                 // Other-targeting
-                target = await this.characterRepository.findOne({ where: { id: targetId, isActive: true } });
+                target = await this.findTargetCharacter(targetId);
                 if (!target) {
-                    // Try to find by user ID if character ID lookup failed (common frontend mistake)
-                    target = await this.characterRepository.findOne({ 
-                        where: { userId: targetId, isActive: true } 
+                    // Get available characters for better error message
+                    const availableCharacters = await this.characterRepository.find({
+                        select: ['id', 'name', 'surname', 'isActive', 'userId'],
+                        where: { isActive: true }
                     });
-                    if (target) {
-                        finalTargetId = target.id;
-                    } else {
-                        // Try to find by name if both ID lookups failed
-                        target = await this.characterRepository.findOne({ where: { name: targetId, isActive: true } });
-                        if (target) {
-                            finalTargetId = target.id;
-                        } else {
-                            // Get available characters for better error message
-                            const availableCharacters = await this.characterRepository.find({
-                                select: ['id', 'name', 'surname', 'isActive', 'userId'],
-                                where: { isActive: true }
-                            });
-                            const characterList = availableCharacters.map(c => `${c.name} ${c.surname || ''} (CharID: ${c.id}, UserID: ${c.userId})`).join(', ');
-                            throw new Error(`Target character not found. Searched for ID/name: ${targetId}. Available characters: ${characterList}`);
-                        }
-                    }
-                } else {
-                    finalTargetId = targetId;
+                    const characterList = availableCharacters.map(c => `${c.name} ${c.surname || ''} (CharID: ${c.id}, UserID: ${c.userId})`).join(', ');
+                    throw new Error(`Target character not found. Searched for ID/name: ${targetId}. Available characters: ${characterList}`);
                 }
+                finalTargetId = target.id;
             }
         } else if (skill.target === 'none') {
             // Area/no-target skills don't need a target
@@ -205,32 +196,17 @@ export class CombatService {
         } else {
             // Handle any other target types or default behavior
             if (targetId) {
-                target = await this.characterRepository.findOne({ where: { id: targetId, isActive: true } });
+                target = await this.findTargetCharacter(targetId);
                 if (!target) {
-                    // Try to find by user ID if character ID lookup failed (common frontend mistake)
-                    target = await this.characterRepository.findOne({ 
-                        where: { userId: targetId, isActive: true } 
+                    // Get available characters for better error message
+                    const availableCharacters = await this.characterRepository.find({
+                        select: ['id', 'name', 'surname', 'isActive', 'userId'],
+                        where: { isActive: true }
                     });
-                    if (target) {
-                        finalTargetId = target.id;
-                    } else {
-                        // Try to find by name if both ID lookups failed
-                        target = await this.characterRepository.findOne({ where: { name: targetId, isActive: true } });
-                        if (target) {
-                            finalTargetId = target.id;
-                        } else {
-                            // Get available characters for better error message
-                            const availableCharacters = await this.characterRepository.find({
-                                select: ['id', 'name', 'surname', 'isActive', 'userId'],
-                                where: { isActive: true }
-                            });
-                            const characterList = availableCharacters.map(c => `${c.name} ${c.surname || ''} (CharID: ${c.id}, UserID: ${c.userId})`).join(', ');
-                            throw new Error(`Target character not found. Searched for ID/name: ${targetId}. Available characters: ${characterList}`);
-                        }
-                    }
-                } else {
-                    finalTargetId = targetId;
+                    const characterList = availableCharacters.map(c => `${c.name} ${c.surname || ''} (CharID: ${c.id}, UserID: ${c.userId})`).join(', ');
+                    throw new Error(`Target character not found. Searched for ID/name: ${targetId}. Available characters: ${characterList}`);
                 }
+                finalTargetId = target.id;
             } else {
                 // Default to self for unknown target types
                 finalTargetId = characterId;
@@ -448,22 +424,24 @@ export class CombatService {
                     }
                 }
 
-                // Mark actions as processed
-                await actionRepo.update(
-                    { roundId },
-                    { processed: true }
-                );
-
-                // Update round status
-                await roundRepo.update(
-                    { id: roundId },
-                    {
-                        status: 'resolved',
-                        resolvedBy,
-                        resolvedAt: new Date(),
-                        resolutionData: resolutionResults
-                    }
-                );
+                // Batch round and action updates for better performance
+                await Promise.all([
+                    // Mark actions as processed
+                    actionRepo.update(
+                        { roundId },
+                        { processed: true }
+                    ),
+                    // Update round status
+                    roundRepo.update(
+                        { id: roundId },
+                        {
+                            status: 'resolved',
+                            resolvedBy,
+                            resolvedAt: new Date(),
+                            resolutionData: resolutionResults
+                        }
+                    )
+                ]);
 
                 return resolutionResults;
             }).then(async (results) => {
@@ -675,10 +653,12 @@ export class CombatService {
             details: clashResult.resolution || `${action1.characterData.name} (${action1.skillData.name}: ${action1.finalOutput}) vs ${action2.characterData.name} (${action2.skillData.name}: ${action2.finalOutput})`
         };
 
-        // Store clash result in both actions
+        // Store clash result in both actions (batched for performance)
         const actionRepo = manager.getRepository(CombatAction);
-        await actionRepo.update(action1.id, { clashResult: result });
-        await actionRepo.update(action2.id, { clashResult: result });
+        await Promise.all([
+            actionRepo.update(action1.id, { clashResult: result }),
+            actionRepo.update(action2.id, { clashResult: result })
+        ]);
 
         return result;
     }

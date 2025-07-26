@@ -82,6 +82,33 @@ export class SkillEngine {
     }
 
     /**
+     * Get both skill and branch uses in a single batch operation (N+1 optimization)
+     * @returns {Promise<{skillUses: number, branchUses: number}>} Usage data
+     */
+    async getUsageData() {
+        // Batch both queries to reduce N+1 issues
+        const [skillResult, branchResult] = await Promise.all([
+            AppDataSource.getRepository(CharacterSkill).findOne({
+                where: { 
+                    characterId: this.character.id, 
+                    skillId: this.skill.id 
+                }
+            }),
+            AppDataSource.getRepository(CharacterSkillBranch).findOne({
+                where: { 
+                    characterId: this.character.id, 
+                    branchId: this.skill.branchId 
+                }
+            })
+        ]);
+
+        return {
+            skillUses: skillResult?.uses || 0,
+            branchUses: branchResult?.uses || 0
+        };
+    }
+
+    /**
      * Calculate the base impact of the skill based on character stats and skill properties
      * @returns {Promise<number>} The calculated impact value
      */
@@ -164,9 +191,8 @@ export class SkillEngine {
         const impact = await this.calculateImpact();
         const outcomeMultiplier = this.rollOutcome();
         
-        // Get skill and branch uses
-        const skillUses = await this.getSkillUses();
-        const branchUses = await this.getBranchUses();
+        // Get skill and branch uses in a single batched operation
+        const { skillUses, branchUses } = await this.getUsageData();
         
         // Calculate multipliers
         const skillRankMultiplier = this.calculateSkillRankMultiplier(skillUses);
