@@ -11,6 +11,8 @@ import { CharacterService } from './CharacterService.js';
 import { CombatService } from './CombatService.js';
 import { EventService } from './EventService.js';
 import { PvPResolutionService } from './PvPResolutionService.js';
+import { TargetResolutionService } from './TargetResolutionService.js';
+import { SkillExecutionService } from './SkillExecutionService.js';
 
 export class ChatService {
   chatRepository = AppDataSource.getRepository(ChatMessage);
@@ -18,6 +20,8 @@ export class ChatService {
   engineLogService = new EngineLogService();
   characterService = new CharacterService();
   sessionService = new SessionService();
+  targetResolutionService = new TargetResolutionService();
+  skillExecutionService = new SkillExecutionService();
 
   async getMessagesByLocation(locationId) {
     // Keep messages for 5 hours as intended, but optimize memory usage
@@ -141,37 +145,21 @@ export class ChatService {
           
           if (shouldSubmitToCombat) {
             try {
-              // Determine the correct target ID for combat submission
-              let combatTargetId = null;
+              // Use TargetResolutionService for standardized target resolution
+              const targetIdentifier = skill.selectedTarget?.userId || skill.selectedTarget?.characterName || skill.selectedTarget;
               
-              if (fullSkill.target === 'other' || fullSkill.target === 'any') {
-                // For skills that can target others, we need to get the target's CHARACTER ID
-                // The frontend sends userId, so we need to look up the character
-                let targetCharacter = null;
-                
-                if (skill.selectedTarget?.userId) {
-                  targetCharacter = await this.characterRepository.findOne({
-                    where: { userId: skill.selectedTarget.userId, isActive: true }
-                  });
-                  
-                  if (targetCharacter) {
-                    combatTargetId = targetCharacter.id;
-                  } else {
-                    throw new Error(`No active character found for user`);
-                  }
-                } else {
-                  throw new Error(`No target user specified`);
-                }
-                
-                // If we still don't have a target for 'other' skills, this is an error
-                if (fullSkill.target === 'other' && !combatTargetId) {
-                  throw new Error(`No valid target character found for ${fullSkill.name}`);
-                }
-              } else if (fullSkill.target === 'self') {
-                // Self-targeting skills target the character using them
-                combatTargetId = character.id;
+              const targetResolution = await this.targetResolutionService.resolveSkillTarget(
+                fullSkill,
+                character,
+                targetIdentifier,
+                { includeRelations: false, activeOnly: true }
+              );
+
+              if (!targetResolution.isValid) {
+                throw new Error(targetResolution.error);
               }
-              // For 'none' target skills, combatTargetId remains null
+
+              const combatTargetId = targetResolution.targetId;
               
               // Submit action to combat with pre-calculated values
               const submissionResult = await combatService.submitAction(
@@ -335,14 +323,17 @@ export class ChatService {
     if (outcomeMultiplier <= 0.6) rollQuality = 'Poor';
     else if (outcomeMultiplier >= 1.4) rollQuality = 'Critical';
 
+    // Get usage data in a single batched operation to avoid N+1 queries
+    const { skillUses, branchUses } = await skillEngine.getUsageData();
+
     // Create engine log for skill usage in chat (outside combat/events)
     const engineData = {
       basePower: fullSkill.basePower,
       finalOutput,
       outcomeMultiplier,
       rollQuality,
-      skillUses: await skillEngine.getSkillUses(),
-      branchUses: await skillEngine.getBranchUses(),
+      skillUses,
+      branchUses,
       characterStats: character.stats,
       skillData: {
         id: fullSkill.id,

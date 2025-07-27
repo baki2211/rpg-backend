@@ -5,6 +5,13 @@ import { CharacterSkillBranch } from '../models/characterSkillBranchModel.js';
 import { AppDataSource } from '../data-source.js';
 import { StatDefinitionService } from './StatDefinitionService.js';
 
+// Singleton instance to avoid creating new service instances
+const statDefinitionService = new StatDefinitionService();
+
+// In-memory cache for non-random skill calculations (short TTL due to character stat changes)
+const impactCache = new Map();
+const IMPACT_CACHE_TTL = 30000; // 30 seconds
+
 export class ClashResult {
     constructor(winner, damage, effects) {
         this.winner = winner; // 'attacker' or 'defender'
@@ -17,7 +24,8 @@ export class SkillEngine {
     constructor(character, skill) {
         this.character = character;
         this.skill = skill;
-        this.statDefinitionService = new StatDefinitionService();
+        this.statDefinitionService = statDefinitionService;
+        this._outcomeMultiplier = null; // Cache the roll result
     }
 
     /**
@@ -109,10 +117,35 @@ export class SkillEngine {
     }
 
     /**
+     * Generate cache key for base impact calculation
+     * @returns {string} Cache key
+     */
+    getImpactCacheKey() {
+        const statsHash = JSON.stringify(this.character.stats);
+        return `${this.character.id}-${this.skill.id}-${statsHash}`;
+    }
+
+    /**
+     * Check if cache entry is expired
+     * @param {number} timestamp - Cache timestamp
+     * @returns {boolean} True if expired
+     */
+    isCacheExpired(timestamp) {
+        return Date.now() - timestamp > IMPACT_CACHE_TTL;
+    }
+
+    /**
      * Calculate the base impact of the skill based on character stats and skill properties
      * @returns {Promise<number>} The calculated impact value
      */
     async calculateImpact() {
+        // Check cache first for non-random base impact
+        const cacheKey = this.getImpactCacheKey();
+        const cached = impactCache.get(cacheKey);
+        
+        if (cached && !this.isCacheExpired(cached.timestamp)) {
+            return cached.impact;
+        }
         let impact = this.skill.basePower;
 
         // Apply scaling from character stats with weighted formula
@@ -156,31 +189,45 @@ export class SkillEngine {
             }
         }
 
+        // Cache the calculated impact with timestamp
+        impactCache.set(cacheKey, {
+            impact,
+            timestamp: Date.now()
+        });
+
         return impact;
     }
 
     /**
      * Roll for the outcome of the skill usage using d20 system
+     * Caches result to ensure consistency across multiple calls
      * @returns {number} A multiplier based on the roll outcome (0.6, 1.0, or 1.4)
      */
     rollOutcome() {
+        // Return cached result if already rolled
+        if (this._outcomeMultiplier !== null) {
+            return this._outcomeMultiplier;
+        }
+        
         // Roll a d20 (1-20)
         const roll = Math.floor(Math.random() * 20) + 1;
         
         // Determine outcome based on roll ranges
         if (roll >= 1 && roll <= 3) {
             // Poor Success (15% chance)
-            return 0.6;
+            this._outcomeMultiplier = 0.6;
         } else if (roll >= 4 && roll <= 17) {
             // Standard Success (70% chance)
-            return 1.0;
+            this._outcomeMultiplier = 1.0;
         } else if (roll >= 18 && roll <= 20) {
             // Critical Success (15% chance)
-            return 1.4;
+            this._outcomeMultiplier = 1.4;
+        } else {
+            // Fallback (should never reach here)
+            this._outcomeMultiplier = 1.0;
         }
         
-        // Fallback (should never reach here)
-        return 1.0;
+        return this._outcomeMultiplier;
     }
 
     /**

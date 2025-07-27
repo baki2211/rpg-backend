@@ -311,11 +311,12 @@ export class PvPResolutionService {
     static getSkillTypeCategory(skillTypeName) {
         if (!skillTypeName) return 'Unknown';
         
-        // Use exact matching with official types
+        // Use exact matching with official types (handle both spellings)
         switch (skillTypeName) {
             case 'Attack':
                 return 'Attack';
             case 'Defence':
+            case 'Defense': // Handle both British and American spellings
                 return 'Defence'; 
             case 'Counter':
                 return 'Counter';

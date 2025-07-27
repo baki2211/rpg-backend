@@ -7,6 +7,9 @@ import { SkillEngine } from './SkillEngine.js';
 import { PvPResolutionService } from './PvPResolutionService.js';
 import { SkillUsageService } from './SkillUsageService.js';
 import { EngineLogService } from './EngineLogService.js';
+import { TargetResolutionService } from './TargetResolutionService.js';
+import { SkillExecutionService } from './SkillExecutionService.js';
+import { logger } from '../utils/logger.js';
 
 export class CombatService {
     constructor() {
@@ -15,27 +18,19 @@ export class CombatService {
         this.characterRepository = AppDataSource.getRepository(Character);
         this.skillRepository = AppDataSource.getRepository(Skill);
         this.engineLogService = new EngineLogService();
+        this.targetResolutionService = new TargetResolutionService();
+        this.skillExecutionService = new SkillExecutionService();
     }
 
     /**
-     * Optimized target resolution that tries multiple lookup strategies in a single query
-     * @param {string|number} targetId - Target identifier (could be ID, userID, or name)
-     * @returns {Promise<Object|null>} Found character or null
+     * @deprecated Use TargetResolutionService.findCharacter() instead
+     * Kept for backward compatibility
      */
     async findTargetCharacter(targetId) {
-        if (!targetId) return null;
-        
-        // Batch all possible lookups in a single query using OR conditions
-        const target = await this.characterRepository.findOne({
-            where: [
-                { id: targetId, isActive: true },                    // Character ID lookup
-                { userId: targetId, isActive: true },                // User ID lookup  
-                { name: targetId, isActive: true }                   // Name lookup
-            ],
-            relations: ['race', 'skills'] // Eager load commonly needed relations
+        return await this.targetResolutionService.findCharacter(targetId, {
+            includeRelations: true,
+            activeOnly: true
         });
-        
-        return target;
     }
 
     /**
@@ -98,7 +93,7 @@ export class CombatService {
     }
 
     /**
-     * Submit a skill action to an active round
+     * Submit a skill action to an active round (Refactored to use centralized services)
      * @param {number} roundId - The combat round ID
      * @param {number} characterId - The character performing the action
      * @param {number} skillId - The skill being used
@@ -116,7 +111,7 @@ export class CombatService {
             throw new Error('Combat round not found or not active');
         }
 
-        // Check if character already has an action in this round FIRST (before doing expensive operations)
+        // Check if character already has an action in this round
         const existingAction = await this.actionRepository.findOne({
             where: { roundId, characterId }
         });
@@ -124,7 +119,8 @@ export class CombatService {
         if (existingAction) {
             throw new Error('Character has already submitted an action for this round');
         }
-        // Get character and skill data
+
+        // Get character and skill data in parallel
         const [character, skill] = await Promise.all([
             this.characterRepository.findOne({
                 where: { id: characterId },
@@ -139,166 +135,37 @@ export class CombatService {
         if (!character) throw new Error('Character not found');
         if (!skill) throw new Error('Skill not found');
 
-        // Handle target validation based on skill requirements
-        let target = null;
-        let finalTargetId = null;
+        // Use TargetResolutionService for standardized target resolution
+        const targetResolution = await this.targetResolutionService.resolveSkillTarget(
+            skill, 
+            character, 
+            targetId,
+            { includeRelations: true, activeOnly: true }
+        );
 
-        if (skill.target === 'self') {
-            // Self-targeting skills should target the character using the skill
-            finalTargetId = characterId;
-            target = character;
-        } else if (skill.target === 'other') {
-            // Other-targeting skills require a valid target
-            if (!targetId || targetId === characterId) {
-                throw new Error('This skill requires a target other than yourself');
-            }
-            
-            target = await this.findTargetCharacter(targetId);
-            if (!target) {
-                // Get available characters for better error message
-                const availableCharacters = await this.characterRepository.find({
-                    select: ['id', 'name', 'surname', 'isActive', 'userId'],
-                    where: { isActive: true }
-                });
-                const characterList = availableCharacters.map(c => `${c.name} ${c.surname || ''} (CharID: ${c.id}, UserID: ${c.userId})`).join(', ');
-                throw new Error(`Target character not found. Searched for ID/name: ${targetId}. Available characters: ${characterList}`);
-            }
-            finalTargetId = target.id;
-        } else if (skill.target === 'any') {
-            // Skills that can target self or others
-            if (!targetId) {
-                // Default to self if no target specified
-                finalTargetId = characterId;
-                target = character;
-            } else if (targetId === characterId) {
-                // Self-targeting
-                finalTargetId = characterId;
-                target = character;
-            } else {
-                // Other-targeting
-                target = await this.findTargetCharacter(targetId);
-                if (!target) {
-                    // Get available characters for better error message
-                    const availableCharacters = await this.characterRepository.find({
-                        select: ['id', 'name', 'surname', 'isActive', 'userId'],
-                        where: { isActive: true }
-                    });
-                    const characterList = availableCharacters.map(c => `${c.name} ${c.surname || ''} (CharID: ${c.id}, UserID: ${c.userId})`).join(', ');
-                    throw new Error(`Target character not found. Searched for ID/name: ${targetId}. Available characters: ${characterList}`);
-                }
-                finalTargetId = target.id;
-            }
-        } else if (skill.target === 'none') {
-            // Area/no-target skills don't need a target
-            finalTargetId = null;
-            target = null;
-        } else {
-            // Handle any other target types or default behavior
-            if (targetId) {
-                target = await this.findTargetCharacter(targetId);
-                if (!target) {
-                    // Get available characters for better error message
-                    const availableCharacters = await this.characterRepository.find({
-                        select: ['id', 'name', 'surname', 'isActive', 'userId'],
-                        where: { isActive: true }
-                    });
-                    const characterList = availableCharacters.map(c => `${c.name} ${c.surname || ''} (CharID: ${c.id}, UserID: ${c.userId})`).join(', ');
-                    throw new Error(`Target character not found. Searched for ID/name: ${targetId}. Available characters: ${characterList}`);
-                }
-                finalTargetId = target.id;
-            } else {
-                // Default to self for unknown target types
-                finalTargetId = characterId;
-                target = character;
-            }
+        if (!targetResolution.isValid) {
+            throw new Error(targetResolution.error);
         }
 
-        // Use pre-calculated values if provided, otherwise calculate using SkillEngine
-        let finalOutput, outcomeMultiplier, rollQuality;
-        
-        if (preCalculatedValues) {
-          // Use pre-calculated values from ChatService
-          finalOutput = preCalculatedValues.finalOutput;
-          rollQuality = preCalculatedValues.rollQuality;
-          
-          // Calculate approximate outcomeMultiplier based on roll quality
-          if (rollQuality === 'Critical') {
-            outcomeMultiplier = 1.4;
-          } else if (rollQuality === 'Poor') {
-            outcomeMultiplier = 0.6;
-          } else {
-            outcomeMultiplier = 1.0;
-          }
-        } else {
-          // Fall back to calculating new values or looking for recent chat message
-          try {
-            const { ChatMessage } = await import('../models/chatMessageModel.js');
-            const chatRepository = AppDataSource.getRepository(ChatMessage);
-            const { MoreThanOrEqual, Not, IsNull } = await import('typeorm');
-            
-            // Look for recent chat message (within last 5 minutes) with this skill
-            const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-            
-            const recentSkillMessage = await chatRepository.findOne({
-              where: {
-                characterId: character.id,
-                skillId: skill.id,
-                skillOutput: Not(IsNull()),
-                createdAt: MoreThanOrEqual(fiveMinutesAgo)
-              },
-              order: { createdAt: 'DESC' }
-            });
+        // Use SkillExecutionService for standardized skill calculations
+        const calculationResult = await this.skillExecutionService.calculateSkillOutput(
+            character,
+            skill,
+            { preCalculated: preCalculatedValues, useCache: true }
+        );
 
-            // Also try to find ANY recent message with this skill (in case timing is off)
-            if (!recentSkillMessage) {
-              const recentMessages = await chatRepository.find({
-                where: {
-                  characterId: character.id,
-                  skillId: skill.id,
-                  skillOutput: Not(IsNull())
-                },
-                order: { createdAt: 'DESC' },
-                take: 10
-              });
-            }
-
-            if (recentSkillMessage && recentSkillMessage.skillOutput && recentSkillMessage.skillRoll) {
-              // Use pre-calculated values from chat
-              finalOutput = recentSkillMessage.skillOutput;
-              
-              // Parse roll quality from skillRoll (e.g., "Critical Success" -> "Critical")
-              if (recentSkillMessage.skillRoll.includes('Critical')) {
-                rollQuality = 'Critical';
-                outcomeMultiplier = 1.4;
-              } else if (recentSkillMessage.skillRoll.includes('Poor')) {
-                rollQuality = 'Poor';
-                outcomeMultiplier = 0.6;
-              } else {
-                rollQuality = 'Standard';
-                outcomeMultiplier = 1.0;
-              }
-            } else {
-              throw new Error('No recent chat values found');
-            }
-          } catch (error) {
-            // Calculate new values using SkillEngine
-            const skillEngine = new SkillEngine(character, skill);
-            finalOutput = await skillEngine.computeFinalOutput();
-            outcomeMultiplier = skillEngine.rollOutcome();
-
-            // Determine roll quality
-            rollQuality = 'Standard';
-            if (outcomeMultiplier <= 0.6) rollQuality = 'Poor';
-            else if (outcomeMultiplier >= 1.4) rollQuality = 'Critical';
-          }
+        if (!calculationResult.success) {
+            throw new Error(`Skill calculation failed: ${calculationResult.error}`);
         }
+
+        const { finalOutput, outcomeMultiplier, rollQuality } = calculationResult;
 
         // Create the combat action
         const action = this.actionRepository.create({
             roundId,
             characterId,
             skillId,
-            targetId: finalTargetId,
+            targetId: targetResolution.targetId,
             finalOutput,
             outcomeMultiplier,
             rollQuality,
@@ -315,9 +182,9 @@ export class CombatService {
                 name: character.name,
                 stats: character.stats
             },
-            targetData: target ? {
-                id: target.id,
-                name: target.name
+            targetData: targetResolution.target ? {
+                id: targetResolution.target.id,
+                name: targetResolution.target.name
             } : null
         });
 
