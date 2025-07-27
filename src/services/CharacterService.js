@@ -122,7 +122,7 @@ export class CharacterService {
   }
 
   async createCharacter(data, userId, imageUrl) {
-    const user = await this.userRepository.findOneBy({ id: (await data.user)?.id || userId });
+    const user = await this.userRepository.findOneBy({ id: data.user?.id || userId });
     if (!user) {
       throw new Error('User not found');
     }

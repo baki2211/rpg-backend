@@ -42,6 +42,8 @@ import rankRoutes from './routes/rank.js';
 import wikiRoutes from './routes/wikiRoutes.js';
 import healthRoutes, { setWebSocketServers } from './routes/healthRoutes.js';
 import presenceRoutes from './routes/presenceRoutes.js';
+import { RateLimitMiddleware } from './middleware/rateLimitMiddleware.js';
+import { AuditLogger } from './utils/auditLogger.js';
 import fs from 'fs';
 
 dotenv.config();
@@ -127,6 +129,9 @@ app.use(cookieParser());
 app.use(bodyParser.json({ limit: '10mb' })); // Increased limit for compressed payloads
 app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
 
+// Apply general API rate limiting
+app.use('/api', RateLimitMiddleware.generalApiLimit);
+
 // Routes
 app.use('/api', healthRoutes);
 
@@ -188,6 +193,26 @@ AppDataSource.initialize()
     server.listen(PORT, () => {
       logger.startup(`App Server running on http://localhost:${PORT}`);
       logger.startup('Memory monitoring active');
+      
+      // Log system startup
+      AuditLogger.logSystem(
+        AuditLogger.EventTypes.SYSTEM_STARTUP,
+        {
+          port: PORT,
+          node_env: process.env.NODE_ENV || 'development',
+          node_version: process.version,
+          features_enabled: {
+            memory_monitoring: true,
+            db_health_monitoring: true,
+            static_data_cache: true,
+            session_expiration: true,
+            memory_cleanup: true,
+            rate_limiting: true,
+            audit_logging: true
+          }
+        },
+        AuditLogger.RiskLevels.LOW
+      );
     });
   })
   .catch(error => {
@@ -198,6 +223,21 @@ AppDataSource.initialize()
 // Graceful shutdown handling
 const gracefulShutdown = (signal) => {
   logger.info(`Received ${signal}. Starting graceful shutdown...`);
+  
+  // Log system shutdown
+  AuditLogger.logSystem(
+    AuditLogger.EventTypes.SYSTEM_SHUTDOWN,
+    {
+      signal,
+      uptime_seconds: process.uptime(),
+      memory_usage: process.memoryUsage(),
+      active_connections: {
+        presence: presenceWS?.getConnectionCount?.() || 0,
+        chat: chatWS?.getConnectionCount?.() || 0
+      }
+    },
+    AuditLogger.RiskLevels.LOW
+  );
   
   // Stop accepting new connections
   server.close(() => {

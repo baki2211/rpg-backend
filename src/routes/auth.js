@@ -3,6 +3,8 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { UserService } from '../services/UserService.js';
 import { authenticateToken } from '../middleware/authMiddleware.js';
+import { RateLimitMiddleware } from '../middleware/rateLimitMiddleware.js';
+import { AuditLogger } from '../utils/auditLogger.js';
 
 const router = express.Router();
 const userService = new UserService();
@@ -34,7 +36,7 @@ const setTokenCookie = (res, token) => {
 };
 
 // Register route
-router.post('/register', async (req, res) => {
+router.post('/register', RateLimitMiddleware.authAttemptLimit, async (req, res) => {
     const { username, password } = req.body;
 
     if (!username || !password) {
@@ -62,6 +64,17 @@ router.post('/register', async (req, res) => {
         }
 
         const newUser = await userService.register(username, password);
+        
+        // Log successful registration
+        AuditLogger.logAuth(
+            AuditLogger.EventTypes.REGISTRATION,
+            newUser.id,
+            req,
+            true,
+            null,
+            { username, user_id: newUser.id }
+        );
+        
         res.status(201).json({ message: 'User registered successfully', user: newUser });
     } catch (error) {
         res.status(500).json({ message: 'Internal server error' });
@@ -69,18 +82,36 @@ router.post('/register', async (req, res) => {
 });
 
 // Login route
-router.post('/login', async (req, res) => {
+router.post('/login', RateLimitMiddleware.authAttemptLimit, async (req, res) => {
     const { username, password } = req.body;
 
     try {
         const user = await userService.findByUsername(username);
         if (!user || !user.password) {
+            // Log failed login attempt
+            AuditLogger.logAuth(
+                AuditLogger.EventTypes.LOGIN_FAILURE,
+                null,
+                req,
+                false,
+                new Error('Invalid username or password'),
+                { attempted_username: username, reason: 'user_not_found' }
+            );
             res.status(401).json({ message: 'Invalid username or password' });
             return;
         }
 
         const isPasswordValid = await userService.verifyPassword(password, user.password);
         if (!isPasswordValid) {
+            // Log failed login attempt with wrong password
+            AuditLogger.logAuth(
+                AuditLogger.EventTypes.LOGIN_FAILURE,
+                user.id,
+                req,
+                false,
+                new Error('Invalid password'),
+                { username: user.username, reason: 'invalid_password' }
+            );
             res.status(401).json({ message: 'Invalid username or password' });
             return;
         }
@@ -92,6 +123,16 @@ router.post('/login', async (req, res) => {
 
         const token = createToken(user);
         setTokenCookie(res, token);
+        
+        // Log successful login
+        AuditLogger.logAuth(
+            AuditLogger.EventTypes.LOGIN_SUCCESS,
+            user.id,
+            req,
+            true,
+            null,
+            { username: user.username, role: user.role }
+        );
 
         // ALSO return the token in response body for cross-domain compatibility
         res.status(200).json({ 
@@ -132,6 +173,16 @@ router.post('/refresh', authenticateToken, async (req, res) => {
         const newToken = createToken(user);
         setTokenCookie(res, newToken);
         
+        // Log token refresh
+        AuditLogger.logAuth(
+            AuditLogger.EventTypes.TOKEN_REFRESH,
+            user.id,
+            req,
+            true,
+            null,
+            { time_until_expiration: timeUntilExpiration }
+        );
+        
         res.status(200).json({ 
             message: 'Token refreshed successfully',
             token: newToken,
@@ -150,6 +201,17 @@ router.post('/refresh', authenticateToken, async (req, res) => {
 
 // Logout route
 router.post('/logout', (req, res) => {
+    // Log logout (may not have user info if token is invalid)
+    const userId = req.user?.id || null;
+    AuditLogger.logAuth(
+        AuditLogger.EventTypes.LOGOUT,
+        userId,
+        req,
+        true,
+        null,
+        { method: 'cookie_clear' }
+    );
+    
     // Clear the cookie if it exists
     res.clearCookie('token', {
         httpOnly: true,

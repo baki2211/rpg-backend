@@ -1,4 +1,7 @@
 import { CharacterService } from '../services/CharacterService.js';
+import { InputValidator } from '../utils/inputValidator.js';
+import { RateLimitMiddleware } from '../middleware/rateLimitMiddleware.js';
+import { AuditLogger } from '../utils/auditLogger.js';
 import fs from 'fs';
 import path from 'path';
 
@@ -6,16 +9,39 @@ const characterService = new CharacterService();
 
 export class CharacterController {
   static async createCharacter(req, res) {
-    if (!req.body) {
-      return res.status(400).json({ error: 'No character data provided' });
-    }
     try {
-      const userId = req.user.id; // From auth middleware
+      console.log('Character creation request body:', req.body);
+      console.log('User from token:', req.user);
+      
+      // Validate and sanitize inputs
+      const validatedData = InputValidator.validateCharacterCreation(req.body);
+      console.log('Validated data:', validatedData);
+      
+      const userId = InputValidator.validateUserId(req.user.id);
+      console.log('Validated userId:', userId);
       const imageUrl = req.file ? `/uploads/${req.file.filename}` : '/uploads/placeholder.jpg';
-      const character = await characterService.createCharacter(req.body, userId, imageUrl);
+      
+      const character = await characterService.createCharacter(validatedData, userId, imageUrl);
+      
+      // Log character creation
+      AuditLogger.logCharacter(
+        AuditLogger.EventTypes.CHARACTER_CREATE,
+        userId,
+        character.id,
+        req,
+        { 
+          character_name: character.name,
+          race_id: validatedData.race?.id,
+          has_image: !!req.file
+        }
+      );
+      
       res.status(201).json(character);
     } catch (error) {
-      res.status(400).json({ error: (error).message });
+      console.error('Character creation error:', error);
+      console.error('Request body:', req.body);
+      console.error('User:', req.user);
+      res.status(400).json({ error: error.message });
     }
   }
 
@@ -48,14 +74,21 @@ export class CharacterController {
 
   static async activateCharacter(req, res) {
     try {
-      const userId = req.user.id; // From auth middleware
-      const { id } = req.params; // Route parameter is 'id', not 'characterId'
-      const characterId = Number(id);
-      if (isNaN(characterId)) {
-        return res.status(400).json({ error: 'Invalid character ID provided' });
-      }
+      // Validate and sanitize inputs
+      const userId = InputValidator.validateUserId(req.user.id);
+      const characterId = InputValidator.validateCharacterId(req.params.id);
   
       await characterService.activateCharacter(characterId, userId);
+      
+      // Log character activation
+      AuditLogger.logCharacter(
+        AuditLogger.EventTypes.CHARACTER_ACTIVATE,
+        userId,
+        characterId,
+        req,
+        { action: 'activate' }
+      );
+      
       res.status(204).end();
     } catch (error) {
       console.error('Activate character error:', error);
@@ -79,6 +112,16 @@ export class CharacterController {
       }
 
       await characterService.deleteCharacter(id, userId);
+      
+      // Log character deletion
+      AuditLogger.logCharacter(
+        AuditLogger.EventTypes.CHARACTER_DELETE,
+        userId,
+        id,
+        req,
+        { character_id: id }
+      );
+      
       res.status(204).end();
     } catch (error) {
       console.error('Delete character error:', error);
@@ -130,6 +173,19 @@ export class CharacterController {
       const userId = req.user.id; // From auth middleware
       const { skillId } = req.params;
       const character = await characterService.acquireSkill(Number(skillId), userId);
+      
+      // Log skill acquisition
+      AuditLogger.logEvent(
+        AuditLogger.EventTypes.SKILL_ACQUIRE,
+        {
+          userId,
+          characterId: character.id,
+          req,
+          riskLevel: AuditLogger.RiskLevels.LOW,
+          details: { skill_id: Number(skillId) }
+        }
+      );
+      
       res.status(200).json(character);
     } catch (error) {
       res.status(400).json({ error: error.message });
@@ -179,6 +235,19 @@ export class CharacterController {
         userId, 
         statUpdates
       );
+      
+      // Log character stats update
+      AuditLogger.logCharacter(
+        AuditLogger.EventTypes.CHARACTER_STATS_UPDATE,
+        userId,
+        Number(characterId),
+        req,
+        { 
+          updated_stats: Object.keys(statUpdates),
+          stat_count: Object.keys(statUpdates).length
+        }
+      );
+      
       res.status(200).json(updatedCharacter);
     } catch (error) {
       res.status(400).json({ error: error.message });

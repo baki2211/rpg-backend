@@ -1,6 +1,7 @@
 import express from 'express';
 import { CombatController } from '../controllers/CombatController.js';
 import { authenticateToken } from '../middleware/authMiddleware.js';
+import { RateLimitMiddleware } from '../middleware/rateLimitMiddleware.js';
 
 const router = express.Router();
 
@@ -15,7 +16,7 @@ router.post('/rounds/:roundId/resolve', CombatController.resolveRound);
 router.post('/rounds/:roundId/cancel', CombatController.cancelRound);
 
 // Action management
-router.post('/rounds/:roundId/actions', CombatController.submitAction);
+router.post('/rounds/:roundId/actions', RateLimitMiddleware.combatActionLimit, CombatController.submitAction);
 router.get('/rounds/:roundId/actions', CombatController.getRoundActions);
 
 export default router; 

@@ -2,6 +2,9 @@ import { CombatService } from '../services/CombatService.js';
 import { SessionService } from '../services/SessionService.js';
 import { CharacterService } from '../services/CharacterService.js';
 import { EventService } from '../services/EventService.js';
+import { InputValidator } from '../utils/inputValidator.js';
+import { RateLimitMiddleware } from '../middleware/rateLimitMiddleware.js';
+import { AuditLogger } from '../utils/auditLogger.js';
 
 export class CombatController {
     static combatService = new CombatService();
@@ -49,6 +52,20 @@ export class CombatController {
                 sessionId,
                 finalEventId
             );
+            
+            // Log combat round creation
+            AuditLogger.logCombat(
+                AuditLogger.EventTypes.COMBAT_ROUND_CREATE,
+                userId,
+                null,
+                req,
+                {
+                    round_id: round.id,
+                    location_id: parseInt(locationId),
+                    session_id: sessionId,
+                    event_id: finalEventId
+                }
+            );
 
             res.status(201).json({
                 success: true,
@@ -74,19 +91,11 @@ export class CombatController {
      */
     static async submitAction(req, res) {
         try {
-            const { roundId } = req.params;
-            const { skillId, targetId } = req.body;
-            const userId = req.user.id;
-
-            if (!skillId) {
-                return res.status(400).json({ error: 'Skill ID is required' });
-            }
-
-            // Validate skillId format
-            const parsedSkillId = parseInt(skillId);
-            if (isNaN(parsedSkillId)) {
-                return res.status(400).json({ error: 'Invalid skill ID format' });
-            }
+            // Validate and sanitize inputs
+            const roundId = InputValidator.validateRoundId(req.params.roundId);
+            const skillId = InputValidator.validateSkillId(req.body.skillId);
+            const targetId = req.body.targetId ? InputValidator.validateCharacterId(req.body.targetId) : null;
+            const userId = InputValidator.validateUserId(req.user.id);
 
             // Get the user's active character
             const character = await CombatController.characterService.getActiveCharacter(userId);
@@ -94,20 +103,26 @@ export class CombatController {
                 return res.status(400).json({ error: 'No active character found' });
             }
 
-            // Parse and validate targetId
-            let parsedTargetId = null;
-            if (targetId && targetId !== '' && targetId !== 'null' && targetId !== 'undefined') {
-                parsedTargetId = parseInt(targetId);
-                if (isNaN(parsedTargetId)) {
-                    return res.status(400).json({ error: 'Invalid target ID format' });
-                }
-            }
-
+            // Submit the action with validated inputs
             const action = await CombatController.combatService.submitAction(
-                parseInt(roundId),
+                roundId,
                 character.id,
-                parsedSkillId,
-                parsedTargetId
+                skillId,
+                targetId
+            );
+            
+            // Log combat action
+            AuditLogger.logCombat(
+                AuditLogger.EventTypes.COMBAT_ACTION,
+                userId,
+                character.id,
+                req,
+                {
+                    round_id: roundId,
+                    skill_id: skillId,
+                    target_id: targetId,
+                    action_id: action.id
+                }
             );
 
             res.status(201).json({
@@ -189,6 +204,19 @@ export class CombatController {
 
             // Resolve the round
             const result = await CombatController.combatService.resolveRound(roundIdInt, userId);
+            
+            // Log combat round resolution
+            AuditLogger.logCombat(
+                AuditLogger.EventTypes.COMBAT_ROUND_RESOLVE,
+                userId,
+                null,
+                req,
+                {
+                    round_id: roundIdInt,
+                    round_number: result.roundNumber,
+                    resolved_by: userId
+                }
+            );
 
             res.status(200).json({
                 success: true,

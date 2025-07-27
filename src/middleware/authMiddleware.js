@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+import { AuditLogger } from '../utils/auditLogger.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -20,6 +21,18 @@ export const authenticateToken = (req, res, next) => {
   }
 
   if (!token) {
+    // Log unauthorized access attempt
+    AuditLogger.logSecurity(
+      AuditLogger.EventTypes.UNAUTHORIZED_ACCESS,
+      null,
+      req,
+      {
+        reason: 'missing_token',
+        endpoint: req.originalUrl,
+        method: req.method
+      },
+      AuditLogger.RiskLevels.MEDIUM
+    );
     res.status(401).json({ message: 'Unauthorized: Token missing' });
     return;
   }
@@ -29,6 +42,20 @@ export const authenticateToken = (req, res, next) => {
     req.user = decoded; // Attach the decoded token to the req object
     next();
   } catch (err) {
+    // Log failed authentication attempt
+    AuditLogger.logSecurity(
+      AuditLogger.EventTypes.UNAUTHORIZED_ACCESS,
+      null,
+      req,
+      {
+        reason: err.name || 'token_verification_failed',
+        error_message: err.message,
+        endpoint: req.originalUrl,
+        method: req.method
+      },
+      AuditLogger.RiskLevels.MEDIUM
+    );
+    
     if (err.name === 'TokenExpiredError') {
       res.status(401).json({ message: 'Token expired' });
     } else if (err.name === 'JsonWebTokenError') {
@@ -80,6 +107,19 @@ export const requireRole = (roles) => {
   return (req, res, next) => {
     const user = req.user;
     if (!user || !roles.includes(user.role)) {
+      // Log permission denied attempt
+      AuditLogger.logSecurity(
+        AuditLogger.EventTypes.PERMISSION_DENIED,
+        user?.id || null,
+        req,
+        {
+          required_roles: roles,
+          user_role: user?.role || 'none',
+          endpoint: req.originalUrl,
+          method: req.method
+        },
+        AuditLogger.RiskLevels.HIGH
+      );
       res.status(403).json({ message: 'Forbidden: Insufficient role' });
       return;
     }

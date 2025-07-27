@@ -4,6 +4,7 @@ import memoryManager from '../utils/memoryManager.js';
 import dbHealthMonitor from '../utils/dbHealthMonitor.js';
 import staticDataCache from '../utils/staticDataCache.js';
 import { MemoryCleanupJob } from '../jobs/memoryCleanup.js';
+import { RateLimitMiddleware } from '../middleware/rateLimitMiddleware.js';
 
 // Track compression statistics
 let compressionStats = {
@@ -478,6 +479,75 @@ router.get('/memory/status', (req, res) => {
       error: error.message
     });
   }
+});
+
+// Rate limiting status endpoint
+router.get('/rate-limits', (req, res) => {
+  try {
+    const activeLimits = RateLimitMiddleware.getActiveRateLimits();
+    
+    res.json({
+      status: 'success',
+      rateLimits: {
+        active: activeLimits.length,
+        entries: activeLimits,
+        stats: {
+          totalActiveKeys: activeLimits.length,
+          byType: activeLimits.reduce((acc, limit) => {
+            const type = limit.key.split('_')[0];
+            acc[type] = (acc[type] || 0) + 1;
+            return acc;
+          }, {})
+        }
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Rate limit status check failed:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Rate limit status check failed',
+      error: error.message
+    });
+  }
+});
+
+// Clear specific rate limit (admin only)
+router.post('/rate-limits/clear', (req, res) => {
+  try {
+    const { key } = req.body;
+    
+    if (!key) {
+      return res.status(400).json({
+        success: false,
+        message: 'Rate limit key is required'
+      });
+    }
+    
+    const cleared = RateLimitMiddleware.clearRateLimit(key);
+    
+    res.json({
+      success: cleared,
+      message: cleared ? `Rate limit cleared for key: ${key}` : 'Rate limit key not found',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Rate limit clear failed:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Rate limit clear failed',
+      error: error.message
+    });
+  }
+});
+
+// Graceful shutdown cleanup for rate limiting
+process.on('SIGTERM', () => {
+  RateLimitMiddleware.stopCleanup();
+});
+
+process.on('SIGINT', () => {
+  RateLimitMiddleware.stopCleanup();
 });
 
 export default router; 

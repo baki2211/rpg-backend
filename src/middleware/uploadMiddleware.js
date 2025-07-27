@@ -11,6 +11,11 @@ const storage = multer.diskStorage({
 });
 
 const fileFilter = (req, file, cb) => {
+    // If no file is provided, skip validation
+    if (!file) {
+        return cb(null, true);
+    }
+    
     // Validate file type
     const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/jpg'];
     if (!allowedTypes.includes(file.mimetype)) {
