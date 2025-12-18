@@ -2,7 +2,7 @@
 
 import https from 'https';
 
-const BACKEND_URL = 'https://rpg-be.onrender.com';
+const BACKEND_URL = 'https://arcanerealms.org';
 
 function makeRequest(path) {
   return new Promise((resolve, reject) => {

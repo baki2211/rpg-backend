@@ -30,7 +30,7 @@ const setTokenCookie = (res, token) => {
         secure: process.env.NODE_ENV === 'production',
         sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
         maxAge: 3600000, // 1 hour
-        domain: process.env.NODE_ENV === 'production' ? '.onrender.com' : undefined,
+        domain: process.env.NODE_ENV === 'production' ? 'arcanerealms.org' : undefined,
     };
     res.cookie('token', token, cookieOptions);
 };
