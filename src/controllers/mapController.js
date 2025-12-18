@@ -54,8 +54,8 @@ export class MapController {
       if (existingMap.imageUrl && existingMap.imageUrl.startsWith('/uploads/')) {
         const oldImagePath = path.join(process.cwd(), existingMap.imageUrl);
         fs.unlink(oldImagePath, (err) => {
-          if (err) console.warn('⚠️ Failed to delete old image:', err.message);
-          else console.log('🗑️ Old image deleted:', oldImagePath);
+          if (err) console.warn('Failed to delete old image:', err.message);
+          else console.log('Old image deleted:', oldImagePath);
         });
       }
      // Add new image path

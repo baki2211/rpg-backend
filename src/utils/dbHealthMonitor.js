@@ -63,7 +63,7 @@ class DatabaseHealthMonitor {
     const stats = this.getPoolStats();
     
     if (stats.status === 'error' || stats.status === 'disconnected') {
-      logger.error('🔴 Database health check failed', { stats });
+      logger.error(' Database health check failed', { stats });
       return;
     }
 
@@ -71,13 +71,13 @@ class DatabaseHealthMonitor {
     const utilization = parseFloat(stats.poolUtilization);
     
     if (utilization >= 90) {
-      logger.error('🔴 CRITICAL: Database pool utilization at ' + stats.poolUtilization + '%', {
+      logger.error('CRITICAL: Database pool utilization at ' + stats.poolUtilization + '%', {
         used: stats.usedConnections,
         max: stats.maxConnections,
         waiting: stats.waitingClients
       });
     } else if (utilization >= 70) {
-      logger.warn('⚠️ WARNING: Database pool utilization at ' + stats.poolUtilization + '%', {
+      logger.warn('WARNING: Database pool utilization at ' + stats.poolUtilization + '%', {
         used: stats.usedConnections,
         max: stats.maxConnections,
         waiting: stats.waitingClients
@@ -86,7 +86,7 @@ class DatabaseHealthMonitor {
 
     // Log waiting clients
     if (stats.waitingClients > 0) {
-      logger.warn('⚠️ Database clients waiting for connections:', {
+      logger.warn('Database clients waiting for connections:', {
         waiting: stats.waitingClients,
         available: stats.idleConnections
       });
@@ -94,7 +94,7 @@ class DatabaseHealthMonitor {
 
     // Log detailed stats every 5 minutes in development
     if (process.env.NODE_ENV === 'development') {
-      logger.info('📊 Database Pool Stats', stats);
+      logger.info('Database Pool Stats', stats);
     }
   }
 
@@ -109,7 +109,7 @@ class DatabaseHealthMonitor {
     }
 
     this.isMonitoring = true;
-    logger.info('🔍 Database health monitoring started');
+    logger.info('Database health monitoring started');
 
     this.monitoringInterval = setInterval(() => {
       this.checkDatabaseHealth();
@@ -166,7 +166,7 @@ class DatabaseHealthMonitor {
       const pool = driver.master;
       
       if (pool && typeof pool.end === 'function') {
-        logger.warn('🚨 Forcing release of idle database connections');
+        logger.warn('Forcing release of idle database connections');
         
         // This will close idle connections but keep the pool alive
         const beforeStats = this.getPoolStats();

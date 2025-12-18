@@ -28,7 +28,7 @@ class MemoryManager {
     if (this.isMonitoring) return;
     
     this.isMonitoring = true;
-    logger.info('🔍 Memory monitoring started with WebSocket integration');
+    logger.info(' Memory monitoring started with WebSocket integration');
     
     this.gcInterval = setInterval(() => {
       this.checkMemory(); // Use the new checkMemory method
@@ -171,11 +171,11 @@ class MemoryManager {
       try {
         if (this.webSocketServers.presenceWS?.cleanup) {
           this.webSocketServers.presenceWS.cleanup();
-          logger.info('🚨 Emergency: Closed all presence WebSocket connections');
+          logger.info('Emergency: Closed all presence WebSocket connections');
         }
         if (this.webSocketServers.chatWS?.cleanup) {
           this.webSocketServers.chatWS.cleanup();
-          logger.info('🚨 Emergency: Closed all chat WebSocket connections');
+          logger.info(' Emergency: Closed all chat WebSocket connections');
         }
       } catch (error) {
         logger.error('Error during emergency WebSocket cleanup:', { error: error.message });
@@ -194,7 +194,7 @@ class MemoryManager {
     try {
       const { default: staticDataCache } = await import('./staticDataCache.js');
       staticDataCache.clear();
-      logger.warn('🚨 Emergency: Static data cache cleared');
+      logger.warn(' Emergency: Static data cache cleared');
     } catch (error) {
       logger.error('Error during cache cleanup:', { error: error.message });
     }
@@ -210,19 +210,19 @@ class MemoryManager {
     const rssPercent = (memUsage.rss / (512 * 1024 * 1024)) * 100;
     
     if (memUsage.rss > this.thresholds.emergency) {
-      logger.error('🚨 EMERGENCY: Memory usage at 88%', {
+      logger.error('EMERGENCY: Memory usage at 88%', {
         rss: `${Math.round(memUsage.rss / 1024 / 1024)}MB`,
         percent: rssPercent.toFixed(1)
       });
       this.emergencyCleanup();
     } else if (memUsage.rss > this.thresholds.critical) {
-      logger.error('⚠️ CRITICAL: Memory usage at 78%', {
+      logger.error('CRITICAL: Memory usage at 78%', {
         rss: `${Math.round(memUsage.rss / 1024 / 1024)}MB`,
         percent: rssPercent.toFixed(1)
       });
       this.aggressiveCleanup();
     } else if (memUsage.rss > this.thresholds.warning) {
-      logger.warn('⚠️ WARNING: Memory usage at 68%', {
+      logger.warn('WARNING: Memory usage at 68%', {
         rss: `${Math.round(memUsage.rss / 1024 / 1024)}MB`,
         percent: rssPercent.toFixed(1)
       });
@@ -231,14 +231,14 @@ class MemoryManager {
   }
 
   async aggressiveCleanup() {
-    logger.warn('⚠️ Performing aggressive cleanup...');
+    logger.warn('Performing aggressive cleanup...');
     
     // Clear static data cache to free immediate memory
     try {
       const { default: staticDataCache } = await import('./staticDataCache.js');
       const cleanedEntries = staticDataCache.cleanup();
       if (cleanedEntries > 0) {
-        logger.info(`⚠️ Cleaned ${cleanedEntries} expired cache entries`);
+        logger.info(`Cleaned ${cleanedEntries} expired cache entries`);
       }
     } catch (error) {
       logger.error('Error during cache cleanup:', { error: error.message });
@@ -251,7 +251,7 @@ class MemoryManager {
         const chatCount = this.webSocketServers.chatWS?.getConnectionCount?.() || 0;
         
         if (presenceCount > 5) {
-          logger.warn(`⚠️ Too many presence connections (${presenceCount}), forcing cleanup`);
+          logger.warn(`Too many presence connections (${presenceCount}), forcing cleanup`);
           // Force cleanup of stale connections
           if (this.webSocketServers.presenceWS?.wss) {
             this.webSocketServers.presenceWS.wss.clients.forEach(ws => {
@@ -263,7 +263,7 @@ class MemoryManager {
         }
         
         if (chatCount > 10) {
-          logger.warn(`⚠️ Too many chat connections (${chatCount}), forcing cleanup`);
+          logger.warn(`Too many chat connections (${chatCount}), forcing cleanup`);
           // Force cleanup of stale connections
           if (this.webSocketServers.chatWS?.wss) {
             this.webSocketServers.chatWS.wss.clients.forEach(ws => {
