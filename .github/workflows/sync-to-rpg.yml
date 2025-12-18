@@ -52,5 +52,5 @@ jobs:
         fi
         cd rpg
         git add backend
-        git commit -m "🔁 Sync backend from commit $GITHUB_SHA" || echo "No changes to commit"
+        git commit -m "Sync backend from commit $GITHUB_SHA" || echo "No changes to commit"
         git push origin main --force
