@@ -20,6 +20,41 @@ export class UserController {
         }
     }
 
+    async updateUserPassword(req, res) {
+        try {
+            const { userId } = req.params;
+            const { oldPassword, newPassword } = req.body;
+            const requestingUserId = req.user?.id;
+            const isAdmin = req.user?.role === 'admin';
+
+            // Validate required fields
+            if (!newPassword) {
+                return res.status(400).json({ error: 'New password is required' });
+            }
+
+            // Old password is required for non-admin users
+            if (!isAdmin && !oldPassword) {
+                return res.status(400).json({ error: 'Old password is required' });
+            }
+
+            // Non-admin users can only update their own password
+            if (!isAdmin && requestingUserId !== parseInt(userId)) {
+                return res.status(403).json({ error: 'Access denied. You can only update your own password.' });
+            }
+
+            const updatedUser = await this.userService.updateUserPassword(
+                parseInt(userId),
+                oldPassword,
+                newPassword,
+                isAdmin  // Pass the admin flag
+            );
+            res.json(updatedUser);
+        } catch (error) {
+            console.error('Error in updateUserPassword:', error);
+            res.status(500).json({ error: error.message });
+        }
+    }
+
     async updateUserRole(req, res) {
         try {
             // Check if user is admin

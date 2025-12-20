@@ -43,6 +43,26 @@ export class UserService {
         });
     }
 
+    // Update user password
+    async updateUserPassword (userId, oldPassword, newPassword, isAdmin = false) {
+        const user = await this.findById(userId);
+        if (!user) {
+            throw new Error('User not found');
+        }
+
+        // Only verify old password if not admin
+        if (!isAdmin) {
+            const isPasswordValid = await this.verifyPassword(oldPassword, user.password);
+            if (!isPasswordValid) {
+                throw new Error('The old password does not match');
+            }
+        }
+
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+        await this.userRepository.update(userId, { password: hashedPassword });
+        return this.findById(userId);
+    }
+
     // Update user role
     async updateUserRole(userId, newRole) {
         const validRoles = ['user', 'staffer', 'master', 'admin'];

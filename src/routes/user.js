@@ -17,4 +17,7 @@ router.get('/role/:role', authenticateToken, userController.getUsersByRole.bind(
 // Update user role (admin only)
 router.put('/:userId/role', authenticateToken, userController.updateUserRole.bind(userController));
 
+// Update user password (admin only)
+router.put('/:userId/password', authenticateToken, userController.updateUserPassword.bind(userController));
+
 export default router;
