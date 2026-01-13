@@ -13,8 +13,8 @@ COPY . .
 
 EXPOSE 5001
 
-# Corrected CMD to point to src/index.js
-CMD ["npx", "nodemon", "src/index.js"]
+# Use nodemon with config from nodemon.json
+CMD ["npx", "nodemon"]
 
 # CMD populate the database and start the server
 # Uncomment the following line if you want to seed the database on container start

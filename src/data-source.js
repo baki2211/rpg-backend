@@ -19,6 +19,9 @@ import { CombatAction } from './models/combatActionModel.js';
 import { Event } from './models/eventModel.js';
 import { EngineLog } from './models/engineLogModel.js';
 import { StatDefinition } from './models/statDefinitionModel.js';
+import { CombatConstant } from './models/combatConstantModel.js';
+import { MasteryTier } from './models/masteryTierModel.js';
+import { SkillValidationRule } from './models/skillValidationRuleModel.js';
 import { Rank } from './models/rankModel.js';
 import { WikiSection } from './models/wikiSectionModel.js';
 import { WikiEntry } from './models/wikiEntryModel.js';
@@ -78,6 +81,9 @@ export const AppDataSource = new DataSource({
     Event,
     EngineLog,
     StatDefinition,
+    CombatConstant,
+    MasteryTier,
+    SkillValidationRule,
     Rank,
     WikiSection,
     WikiEntry
