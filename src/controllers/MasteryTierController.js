@@ -15,7 +15,12 @@ export class MasteryTierController {
             const tiers = await this.masteryTierService.getAllMasteryTiers(
                 activeOnly === 'true'
             );
-            res.json(tiers);
+            // Convert decimal multiplier to number for frontend
+            const formattedTiers = tiers.map(tier => ({
+                ...tier,
+                multiplier: parseFloat(tier.multiplier)
+            }));
+            res.json(formattedTiers);
         } catch (error) {
             console.error('Error in getAllMasteryTiers:', error);
             res.status(500).json({ error: 'Failed to retrieve mastery tiers' });
@@ -34,7 +39,10 @@ export class MasteryTierController {
                 return res.status(404).json({ error: 'Mastery tier not found' });
             }
 
-            res.json(tier);
+            res.json({
+                ...tier,
+                multiplier: parseFloat(tier.multiplier)
+            });
         } catch (error) {
             console.error('Error in getMasteryTierById:', error);
             res.status(500).json({ error: 'Failed to retrieve mastery tier' });
@@ -53,7 +61,10 @@ export class MasteryTierController {
                 return res.status(404).json({ error: 'No mastery tier found for the given uses' });
             }
 
-            res.json(tier);
+            res.json({
+                ...tier,
+                multiplier: parseFloat(tier.multiplier)
+            });
         } catch (error) {
             console.error('Error in getMasteryTierForUses:', error);
             res.status(500).json({ error: 'Failed to retrieve mastery tier' });
@@ -72,7 +83,10 @@ export class MasteryTierController {
 
             const tierData = req.body;
             const tier = await this.masteryTierService.createMasteryTier(tierData);
-            res.status(201).json(tier);
+            res.status(201).json({
+                ...tier,
+                multiplier: parseFloat(tier.multiplier)
+            });
         } catch (error) {
             console.error('Error in createMasteryTier:', error);
             res.status(400).json({ error: error.message });
@@ -101,7 +115,7 @@ export class MasteryTierController {
                 id: tier.id,
                 tier: tier.tier,
                 tierName: tier.tierName,
-                multiplier: tier.multiplier,
+                multiplier: parseFloat(tier.multiplier),
                 message: 'Mastery tier updated successfully'
             });
         } catch (error) {
@@ -151,7 +165,10 @@ export class MasteryTierController {
             res.json({
                 createdTiers: result.createdTiers,
                 message: 'Mastery tiers initialized successfully',
-                tiers: result.tiers
+                tiers: result.tiers.map(tier => ({
+                    ...tier,
+                    multiplier: parseFloat(tier.multiplier)
+                }))
             });
         } catch (error) {
             console.error('Error in initializeDefaultTiers:', error);
