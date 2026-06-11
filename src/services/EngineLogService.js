@@ -113,9 +113,9 @@ export class EngineLogService {
         const query = `
             SELECT el.* 
             FROM engine_logs el
-            JOIN sessions s ON el.sessionId = s.id
-            WHERE s.eventId = ?
-            ORDER BY el.createdAt DESC
+            JOIN sessions s ON el."sessionId" = s.id
+            WHERE s."eventId" = $1
+            ORDER BY el."createdAt" DESC
         `;
         
         return await AppDataSource.query(query, [eventId]);

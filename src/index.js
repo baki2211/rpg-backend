@@ -48,8 +48,31 @@ import presenceRoutes from './routes/presenceRoutes.js';
 import { RateLimitMiddleware } from './middleware/rateLimitMiddleware.js';
 import { AuditLogger } from './utils/auditLogger.js';
 import fs from 'fs';
+import jwt from 'jsonwebtoken';
 
 dotenv.config();
+
+const JWT_SECRET = process.env.JWT_SECRET;
+
+const rejectUpgrade = (socket, status, message) => {
+  const body = message;
+  socket.write(
+    `HTTP/1.1 ${status}\r\n` +
+    'Connection: close\r\n' +
+    'Content-Type: text/plain\r\n' +
+    `Content-Length: ${Buffer.byteLength(body)}\r\n` +
+    '\r\n' +
+    body
+  );
+  socket.destroy();
+};
+
+const extractBearerFromProtocols = (headerValue) => {
+  if (!headerValue) return null;
+  const offered = headerValue.split(',').map(p => p.trim()).filter(Boolean);
+  const bearer = offered.find(p => p.startsWith('bearer.'));
+  return bearer ? bearer.substring('bearer.'.length) : null;
+};
 
 // Initialize Express and other constants
 const app = express();
@@ -77,11 +100,34 @@ server.on('upgrade', (req, socket, head) => {
     const pathname = req.url?.split('?')[0];
 
     if (pathname === '/ws/chat') {
+      if (!JWT_SECRET) {
+        logger.error('Chat WebSocket upgrade rejected - JWT_SECRET not configured');
+        rejectUpgrade(socket, '500 Internal Server Error', 'Server configuration error');
+        return;
+      }
+
+      const token = extractBearerFromProtocols(req.headers['sec-websocket-protocol']);
+      if (!token) {
+        rejectUpgrade(socket, '401 Unauthorized', 'Missing bearer token');
+        return;
+      }
+
+      let decoded;
+      try {
+        decoded = jwt.verify(token, JWT_SECRET);
+      } catch (err) {
+        logger.warn('Chat WebSocket upgrade rejected - token verification failed', { error: err.message });
+        rejectUpgrade(socket, '401 Unauthorized', 'Invalid token');
+        return;
+      }
+
+      req.user = decoded;
+
       // Check chat connection count before upgrade with dynamic limits
       const chatConnections = chatWS.getConnectionCount();
       const memoryUsage = process.memoryUsage();
       const memoryUsagePercent = (memoryUsage.rss / (512 * 1024 * 1024)) * 100;
-      
+
       // Dynamic connection limits based on memory usage
       let maxConnections = 15; // Base limit (increased from 5)
       if (memoryUsagePercent > 85) {
@@ -89,16 +135,10 @@ server.on('upgrade', (req, socket, head) => {
       } else if (memoryUsagePercent > 70) {
         maxConnections = 12; // Moderate reduction
       }
-      
+
       if (chatConnections >= maxConnections) {
         logger.warn(`Chat WebSocket upgrade rejected - connection limit reached: ${chatConnections}/${maxConnections} (memory: ${memoryUsagePercent.toFixed(1)}%)`);
-        socket.write('HTTP/1.1 503 Service Unavailable\r\n' +
-                     'Connection: close\r\n' +
-                     'Content-Type: text/plain\r\n' +
-                     'Content-Length: 38\r\n' +
-                     '\r\n' +
-                     'Server overloaded - too many connections');
-        socket.destroy();
+        rejectUpgrade(socket, '503 Service Unavailable', 'Server overloaded - too many connections');
         return;
       }
       chatWS.handleUpgrade(req, socket, head);

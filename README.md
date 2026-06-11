@@ -2,6 +2,8 @@
 
 This is the backend for the RPG application, built using Node.js, Express.js, TypeScript, PostgreSQL, and TypeORM. The app supports user authentication, role-based access, and a PostgreSQL database for data storage.
 
+> **For agents and new contributors:** start at [`docs/PROJECT_CONTEXT.md`](docs/PROJECT_CONTEXT.md), then use [`docs/DOCUMENTATION_INDEX.md`](docs/DOCUMENTATION_INDEX.md) to navigate. Parts of this README are out of date — the `docs/` catalog is the current source of truth.
+
 ## Session-Event Lifecycle
 
 The system now features a unified Session-Event lifecycle that seamlessly integrates event management with session management:
@@ -76,11 +78,20 @@ Create a `.env` file in the root directory and configure the following variables
 ```env
 NODE_ENV=development
 PORT=5001
-DATABASE_URL=postgres://<username>:<password>@<host>:<port>/<database>
+
+# Database (read by src/data-source.js as discrete vars, not a single URL)
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=postgres
+DB_PASSWORD=postgres
+DB_NAME=rpg
+
 JWT_SECRET=your_secret_key
 ```
 
-Replace `<username>`, `<password>`, `<host>`, `<port>`, and `<database>` with your PostgreSQL database credentials.
+Replace the `DB_*` values with your PostgreSQL credentials. The app does **not** read `DATABASE_URL` — `src/data-source.js` reads the five discrete `DB_*` variables above.
+
+Optional tuning vars (all have defaults in `src/data-source.js`): `DB_POOL_SIZE`, `DB_POOL_MIN`, `DB_CONNECT_TIMEOUT`, `DB_ACQUIRE_TIMEOUT`, `DB_TIMEOUT`, `DB_IDLE_TIMEOUT`, `DB_STATEMENT_TIMEOUT`, `DB_QUERY_TIMEOUT`, `DB_SLOW_QUERY_THRESHOLD`.
 
 ---
 
@@ -95,91 +106,79 @@ The server will run on `http://localhost:<PORT>` (default is `5001`).
 
 ---
 ## 2 - Docker
-This project has a `docker-compose.yml` for a quick start. Run:
+This project has a `docker-compose.yml` for a quick start (local dev only — see the warning under Deployment).
 
-`docker compose create`
+```bash
+docker compose up
+```
 
-Go into data-source.js and change `synchronize` to `true`
+On first boot, TypeORM's `synchronize` is **on by default** in non-production (`src/data-source.js:38`), so the schema is created automatically from the entity files. No manual toggling is required.
 
-run the container and let the db sync. 
+The container will try to populate the db with `src/jobs/seed.js` at first start (an admin user, a normal user, a map, and a location — enough to avoid empty-state fetch errors).
 
-Set  `synchronize` back to `false`
+If seeding fails or you prefer to run it manually, comment out the last line in `Dockerfile` and run:
 
-It will try to populate the db with the `src/seed.js` at first start with some Admin and normal user, a map and a location to avoid fetching error.
-
-If it fails or prefer manual, comment the last line in `Dockerfile` and launch it manual with:
-
-`docker compose exec app node src/jobs/seed.js`
+```bash
+docker compose exec app node src/jobs/seed.js
+```
 
 ## Database Management
+
+This project has **no build step** — TypeORM commands run against the source files in `src/` directly. Use the `npm` scripts wired up in `package.json`; they invoke the TypeORM CLI with the correct data-source path.
 
 ### Update the Schema
 If there are changes to the TypeORM entities, generate a new migration:
 ```bash
-npx typeorm migration:generate ./src/migrations/<MigrationName> -d ./dist/data-source.js
+npx typeorm-ts-node-esm migration:generate ./src/migrations/<MigrationName> -d src/data-source.js
 ```
+> Note: `src/migrations/` does not exist yet. The first generated migration will create it. See [`docs/fix_plan.md`](docs/fix_plan.md) §3.2.
 
 ### Run Migrations
 To apply the latest migrations to your database:
 ```bash
-npx typeorm migration:run -d ./dist/data-source.js
+npm run migration:run
 ```
 
 ### Revert Migrations
 To undo the last applied migration:
 ```bash
-npx typeorm migration:revert -d ./dist/data-source.js
+npm run migration:revert
 ```
 
 ---
 
 ## Testing
 
-### Run Unit Tests
-This project uses Jest for unit testing. To run the tests:
-```bash
-npm test
-```
-
-### Watch Mode
-Run tests in watch mode for continuous testing during development:
-```bash
-npm run test:watch
-```
+There are **no tests yet**. `npm test` is a placeholder that prints `"No tests yet"` and exits 0 — do not treat it as a CI gate. Wiring up a real test runner is tracked in [`docs/fix_plan.md`](docs/fix_plan.md) §5.1.
 
 ---
 
 ## Deployment
 
-### 1. Build the Project
-Before deploying, compile the TypeScript code to JavaScript:
+This project runs plain JavaScript (`"type": "module"` ESM) — there is no compile step.
+
+### 1. Start the Application in Production Mode
 ```bash
-npm run build
+NODE_ENV=production npm start
 ```
 
-### 2. Start the Application in Production Mode
-Run the compiled code using Node.js:
-```bash
-npm start
-```
+### 2. Environment Variables
+Ensure the `.env` file is correctly configured for the production environment. See the env-var list under [Project Setup](#3-set-up-environment-variables) above.
 
-### 3. Environment Variables
-Ensure the `.env` file is correctly configured for the production environment.
+> The `docker-compose.yml` in this repo is for **local development only** — its default credentials (`postgres/postgres`, `JWT_SECRET=your_jwt_secret_here`) must not be used in production.
 
 ---
 
 ## Available Commands
 
-| Command                             | Description                                            |
-|-------------------------------------|--------------------------------------------------------|
-| `npm run dev`                       | Start the development server                          |
-| `npm run build`                     | Compile TypeScript to JavaScript                      |
-| `npm start`                         | Start the server in production mode                   |
-| `npx typeorm migration:generate`    | Generate a new migration                              |
-| `npx typeorm migration:run`         | Apply migrations to the database                      |
-| `npx typeorm migration:revert`      | Revert the last migration                             |
-| `npm test`                          | Run unit tests                                        |
-| `npm run test:watch`                | Run tests in watch mode                               |
+| Command                       | Description                                            |
+|-------------------------------|--------------------------------------------------------|
+| `npm run dev`                 | Start the development server (nodemon)                 |
+| `npm start`                   | Start the server (production entrypoint)               |
+| `npm run seed`                | Seed the database with initial data                    |
+| `npm run migration:run`       | Apply migrations to the database                       |
+| `npm run migration:revert`    | Revert the last migration                              |
+| `npm test`                    | Placeholder — no tests are wired up yet                |
 
 ---
 
@@ -189,14 +188,18 @@ Ensure the `.env` file is correctly configured for the production environment.
 ├── src
 │   ├── controllers       # Route handlers
 │   ├── middleware        # Middleware functions
-│   ├── migrations        # Database migrations
 │   ├── models            # TypeORM entities
 │   ├── routes            # API routes
 │   ├── services          # Business logic
+│   ├── websockets        # WebSocket handlers (chat, etc.)
+│   ├── jobs              # Background jobs and seed script
 │   ├── utils             # Utility functions
-│   ├── index.ts          # Entry point
-├── tests                 # Unit tests
-├── .env                  # Environment variables
+│   ├── data-source.js    # TypeORM data source
+│   ├── index.js          # Entry point
+├── supabase              # Supabase SQL mirror (hand-maintained)
+├── docs                  # Project documentation catalog
+├── uploads               # User uploads (runtime)
+├── docker-compose.yml    # Local dev stack
 ├── package.json          # NPM configuration
 ```
 

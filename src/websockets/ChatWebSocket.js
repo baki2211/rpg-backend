@@ -60,13 +60,18 @@ export const setupWebSocketServer = () => {
 
     const params = new URLSearchParams(req.url?.split('?')[1]);
     const locationId = params.get('locationId');
-    const userId = params.get('userId');
-    const username = params.get('username');
 
     if (!locationId) {
       ws.close(1008, 'Missing locationId');
       return;
     }
+
+    if (!req.user || req.user.id == null || !req.user.username) {
+      ws.close(1008, 'Unauthenticated');
+      return;
+    }
+    const userId = req.user.id;
+    const username = req.user.username;
 
     // Check per-location connection limit
     const locationConnections_set = locationConnections.get(locationId);
@@ -154,9 +159,9 @@ export const setupWebSocketServer = () => {
 
       try {
         const parsedMessage = JSON.parse(data);
-        
-        // Validate message structure
-        if (!parsedMessage.userId || !parsedMessage.username || !parsedMessage.message) {
+
+        // Validate message structure (identity is taken from the verified connection, not the payload)
+        if (!parsedMessage.message) {
           logger.warn('Invalid message structure received');
           return;
         }
@@ -169,12 +174,12 @@ export const setupWebSocketServer = () => {
         }
 
         const chatService = new ChatService();
-        
+
         // Save message to database with skill data (with timeout)
         const savePromise = chatService.addMessage(
           locationId,
-          parsedMessage.userId,
-          parsedMessage.username,
+          ws.userId,
+          ws.username,
           parsedMessage.message,
           parsedMessage.skill
         );
@@ -226,8 +231,9 @@ export const setupWebSocketServer = () => {
 
         // Generate skill engine log for masters if skill was used (async, non-blocking)
         if (parsedMessage.skill && savedMessage.skillId) {
+          const skillLogPayload = { ...parsedMessage, userId: ws.userId, username: ws.username };
           setImmediate(() => {
-            generateSkillEngineLog(parsedMessage, locationId);
+            generateSkillEngineLog(skillLogPayload, locationId);
           });
         }
 
