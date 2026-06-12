@@ -179,6 +179,14 @@ app.use(cookieParser());
 app.use(express.json({ limit: '10mb' })); // Increased limit for compressed payloads
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Express 5 leaves req.body as undefined when no body parser matched (e.g.
+// missing/mismatched Content-Type). Restore the Express 4 default so the many
+// `const { x } = req.body` destructures across the codebase don't throw.
+app.use((req, _res, next) => {
+  if (req.body === undefined) req.body = {};
+  next();
+});
+
 // Apply general API rate limiting
 app.use('/api', RateLimitMiddleware.generalApiLimit);
 
