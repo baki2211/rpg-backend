@@ -7,7 +7,7 @@ import { EngineLogService } from './EngineLogService.js';
 import { SkillEngine } from './SkillEngine.js';
 import { SessionService } from './SessionService.js';
 import { logger } from '../utils/logger.js';
-import { CharacterService } from './CharacterService.js';
+import { CharacterStatsService } from './CharacterStatsService.js';
 import { CombatService } from './CombatService.js';
 import { EventService } from './EventService.js';
 import { PvPResolutionService } from './PvPResolutionService.js';
@@ -18,7 +18,7 @@ export class ChatService {
   chatRepository = AppDataSource.getRepository(ChatMessage);
   characterRepository = AppDataSource.getRepository(Character);
   engineLogService = new EngineLogService();
-  characterService = new CharacterService();
+  characterStatsService = new CharacterStatsService();
   sessionService = new SessionService();
   targetResolutionService = new TargetResolutionService();
   skillExecutionService = new SkillExecutionService();
@@ -234,7 +234,7 @@ export class ChatService {
       character.experience += 0.5;
 
       // Check level up
-      await this.characterService.checkLevelUp(character);
+      await this.characterStatsService.checkLevelUp(character);
       
       // If a skill is used, process it through the skill engine and create logs
       if (shouldProcessSkill) {

@@ -1,4 +1,8 @@
 import { CharacterService } from '../services/CharacterService.js';
+import { CharacterStatsService } from '../services/CharacterStatsService.js';
+import { CharacterSkillsService } from '../services/CharacterSkillsService.js';
+import { NPCService } from '../services/NPCService.js';
+import { StatDefinitionService } from '../services/StatDefinitionService.js';
 import { InputValidator } from '../utils/inputValidator.js';
 import { RateLimitMiddleware } from '../middleware/rateLimitMiddleware.js';
 import { AuditLogger } from '../utils/auditLogger.js';
@@ -6,6 +10,10 @@ import fs from 'fs';
 import path from 'path';
 
 const characterService = new CharacterService();
+const characterStatsService = new CharacterStatsService();
+const characterSkillsService = new CharacterSkillsService();
+const npcService = new NPCService();
+const statDefinitionService = new StatDefinitionService();
 
 export class CharacterController {
   static async createCharacter(req, res) {
@@ -172,8 +180,8 @@ export class CharacterController {
     try {
       const userId = req.user.id; // From auth middleware
       const { skillId } = req.params;
-      const character = await characterService.acquireSkill(Number(skillId), userId);
-      
+      const character = await characterSkillsService.acquireSkill(Number(skillId), userId);
+
       // Log skill acquisition
       AuditLogger.logEvent(
         AuditLogger.EventTypes.SKILL_ACQUIRE,
@@ -196,7 +204,7 @@ export class CharacterController {
     try {
       const userId = req.user.id; // From auth middleware
       const { characterId } = req.params;
-      const availableSkills = await characterService.getAvailableSkills(Number(characterId), userId);
+      const availableSkills = await characterSkillsService.getAvailableSkills(Number(characterId), userId);
       res.status(200).json(availableSkills);
     } catch (error) {
       res.status(400).json({ error: error.message });
@@ -210,7 +218,7 @@ export class CharacterController {
     try {
       const userId = req.user.id;
       const { characterId } = req.params;
-      const characterStats = await characterService.getCharacterStatsWithDefinitions(Number(characterId), userId);
+      const characterStats = await characterStatsService.getCharacterStatsWithDefinitions(Number(characterId), userId);
       res.status(200).json(characterStats);
     } catch (error) {
       res.status(400).json({ error: error.message });
@@ -230,7 +238,7 @@ export class CharacterController {
         return res.status(400).json({ error: 'Stat updates must be provided as an object' });
       }
 
-      const updatedCharacter = await characterService.updateCharacterStats(
+      const updatedCharacter = await characterStatsService.updateCharacterStats(
         Number(characterId), 
         userId, 
         statUpdates
@@ -272,13 +280,13 @@ export class CharacterController {
       const resetStats = {};
       
       // Get all stat definitions to know what stats exist
-      const statDefinitions = await characterService.getStatDefinitions();
-      
+      const statDefinitions = await statDefinitionService.getAllStatDefinitions(null, true);
+
       for (const statDef of statDefinitions) {
-        resetStats[statDef.name] = raceDefaults[statDef.name] || statDef.defaultValue || 0;
+        resetStats[statDef.internalName] = raceDefaults[statDef.internalName] || statDef.defaultValue || 0;
       }
 
-      const updatedCharacter = await characterService.updateCharacterStats(
+      const updatedCharacter = await characterStatsService.updateCharacterStats(
         Number(characterId), 
         userId, 
         resetStats
@@ -298,7 +306,7 @@ export class CharacterController {
       }
 
       const npcData = req.body;
-      const npc = await characterService.createNPC(npcData);
+      const npc = await npcService.createNPC(npcData, req.user.id);
       res.status(201).json(npc);
     } catch (error) {
       res.status(400).json({ error: error.message });
@@ -312,7 +320,7 @@ export class CharacterController {
         return res.status(403).json({ error: 'Admin or Master access required' });
       }
 
-      const npcs = await characterService.getAllNPCs();
+      const npcs = await npcService.getAllNPCs();
       res.status(200).json(npcs);
     } catch (error) {
       res.status(400).json({ error: error.message });
@@ -328,7 +336,7 @@ export class CharacterController {
 
       const { id } = req.params;
       const updateData = req.body;
-      const updatedNPC = await characterService.updateNPC(Number(id), updateData);
+      const updatedNPC = await npcService.updateNPC(Number(id), updateData);
       res.status(200).json(updatedNPC);
     } catch (error) {
       res.status(400).json({ error: error.message });
@@ -343,7 +351,7 @@ export class CharacterController {
       }
 
       const { id } = req.params;
-      await characterService.deleteNPC(Number(id));
+      await npcService.deleteNPC(Number(id));
       res.status(204).end();
     } catch (error) {
       res.status(400).json({ error: error.message });
@@ -352,7 +360,7 @@ export class CharacterController {
 
   async getAvailableNPCs(req, res) {
     try {
-      const npcs = await characterService.getAvailableNPCs();
+      const npcs = await npcService.getAvailableNPCs();
       res.status(200).json(npcs);
     } catch (error) {
       res.status(400).json({ error: error.message });
@@ -362,7 +370,7 @@ export class CharacterController {
   async getActiveNPC(req, res) {
     try {
       const userId = req.user.id;
-      const activeNPC = await characterService.getActiveNPCForUser(userId);
+      const activeNPC = await npcService.getActiveNPCForUser(userId);
       res.status(200).json(activeNPC);
     } catch (error) {
       res.status(400).json({ error: error.message });
@@ -373,7 +381,7 @@ export class CharacterController {
     try {
       const userId = req.user.id;
       const { id } = req.params;
-      const activatedNPC = await characterService.activateNPC(Number(id), userId);
+      const activatedNPC = await npcService.activateNPC(Number(id), userId);
       res.status(200).json(activatedNPC);
     } catch (error) {
       res.status(400).json({ error: error.message });
@@ -384,7 +392,7 @@ export class CharacterController {
     try {
       const userId = req.user.id;
       const { id } = req.params;
-      await characterService.deactivateNPC(Number(id), userId);
+      await npcService.deactivateNPC(Number(id), userId);
       res.status(204).end();
     } catch (error) {
       res.status(400).json({ error: error.message });
@@ -422,7 +430,7 @@ export class CharacterController {
         return res.status(400).json({ error: 'Invalid character ID provided' });
       }
 
-      const skills = await characterService.getAcquiredSkills(characterId, userId);
+      const skills = await characterSkillsService.getAcquiredSkills(characterId, userId);
       res.status(200).json(skills);
     } catch (error) {
       res.status(400).json({ error: error.message });
@@ -439,7 +447,7 @@ export class CharacterController {
         return res.status(400).json({ error: 'Invalid character ID provided' });
       }
 
-      const characterStats = await characterService.getCharacterStatsWithDefinitions(characterId, userId);
+      const characterStats = await characterStatsService.getCharacterStatsWithDefinitions(characterId, userId);
       res.status(200).json(characterStats);
     } catch (error) {
       res.status(400).json({ error: error.message });

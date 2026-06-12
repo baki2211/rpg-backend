@@ -25,14 +25,8 @@ export class PvPController {
 
             // Get both characters
             const [attacker, defender] = await Promise.all([
-                this.characterService.characterRepository.findOne({
-                    where: { id: attackerId },
-                    relations: ['skills', 'race']
-                }),
-                this.characterService.characterRepository.findOne({
-                    where: { id: defenderId },
-                    relations: ['skills', 'race']
-                })
+                this.characterService.findCharacterWithSkillsAndRace(attackerId),
+                this.characterService.findCharacterWithSkillsAndRace(defenderId)
             ]);
 
             if (!attacker) {
