@@ -128,10 +128,13 @@ server.on('upgrade', (req, socket, head) => {
 
       req.user = decoded;
 
-      // Check chat connection count before upgrade with dynamic limits
+      // Check chat connection count before upgrade with dynamic limits.
+      // Budget is configurable so the same code works on hosts with much more
+      // (or less) RAM than the historical 512MB default.
       const chatConnections = chatWS.getConnectionCount();
       const memoryUsage = process.memoryUsage();
-      const memoryUsagePercent = (memoryUsage.rss / (512 * 1024 * 1024)) * 100;
+      const memoryBudgetMb = Number(process.env.WS_MEMORY_BUDGET_MB) || 512;
+      const memoryUsagePercent = (memoryUsage.rss / (memoryBudgetMb * 1024 * 1024)) * 100;
 
       // Dynamic connection limits based on memory usage
       let maxConnections = 15; // Base limit (increased from 5)
@@ -238,6 +241,9 @@ AppDataSource.initialize()
     
     // Preload static data cache
     await staticDataCache.preloadCache();
+
+    // Initialize rate-limit store (Redis if REDIS_URL set, else in-memory)
+    await RateLimitMiddleware.initStore();
     
     // Start session expiration job after database is ready
     sessionExpirationInterval = SessionExpirationJob.startJob();

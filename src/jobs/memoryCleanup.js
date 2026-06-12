@@ -5,6 +5,7 @@ import { AppDataSource } from '../data-source.js';
 import { ChatMessage } from '../models/chatMessageModel.js';
 import { EngineLog } from '../models/engineLogModel.js';
 import { LessThan } from 'typeorm';
+import { withAdvisoryLock, JOB_LOCK_KEYS } from '../utils/advisoryLock.js';
 
 /**
  * Periodic memory cleanup job
@@ -67,16 +68,17 @@ class MemoryCleanupJob {
       const memoryBefore = process.memoryUsage();
       const tasks = [];
 
-      // 1. Clean expired cache entries
+      // 1. Clean expired cache entries (per-process, must run on every instance)
       tasks.push(this.cleanExpiredCache());
 
-      // 2. Clean old chat messages (older than 5 hours to match display policy)
-      tasks.push(this.cleanOldChatMessages());
+      // 2 & 3. DB deletions — gate behind an advisory lock so only one
+      // instance does them when scaled horizontally.
+      tasks.push(withAdvisoryLock(JOB_LOCK_KEYS.MEMORY_CLEANUP, async () => {
+        await this.cleanOldChatMessages();
+        await this.cleanOldEngineLogs();
+      }));
 
-      // 3. Clean old engine logs (older than 7 days)
-      tasks.push(this.cleanOldEngineLogs());
-
-      // 4. Force garbage collection if available
+      // 4. Force garbage collection (per-process, must run on every instance)
       tasks.push(this.forceGarbageCollection());
 
       // Run all cleanup tasks in parallel

@@ -482,10 +482,10 @@ router.get('/memory/status', (req, res) => {
 });
 
 // Rate limiting status endpoint
-router.get('/rate-limits', (req, res) => {
+router.get('/rate-limits', async (req, res) => {
   try {
-    const activeLimits = RateLimitMiddleware.getActiveRateLimits();
-    
+    const activeLimits = await RateLimitMiddleware.getActiveRateLimits();
+
     res.json({
       status: 'success',
       rateLimits: {
@@ -513,19 +513,19 @@ router.get('/rate-limits', (req, res) => {
 });
 
 // Clear specific rate limit (admin only)
-router.post('/rate-limits/clear', (req, res) => {
+router.post('/rate-limits/clear', async (req, res) => {
   try {
     const { key } = req.body;
-    
+
     if (!key) {
       return res.status(400).json({
         success: false,
         message: 'Rate limit key is required'
       });
     }
-    
-    const cleared = RateLimitMiddleware.clearRateLimit(key);
-    
+
+    const cleared = await RateLimitMiddleware.clearRateLimit(key);
+
     res.json({
       success: cleared,
       message: cleared ? `Rate limit cleared for key: ${key}` : 'Rate limit key not found',
@@ -543,11 +543,11 @@ router.post('/rate-limits/clear', (req, res) => {
 
 // Graceful shutdown cleanup for rate limiting
 process.on('SIGTERM', () => {
-  RateLimitMiddleware.stopCleanup();
+  RateLimitMiddleware.stopCleanup().catch(() => {});
 });
 
 process.on('SIGINT', () => {
-  RateLimitMiddleware.stopCleanup();
+  RateLimitMiddleware.stopCleanup().catch(() => {});
 });
 
 export default router; 
