@@ -17,7 +17,10 @@ router.get('/role/:role', authenticateToken, userController.getUsersByRole.bind(
 // Update user role (admin only)
 router.put('/:userId/role', authenticateToken, userController.updateUserRole.bind(userController));
 
-// Update user password (admin only)
+// Update own password (caller must supply their old password)
 router.put('/:userId/password', authenticateToken, userController.updateUserPassword.bind(userController));
+
+// Admin reset another user's password (no old password required; admin role enforced in controller)
+router.put('/:userId/admin-password-reset', authenticateToken, userController.adminResetPassword.bind(userController));
 
 export default router;

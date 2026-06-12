@@ -25,20 +25,18 @@ export class UserController {
             const { userId } = req.params;
             const { oldPassword, newPassword } = req.body;
             const requestingUserId = req.user?.id;
-            const isAdmin = req.user?.role === 'admin';
 
-            // Validate required fields
             if (!newPassword) {
                 return res.status(400).json({ error: 'New password is required' });
             }
 
-            // Old password is required for non-admin users
-            if (!isAdmin && !oldPassword) {
+            if (!oldPassword) {
                 return res.status(400).json({ error: 'Old password is required' });
             }
 
-            // Non-admin users can only update their own password
-            if (!isAdmin && requestingUserId !== parseInt(userId)) {
+            // Self-service only — admins resetting another user's password must use
+            // the admin reset endpoint.
+            if (requestingUserId !== parseInt(userId)) {
                 return res.status(403).json({ error: 'Access denied. You can only update your own password.' });
             }
 
@@ -46,11 +44,34 @@ export class UserController {
                 parseInt(userId),
                 oldPassword,
                 newPassword,
-                isAdmin  // Pass the admin flag
             );
             res.json(updatedUser);
         } catch (error) {
             console.error('Error in updateUserPassword:', error);
+            res.status(500).json({ error: error.message });
+        }
+    }
+
+    async adminResetPassword(req, res) {
+        try {
+            if (req.user?.role !== 'admin') {
+                return res.status(403).json({ error: 'Access denied. Admin role required.' });
+            }
+
+            const { userId } = req.params;
+            const { newPassword } = req.body;
+
+            if (!newPassword) {
+                return res.status(400).json({ error: 'New password is required' });
+            }
+
+            const updatedUser = await this.userService.adminResetPassword(
+                parseInt(userId),
+                newPassword,
+            );
+            res.json(updatedUser);
+        } catch (error) {
+            console.error('Error in adminResetPassword:', error);
             res.status(500).json({ error: error.message });
         }
     }
