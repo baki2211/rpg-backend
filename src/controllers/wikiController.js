@@ -1,14 +1,18 @@
-import { WikiService } from '../services/WikiService.js';
+import { WikiSectionService } from '../services/WikiSectionService.js';
+import { WikiEntryService } from '../services/WikiEntryService.js';
+import { WikiSearchService } from '../services/WikiSearchService.js';
 import { logger } from '../utils/logger.js';
 
-const wikiService = new WikiService();
+const sectionService = new WikiSectionService();
+const entryService = new WikiEntryService();
+const searchService = new WikiSearchService();
 
 // ============ ADMIN SECTION ENDPOINTS ============
 
 export const adminGetSections = async (req, res) => {
   try {
     const includeInactive = req.query.includeInactive === 'true';
-    const sections = await wikiService.getAllSections(includeInactive);
+    const sections = await sectionService.getAllSections(includeInactive);
     
     res.json({
       success: true,
@@ -45,7 +49,7 @@ export const adminCreateSection = async (req, res) => {
       isActive: isActive !== undefined ? isActive : true
     };
 
-    const section = await wikiService.createSection(sectionData, req.user.id);
+    const section = await sectionService.createSection(sectionData, req.user.id);
     
     res.status(201).json({
       success: true,
@@ -67,7 +71,7 @@ export const adminUpdateSection = async (req, res) => {
     const { id } = req.params;
     const updateData = req.body;
 
-    const section = await wikiService.updateSection(parseInt(id), updateData);
+    const section = await sectionService.updateSection(parseInt(id), updateData);
     
     res.json({
       success: true,
@@ -96,7 +100,7 @@ export const adminDeleteSection = async (req, res) => {
   try {
     const { id } = req.params;
     
-    await wikiService.deleteSection(parseInt(id));
+    await sectionService.deleteSection(parseInt(id));
     
     res.json({
       success: true,
@@ -131,7 +135,7 @@ export const adminReorderSections = async (req, res) => {
       });
     }
 
-    const sections = await wikiService.reorderSections(sectionOrder);
+    const sections = await sectionService.reorderSections(sectionOrder);
     
     res.json({
       success: true,
@@ -155,7 +159,7 @@ export const adminGetEntries = async (req, res) => {
     const { sectionId } = req.params;
     const includeUnpublished = req.query.includeUnpublished === 'true';
     
-    const entries = await wikiService.getEntriesBySection(parseInt(sectionId), includeUnpublished);
+    const entries = await entryService.getEntriesBySection(parseInt(sectionId), includeUnpublished);
     
     res.json({
       success: true,
@@ -180,7 +184,7 @@ export const adminGetEntriesHierarchical = async (req, res) => {
     const { sectionId } = req.params;
     const includeUnpublished = req.query.includeUnpublished === 'true';
     
-    const entries = await wikiService.getEntriesHierarchical(parseInt(sectionId), includeUnpublished);
+    const entries = await entryService.getEntriesHierarchical(parseInt(sectionId), includeUnpublished);
     
     res.json({
       success: true,
@@ -204,7 +208,7 @@ export const adminGetAllEntries = async (req, res) => {
   try {
     const includeUnpublished = req.query.includeUnpublished === 'true';
     
-    const entries = await wikiService.getAllEntries(includeUnpublished);
+    const entries = await entryService.getAllEntries(includeUnpublished);
     
     res.json({
       success: true,
@@ -227,7 +231,7 @@ export const adminGetEntry = async (req, res) => {
   try {
     const { id } = req.params;
     
-    const entry = await wikiService.getEntryById(parseInt(id));
+    const entry = await entryService.getEntryById(parseInt(id));
     
     if (!entry) {
       return res.status(404).json({
@@ -272,7 +276,7 @@ export const adminCreateEntry = async (req, res) => {
       parentEntryId: parentEntryId ? parseInt(parentEntryId) : null
     };
 
-    const entry = await wikiService.createEntry(entryData, req.user.id);
+    const entry = await entryService.createEntry(entryData, req.user.id);
     
     res.status(201).json({
       success: true,
@@ -328,7 +332,7 @@ export const adminUpdateEntry = async (req, res) => {
       updateData.parentEntryId = parseInt(updateData.parentEntryId);
     }
 
-    const entry = await wikiService.updateEntry(parseInt(id), updateData);
+    const entry = await entryService.updateEntry(parseInt(id), updateData);
     
     res.json({
       success: true,
@@ -386,7 +390,7 @@ export const adminDeleteEntry = async (req, res) => {
   try {
     const { id } = req.params;
     
-    await wikiService.deleteEntry(parseInt(id));
+    await entryService.deleteEntry(parseInt(id));
     
     res.json({
       success: true,
@@ -422,7 +426,7 @@ export const adminReorderEntries = async (req, res) => {
       });
     }
 
-    const entries = await wikiService.reorderEntries(parseInt(sectionId), entryOrder);
+    const entries = await entryService.reorderEntries(parseInt(sectionId), entryOrder);
     
     res.json({
       success: true,
@@ -443,7 +447,7 @@ export const adminReorderEntries = async (req, res) => {
 
 export const adminGetWikiStats = async (req, res) => {
   try {
-    const stats = await wikiService.getWikiStats();
+    const stats = await searchService.getWikiStats();
     
     res.json({
       success: true,
@@ -461,7 +465,7 @@ export const adminGetWikiStats = async (req, res) => {
 
 export const adminGetAllTags = async (req, res) => {
   try {
-    const tags = await wikiService.getAllTags();
+    const tags = await searchService.getAllTags();
     
     res.json({
       success: true,
@@ -484,7 +488,7 @@ export const adminGetAllTags = async (req, res) => {
 
 export const getPublicNavigation = async (req, res) => {
   try {
-    const navigation = await wikiService.getPublicNavigation();
+    const navigation = await sectionService.getPublicNavigation();
     
     res.json({
       success: true,
@@ -504,7 +508,7 @@ export const getPublicSection = async (req, res) => {
   try {
     const { slug } = req.params;
     
-    const section = await wikiService.getSectionBySlug(slug);
+    const section = await sectionService.getSectionBySlug(slug);
     
     if (!section) {
       return res.status(404).json({
@@ -538,7 +542,7 @@ export const getPublicEntry = async (req, res) => {
     const { sectionSlug, entrySlug } = req.params;
     
     // First get the section to get its ID
-    const section = await wikiService.getSectionBySlug(sectionSlug);
+    const section = await sectionService.getSectionBySlug(sectionSlug);
     if (!section) {
       return res.status(404).json({
         success: false,
@@ -547,7 +551,7 @@ export const getPublicEntry = async (req, res) => {
     }
 
     // Get the entry and increment view count
-    const entry = await wikiService.getEntryBySlug(section.id, entrySlug, true);
+    const entry = await entryService.getEntryBySlug(section.id, entrySlug, true);
     
     if (!entry) {
       return res.status(404).json({
@@ -581,7 +585,7 @@ export const searchPublicEntries = async (req, res) => {
       });
     }
 
-    const results = await wikiService.searchEntries(
+    const results = await searchService.searchEntries(
       query.trim(),
       sectionId ? parseInt(sectionId) : null
     );
@@ -615,7 +619,7 @@ export const getPublicEntriesByTag = async (req, res) => {
       });
     }
 
-    const entries = await wikiService.getEntriesByTag(tag);
+    const entries = await searchService.getEntriesByTag(tag);
     
     res.json({
       success: true,
@@ -637,7 +641,7 @@ export const getPublicEntriesByTag = async (req, res) => {
 
 export const getPublicTags = async (req, res) => {
   try {
-    const tags = await wikiService.getAllTags();
+    const tags = await searchService.getAllTags();
     
     res.json({
       success: true,
