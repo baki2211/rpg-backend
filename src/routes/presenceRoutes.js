@@ -2,6 +2,7 @@ import express from 'express';
 import { EventEmitter } from 'events';
 import { logger } from '../utils/logger.js';
 import { CharacterService } from '../services/CharacterService.js';
+import { authenticateToken } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 const presenceEmitter = new EventEmitter();
@@ -80,10 +81,13 @@ router.get('/events', async (req, res) => {
 });
 
 // Update user location
-router.post('/location', async (req, res) => {
-  const { userId, location } = req.body;
-  if (!userId || !location) {
-    return res.status(400).json({ error: 'Missing userId or location' });
+router.post('/location', authenticateToken, async (req, res) => {
+  const userId = String(req.user.id);
+  const username = req.user.username;
+  const { location } = req.body;
+
+  if (!location) {
+    return res.status(400).json({ error: 'Missing location' });
   }
 
   try {
@@ -93,7 +97,7 @@ router.post('/location', async (req, res) => {
       if (user.location !== location) {
         user.location = location;
         user.lastSeen = new Date();
-        
+
         // Update character info
         try {
           const activeCharacter = await characterService.getActiveCharacter(userId);
@@ -101,7 +105,7 @@ router.post('/location', async (req, res) => {
         } catch (error) {
           logger.debug(`Character lookup failed for user ${userId}: ${error.message}`);
         }
-        
+
         logger.debug(`User ${userId} location updated to ${location}`);
         broadcastUsers();
       }
@@ -109,7 +113,7 @@ router.post('/location', async (req, res) => {
       // If user not in onlineUsers, add them
       const activeCharacter = await characterService.getActiveCharacter(userId);
       onlineUsers.set(userId, {
-        username: req.body.username || userId,
+        username: username || userId,
         characterName: activeCharacter?.name || null,
         location,
         lastSeen: new Date()
@@ -120,7 +124,7 @@ router.post('/location', async (req, res) => {
 
     res.json({ success: true });
   } catch (error) {
-    logger.error(`Error updating location for user ${userId}:`, error);
+    logger.error(`Error updating location for user ${req.user?.id}:`, error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
