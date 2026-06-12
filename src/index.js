@@ -1,6 +1,5 @@
 import express from 'express';
 import cors from 'cors';
-import bodyParser from 'body-parser';
 import dotenv from 'dotenv';
 import { createGzip, createDeflate } from 'zlib';
 import authRoutes from './routes/auth.js';
@@ -177,8 +176,8 @@ app.use(compressionStatsMiddleware);
 app.use(queryMonitoringMiddleware);
 
 app.use(cookieParser());
-app.use(bodyParser.json({ limit: '10mb' })); // Increased limit for compressed payloads
-app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '10mb' })); // Increased limit for compressed payloads
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Apply general API rate limiting
 app.use('/api', RateLimitMiddleware.generalApiLimit);
