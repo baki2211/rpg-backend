@@ -520,7 +520,7 @@ export class WikiService {
       
       const parent = await entryRepo.findOne({ 
         where: { id: currentParentId },
-        select: ['parentEntryId']
+        select: { parentEntryId: true }
       });
       
       if (!parent) break;
@@ -542,7 +542,7 @@ export class WikiService {
     // Find all direct children
     const children = await entryRepo.find({
       where: { parentEntryId: parentId },
-      select: ['id', 'level']
+      select: { id: true, level: true }
     });
     
     // Update each child's level and recursively update their children
@@ -660,7 +660,7 @@ export class WikiService {
   async getAllTags() {
     const entries = await this.entryRepository.find({
       where: { isPublished: true },
-      select: ['tags']
+      select: { tags: true }
     });
 
     const allTags = new Set();
@@ -717,7 +717,7 @@ export class WikiService {
   async getPopularTags() {
     const entries = await this.entryRepository.find({
       where: { isPublished: true },
-      select: ['tags']
+      select: { tags: true }
     });
 
     const tagCounts = new Map();
@@ -796,7 +796,7 @@ export class WikiService {
       // Get all entries for the section with hierarchy info
       const entries = await this.entryRepository.find({
         where: { sectionId: section.id, isPublished: true },
-        select: ['id', 'title', 'slug', 'excerpt', 'parentEntryId', 'level'],
+        select: { id: true, title: true, slug: true, excerpt: true, parentEntryId: true, level: true },
         order: { level: 'ASC', position: 'ASC' }
       });
 

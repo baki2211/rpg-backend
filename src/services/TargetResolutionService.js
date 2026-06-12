@@ -148,7 +148,7 @@ export class TargetResolutionService {
     async generateTargetNotFoundError(targetIdentifier) {
         try {
             const availableCharacters = await this.characterRepository.find({
-                select: ['id', 'name', 'surname', 'isActive', 'userId'],
+                select: { id: true, name: true, surname: true, isActive: true, userId: true },
                 where: { isActive: true },
                 take: 10 // Limit to prevent huge error messages
             });
@@ -200,7 +200,7 @@ export class TargetResolutionService {
 
         return await this.characterRepository.find({
             where: whereCondition,
-            select: ['id', 'name', 'surname', 'userId', 'locationId'],
+            select: { id: true, name: true, surname: true, userId: true, locationId: true },
             order: { name: 'ASC' }
         });
     }

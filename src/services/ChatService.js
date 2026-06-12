@@ -31,10 +31,10 @@ export class ChatService {
       const messages = await this.chatRepository.find({
         where: { location: { id: locationId }, createdAt: MoreThan(fiveHoursAgo) },
         order: { createdAt: 'ASC' }, // Chronological order
-        select: [ // Only select needed fields to reduce memory usage
-          'id', 'message', 'username', 'createdAt', 'characterId',
-          'skillId', 'skillName', 'skillBranch', 'skillType', 'skillOutput', 'skillRoll'
-        ]
+        select: { // Only select needed fields to reduce memory usage
+          id: true, message: true, username: true, createdAt: true, characterId: true,
+          skillId: true, skillName: true, skillBranch: true, skillType: true, skillOutput: true, skillRoll: true,
+        },
       });
 
       // Format efficiently without reversing
@@ -78,7 +78,7 @@ export class ChatService {
       this.characterRepository.findOne({ 
         where: { userId, isActive: true },
         relations: ['race'], // Need race for skill engine calculations
-        select: ['id', 'name', 'userId', 'stats', 'raceId'] // Only select needed fields
+        select: { id: true, name: true, userId: true, stats: true, raceId: true } // Only select needed fields
       }),
       new Promise((_, reject) => 
         setTimeout(() => reject(new Error('Character lookup timeout')), 3000)

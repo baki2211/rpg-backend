@@ -2,7 +2,7 @@ import { AppDataSource } from '../data-source.js';
 import { User } from '../models/userModel.js';
 import bcrypt from 'bcrypt';
 
-const PUBLIC_USER_FIELDS = ['id', 'username', 'role', 'createdAt', 'updatedAt'];
+const PUBLIC_USER_FIELDS = { id: true, username: true, role: true, createdAt: true, updatedAt: true };
 
 export class UserService {
     userRepository = AppDataSource.getRepository(User);

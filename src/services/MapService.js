@@ -54,7 +54,7 @@ export class MapService {
     async getMainMap() {
       return this.mapRepository.findOne({
         where: { isMainMap: true },
-        select: ['id', 'name', 'imageUrl', 'isMainMap'], 
+        select: { id: true, name: true, imageUrl: true, isMainMap: true },
       });
     }     
 

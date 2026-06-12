@@ -919,7 +919,7 @@ export class CharacterService {
   async isNPC(characterId) {
     const character = await this.characterRepository.findOne({
       where: { id: characterId },
-      select: ['isNPC']
+      select: { isNPC: true }
     });
     return character?.isNPC || false;
   }
