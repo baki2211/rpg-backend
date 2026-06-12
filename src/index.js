@@ -46,6 +46,7 @@ import wikiRoutes from './routes/wikiRoutes.js';
 import healthRoutes, { setWebSocketServers } from './routes/healthRoutes.js';
 import presenceRoutes from './routes/presenceRoutes.js';
 import { RateLimitMiddleware } from './middleware/rateLimitMiddleware.js';
+import { verifyCsrfToken } from './middleware/csrfMiddleware.js';
 import { AuditLogger } from './utils/auditLogger.js';
 import fs from 'fs';
 import jwt from 'jsonwebtoken';
@@ -67,11 +68,15 @@ const rejectUpgrade = (socket, status, message) => {
   socket.destroy();
 };
 
-const extractBearerFromProtocols = (headerValue) => {
-  if (!headerValue) return null;
-  const offered = headerValue.split(',').map(p => p.trim()).filter(Boolean);
-  const bearer = offered.find(p => p.startsWith('bearer.'));
-  return bearer ? bearer.substring('bearer.'.length) : null;
+// Same-origin browsers send the session cookie on the WS handshake. The raw
+// http upgrade doesn't run cookie-parser, so parse the Cookie header by hand.
+const extractTokenFromCookieHeader = (cookieHeader) => {
+  if (!cookieHeader) return null;
+  for (const part of cookieHeader.split(';')) {
+    const [name, ...rest] = part.trim().split('=');
+    if (name === 'token') return decodeURIComponent(rest.join('='));
+  }
+  return null;
 };
 
 // Initialize Express and other constants
@@ -106,9 +111,9 @@ server.on('upgrade', (req, socket, head) => {
         return;
       }
 
-      const token = extractBearerFromProtocols(req.headers['sec-websocket-protocol']);
+      const token = extractTokenFromCookieHeader(req.headers.cookie);
       if (!token) {
-        rejectUpgrade(socket, '401 Unauthorized', 'Missing bearer token');
+        rejectUpgrade(socket, '401 Unauthorized', 'Missing session cookie');
         return;
       }
 
@@ -174,6 +179,10 @@ app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
 
 // Apply general API rate limiting
 app.use('/api', RateLimitMiddleware.generalApiLimit);
+
+// CSRF: double-submit cookie verification on state-changing /api routes.
+// Bootstrap routes (login/register) are exempt — see csrfMiddleware.js.
+app.use('/api', verifyCsrfToken);
 
 // Routes
 app.use('/api', healthRoutes);

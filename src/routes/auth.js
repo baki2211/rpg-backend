@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { UserService } from '../services/UserService.js';
 import { authenticateToken } from '../middleware/authMiddleware.js';
 import { RateLimitMiddleware } from '../middleware/rateLimitMiddleware.js';
+import { setCsrfCookie } from '../middleware/csrfMiddleware.js';
 import { AuditLogger } from '../utils/auditLogger.js';
 
 const router = express.Router();
@@ -23,16 +24,19 @@ const createToken = (user) => {
     );
 };
 
-// Helper function to set token cookie
+// Host-only cookie (no `domain`), SameSite=Lax in both envs.
+// `secure` is env-driven so HTTP dev still works; in prod (or any HTTPS dev
+// via ngrok etc.) set NODE_ENV=production or COOKIE_SECURE=true.
+const cookieIsSecure = () =>
+    process.env.NODE_ENV === 'production' || process.env.COOKIE_SECURE === 'true';
+
 const setTokenCookie = (res, token) => {
-    const cookieOptions = {
+    res.cookie('token', token, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        secure: cookieIsSecure(),
+        sameSite: 'lax',
         maxAge: 3600000, // 1 hour
-        domain: process.env.NODE_ENV === 'production' ? 'arcanerealms.org' : 'develop',
-    };
-    res.cookie('token', token, cookieOptions);
+    });
 };
 
 // Register route
@@ -123,7 +127,8 @@ router.post('/login', RateLimitMiddleware.authAttemptLimit, async (req, res) => 
 
         const token = createToken(user);
         setTokenCookie(res, token);
-        
+        setCsrfCookie(res);
+
         // Log successful login
         AuditLogger.logAuth(
             AuditLogger.EventTypes.LOGIN_SUCCESS,
@@ -134,10 +139,8 @@ router.post('/login', RateLimitMiddleware.authAttemptLimit, async (req, res) => 
             { username: user.username, role: user.role }
         );
 
-        // ALSO return the token in response body for cross-domain compatibility
-        res.status(200).json({ 
+        res.status(200).json({
             message: 'Login successful!',
-            token: token,
             user: {
                 id: user.id,
                 username: user.username,
@@ -172,6 +175,7 @@ router.post('/refresh', authenticateToken, async (req, res) => {
         // Create new token with fresh expiration
         const newToken = createToken(user);
         setTokenCookie(res, newToken);
+        setCsrfCookie(res);
         
         // Log token refresh
         AuditLogger.logAuth(
@@ -183,9 +187,8 @@ router.post('/refresh', authenticateToken, async (req, res) => {
             { time_until_expiration: timeUntilExpiration }
         );
         
-        res.status(200).json({ 
+        res.status(200).json({
             message: 'Token refreshed successfully',
-            token: newToken,
             refreshed: true,
             user: {
                 id: user.id,
@@ -212,16 +215,17 @@ router.post('/logout', (req, res) => {
         { method: 'cookie_clear' }
     );
     
-    // Clear the cookie if it exists
+    // Clear the cookie if it exists. Attributes must match setTokenCookie.
     res.clearCookie('token', {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-        domain: process.env.NODE_ENV === 'production' ? 'arcanerealms.org' : 'develop',
+        secure: cookieIsSecure(),
+        sameSite: 'lax',
     });
-
-    // Also clear any Authorization header
-    res.set('Authorization', '');
+    res.clearCookie('csrfToken', {
+        httpOnly: false,
+        secure: cookieIsSecure(),
+        sameSite: 'lax',
+    });
 
     res.status(200).json({ message: 'Logged out successfully!' });
 });
