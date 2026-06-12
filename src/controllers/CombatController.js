@@ -1,4 +1,6 @@
 import { CombatService } from '../services/CombatService.js';
+import { CombatActionService } from '../services/CombatActionService.js';
+import { CombatResolutionService } from '../services/CombatResolutionService.js';
 import { SessionService } from '../services/SessionService.js';
 import { CharacterService } from '../services/CharacterService.js';
 import { EventService } from '../services/EventService.js';
@@ -8,6 +10,8 @@ import { AuditLogger } from '../utils/auditLogger.js';
 
 export class CombatController {
     static combatService = new CombatService();
+    static combatActionService = new CombatActionService();
+    static combatResolutionService = new CombatResolutionService();
     static sessionService = new SessionService();
     static characterService = new CharacterService();
     static eventService = new EventService();
@@ -104,7 +108,7 @@ export class CombatController {
             }
 
             // Submit the action with validated inputs
-            const action = await CombatController.combatService.submitAction(
+            const action = await CombatController.combatActionService.submitAction(
                 roundId,
                 character.id,
                 skillId,
@@ -203,7 +207,7 @@ export class CombatController {
             }
 
             // Resolve the round
-            const result = await CombatController.combatService.resolveRound(roundIdInt, userId);
+            const result = await CombatController.combatResolutionService.resolveRound(roundIdInt, userId);
             
             // Log combat round resolution
             AuditLogger.logCombat(

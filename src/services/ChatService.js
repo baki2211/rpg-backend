@@ -8,7 +8,6 @@ import { SkillEngine } from './SkillEngine.js';
 import { SessionService } from './SessionService.js';
 import { logger } from '../utils/logger.js';
 import { CharacterStatsService } from './CharacterStatsService.js';
-import { CombatService } from './CombatService.js';
 import { EventService } from './EventService.js';
 import { PvPResolutionService } from './PvPResolutionService.js';
 import { TargetResolutionService } from './TargetResolutionService.js';
@@ -101,9 +100,11 @@ export class ChatService {
         if (fullSkill) {
           // Check context for skill validation
           const { CombatService } = await import('./CombatService.js');
+          const { CombatActionService } = await import('./CombatActionService.js');
           const { EventService } = await import('./EventService.js');
-          
+
           const combatService = new CombatService();
+          const combatActionService = new CombatActionService();
           const eventService = new EventService();
           
           const [activeRound, activeEvent] = await Promise.all([
@@ -162,7 +163,7 @@ export class ChatService {
               const combatTargetId = targetResolution.targetId;
               
               // Submit action to combat with pre-calculated values
-              const submissionResult = await combatService.submitAction(
+              const submissionResult = await combatActionService.submitAction(
                 activeRound.id,
                 character.id,
                 fullSkill.id,
