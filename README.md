@@ -195,7 +195,9 @@ Ensure the `.env` file is correctly configured for the production environment. S
 │   ├── jobs              # Background jobs and seed script
 │   ├── utils             # Utility functions
 │   ├── data-source.js    # TypeORM data source
-│   ├── index.js          # Entry point
+│   ├── index.js          # Entry point (env, app, server, WS, startup, shutdown wiring)
+│   ├── app.js            # Express app builder (middleware + /api/* mounts + static + errorHandler)
+│   ├── lifecycle.js      # startServer + installShutdownHandlers
 ├── supabase              # Supabase SQL mirror (hand-maintained)
 ├── docs                  # Project documentation catalog
 ├── uploads               # User uploads (runtime)
