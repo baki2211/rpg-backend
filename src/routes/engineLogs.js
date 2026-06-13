@@ -1,6 +1,7 @@
 import express from 'express';
 import { EngineLogController } from '../controllers/EngineLogController.js';
 import { authenticateToken } from '../middleware/authMiddleware.js';
+import { isAdmin } from '../middleware/adminMiddleware.js';
 
 const router = express.Router();
 
@@ -17,6 +18,6 @@ router.get('/session/:sessionId', EngineLogController.getLogsBySession);
 router.get('/event/:eventId', EngineLogController.getLogsByEvent);
 
 // Clear old logs (admin only)
-router.delete('/cleanup/:daysOld', EngineLogController.clearOldLogs);
+router.delete('/cleanup/:daysOld', isAdmin, EngineLogController.clearOldLogs);
 
 export default router; 

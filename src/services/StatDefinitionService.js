@@ -1,18 +1,16 @@
 import { AppDataSource } from '../data-source.js';
 import { StatDefinition } from '../models/statDefinitionModel.js';
 import staticDataCache from '../utils/staticDataCache.js';
+import { HttpError } from '../utils/HttpError.js';
+
+const VALID_CATEGORIES = ['primary_stat', 'resource', 'scaling_stat'];
+const INTERNAL_NAME_PATTERN = /^[a-z0-9_]+$/;
 
 export class StatDefinitionService {
     constructor() {
         this.statDefinitionRepository = AppDataSource.getRepository(StatDefinition);
     }
 
-    /**
-     * Get all stat definitions
-     * @param {string} category - Optional category filter ('primary_stat', 'resource', 'scaling_stat')
-     * @param {boolean} activeOnly - Only return active definitions
-     * @returns {Promise<Array>} Array of stat definitions
-     */
     async getAllStatDefinitions(category = null, activeOnly = false) {
         const allStats = await staticDataCache.getStatDefinitions(category, activeOnly);
         return allStats.sort((a, b) => {
@@ -26,55 +24,36 @@ export class StatDefinitionService {
         });
     }
 
-    /**
-     * Get stat definition by ID
-     * @param {number} id - Stat definition ID
-     * @returns {Promise<Object|null>} Stat definition or null
-     */
     async getStatDefinitionById(id) {
-        return await this.statDefinitionRepository.findOne({ where: { id } });
+        const stat = await this.statDefinitionRepository.findOne({ where: { id } });
+        if (!stat) throw new HttpError(404, 'Stat definition not found');
+        return stat;
     }
 
-    /**
-     * Get stat definition by internal name
-     * @param {string} internalName - Internal name of the stat
-     * @returns {Promise<Object|null>} Stat definition or null
-     */
     async getStatDefinitionByInternalName(internalName) {
         return await this.statDefinitionRepository.findOne({ where: { internalName } });
     }
 
-    /**
-     * Create a new stat definition
-     * @param {Object} statData - Stat definition data
-     * @returns {Promise<Object>} Created stat definition
-     */
     async createStatDefinition(statData) {
-        // Validate category
-        const validCategories = ['primary_stat', 'resource', 'scaling_stat'];
-        if (!validCategories.includes(statData.category)) {
-            throw new Error('Invalid category. Must be one of: primary_stat, resource, scaling_stat');
+        if (!VALID_CATEGORIES.includes(statData.category)) {
+            throw new HttpError(400, 'Invalid category. Must be one of: primary_stat, resource, scaling_stat');
         }
 
-        // Validate internal name format
-        if (!/^[a-z0-9_]+$/.test(statData.internalName)) {
-            throw new Error('Internal name must contain only lowercase letters, numbers, and underscores');
+        if (!INTERNAL_NAME_PATTERN.test(statData.internalName)) {
+            throw new HttpError(400, 'Internal name must contain only lowercase letters, numbers, and underscores');
         }
 
-        // Check if internal name already exists
         const existing = await this.getStatDefinitionByInternalName(statData.internalName);
         if (existing) {
-            throw new Error('A stat with this internal name already exists');
+            throw new HttpError(409, 'A stat with this internal name already exists');
         }
 
-        // Default maxValue to 100 if not provided or null
         if (statData.maxValue === null || statData.maxValue === undefined) {
             statData.maxValue = 100;
         }
 
-        // Validate min/max values
         if (statData.maxValue !== null && statData.maxValue < statData.minValue) {
-            throw new Error('Maximum value cannot be less than minimum value');
+            throw new HttpError(400, 'Maximum value cannot be less than minimum value');
         }
 
         const statDefinition = this.statDefinitionRepository.create(statData);
@@ -83,52 +62,38 @@ export class StatDefinitionService {
         return savedStat;
     }
 
-    /**
-     * Update a stat definition
-     * @param {number} id - Stat definition ID
-     * @param {Object} updateData - Data to update
-     * @returns {Promise<Object>} Updated stat definition
-     */
     async updateStatDefinition(id, updateData) {
-        const statDefinition = await this.getStatDefinitionById(id);
+        const statDefinition = await this.statDefinitionRepository.findOne({ where: { id } });
         if (!statDefinition) {
-            throw new Error('Stat definition not found');
+            throw new HttpError(404, 'Stat definition not found');
         }
 
-        // Validate category if being updated
-        if (updateData.category) {
-            const validCategories = ['primary_stat', 'resource', 'scaling_stat'];
-            if (!validCategories.includes(updateData.category)) {
-                throw new Error('Invalid category. Must be one of: primary_stat, resource, scaling_stat');
-            }
+        if (updateData.category && !VALID_CATEGORIES.includes(updateData.category)) {
+            throw new HttpError(400, 'Invalid category. Must be one of: primary_stat, resource, scaling_stat');
         }
 
-        // Validate internal name format if being updated
         if (updateData.internalName) {
-            if (!/^[a-z0-9_]+$/.test(updateData.internalName)) {
-                throw new Error('Internal name must contain only lowercase letters, numbers, and underscores');
+            if (!INTERNAL_NAME_PATTERN.test(updateData.internalName)) {
+                throw new HttpError(400, 'Internal name must contain only lowercase letters, numbers, and underscores');
             }
 
-            // Check if new internal name already exists (excluding current record)
             const existing = await this.statDefinitionRepository.findOne({
                 where: { internalName: updateData.internalName }
             });
             if (existing && existing.id !== id) {
-                throw new Error('A stat with this internal name already exists');
+                throw new HttpError(409, 'A stat with this internal name already exists');
             }
         }
 
-        // Default maxValue to 100 if being set to null or undefined
         if (updateData.hasOwnProperty('maxValue') && (updateData.maxValue === null || updateData.maxValue === undefined)) {
             updateData.maxValue = 100;
         }
 
-        // Validate min/max values if being updated
         const minValue = updateData.minValue !== undefined ? updateData.minValue : statDefinition.minValue;
         const maxValue = updateData.maxValue !== undefined ? updateData.maxValue : statDefinition.maxValue;
-        
+
         if (maxValue !== null && maxValue < minValue) {
-            throw new Error('Maximum value cannot be less than minimum value');
+            throw new HttpError(400, 'Maximum value cannot be less than minimum value');
         }
 
         await this.statDefinitionRepository.update(id, updateData);
@@ -136,34 +101,17 @@ export class StatDefinitionService {
         return await this.statDefinitionRepository.findOne({ where: { id } });
     }
 
-    /**
-     * Delete a stat definition
-     * @param {number} id - Stat definition ID
-     * @returns {Promise<boolean>} Success status
-     */
     async deleteStatDefinition(id) {
-        const statDefinition = await this.getStatDefinitionById(id);
-        if (!statDefinition) {
-            throw new Error('Stat definition not found');
-        }
-
-        // Check if this stat is being used in any characters
-        // This is a safety check to prevent deletion of stats that are in use
         const result = await this.statDefinitionRepository.delete(id);
-        if (result.affected > 0) {
-            staticDataCache.clearEntity('StatDefinition');
+        if (!result.affected) {
+            throw new HttpError(404, 'Stat definition not found');
         }
-        return result.affected > 0;
+        staticDataCache.clearEntity('StatDefinition');
     }
 
-    /**
-     * Get stats organized by category
-     * @param {boolean} activeOnly - Only return active definitions
-     * @returns {Promise<Object>} Stats organized by category
-     */
     async getStatsByCategory(activeOnly = true) {
         const stats = await this.getAllStatDefinitions(null, activeOnly);
-        
+
         const organized = {
             primary_stat: [],
             resource: [],
@@ -179,13 +127,8 @@ export class StatDefinitionService {
         return organized;
     }
 
-    /**
-     * Initialize default stat definitions (for first-time setup)
-     * @returns {Promise<Array>} Created stat definitions
-     */
     async initializeDefaultStats() {
         const defaultStats = [
-            // Primary Stats (used in character creation)
             {
                 internalName: 'foc',
                 displayName: 'Focus',
@@ -246,8 +189,6 @@ export class StatDefinitionService {
                 minValue: 0,
                 sortOrder: 6
             },
-            
-            // Resources
             {
                 internalName: 'hp',
                 displayName: 'Health Points',
@@ -272,19 +213,12 @@ export class StatDefinitionService {
 
         const createdStats = [];
         for (const stat of defaultStats) {
-            try {
-                // Check if it already exists
-                const existing = await this.getStatDefinitionByInternalName(stat.internalName);
-                if (!existing) {
-                    const created = await this.createStatDefinition(stat);
-                    createdStats.push(created);
-                }
-            } catch (error) {
-                // Skip if already exists
-                console.log(`Stat ${stat.internalName} already exists, skipping...`);
+            const existing = await this.getStatDefinitionByInternalName(stat.internalName);
+            if (!existing) {
+                createdStats.push(await this.createStatDefinition(stat));
             }
         }
 
         return createdStats;
     }
-} 
+}

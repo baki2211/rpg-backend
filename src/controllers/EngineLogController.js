@@ -28,9 +28,6 @@ export class EngineLogController {
   });
 
   static clearOldLogs = asyncHandler(async (req, res) => {
-    if (!['admin'].includes(req.user.role)) {
-      throw new HttpError(403, 'Admin permissions required');
-    }
     const { daysOld } = req.params;
     if (!daysOld || parseInt(daysOld) < 1) {
       throw new HttpError(400, 'Valid days parameter is required (minimum 1)');

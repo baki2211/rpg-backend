@@ -4,6 +4,7 @@ import { CharacterSkill } from '../models/characterSkillModel.js';
 import { CharacterSkillBranch } from '../models/characterSkillBranchModel.js';
 import { AppDataSource } from '../data-source.js';
 import { StatDefinitionService } from './StatDefinitionService.js';
+import { HttpError } from '../utils/HttpError.js';
 
 // Singleton instance to avoid creating new service instances
 const statDefinitionService = new StatDefinitionService();
@@ -280,7 +281,7 @@ export class SkillEngine {
     async applyCost(skill) {
         // Deduct aether cost from character stats
         if (!this.character.stats.aether || this.character.stats.aether < skill.aetherCost) {
-            throw new Error(`Insufficient aether to use this skill. Required: ${skill.aetherCost}, Available: ${this.character.stats.aether || 0}`);
+            throw new HttpError(400, `Insufficient aether to use this skill. Required: ${skill.aetherCost}, Available: ${this.character.stats.aether || 0}`);
         }
         
         this.character.stats.aether -= skill.aetherCost;
@@ -295,7 +296,7 @@ export class SkillEngine {
             Object.entries(skill.requiredStats).forEach(([stat, value]) => {
                 if (validStatNames.includes(stat)) {
                     if (!this.character.stats[stat] || this.character.stats[stat] < value) {
-                        throw new Error(`Insufficient ${stat} to use this skill. Required: ${value}, Available: ${this.character.stats[stat] || 0}`);
+                        throw new HttpError(400, `Insufficient ${stat} to use this skill. Required: ${value}, Available: ${this.character.stats[stat] || 0}`);
                     }
                 }
             });
