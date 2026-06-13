@@ -1,8 +1,14 @@
 import { SessionService } from '../services/SessionService.js';
+import { SessionParticipantService } from '../services/SessionParticipantService.js';
+import { SessionLifecycleService } from '../services/SessionLifecycleService.js';
+import { SessionQueryService } from '../services/SessionQueryService.js';
 
 export class SessionController {
   constructor() {
     this.sessionService = new SessionService();
+    this.participantService = new SessionParticipantService();
+    this.lifecycleService = new SessionLifecycleService();
+    this.queryService = new SessionQueryService();
   }
 
   async createSession(req, res) {
@@ -45,7 +51,7 @@ export class SessionController {
   async addParticipant(req, res) {
     try {
       const { characterId } = req.body;
-      const participant = await this.sessionService.addParticipant(req.params.sessionId, characterId);
+      const participant = await this.participantService.addParticipant(req.params.sessionId, characterId);
       res.json(participant);
     } catch (error) {
       console.error('Error in addParticipant:', error);
@@ -55,7 +61,7 @@ export class SessionController {
 
   async removeParticipant(req, res) {
     try {
-      await this.sessionService.removeParticipant(req.params.sessionId, req.params.characterId);
+      await this.participantService.removeParticipant(req.params.sessionId, req.params.characterId);
       res.status(204).end();
     } catch (error) {
       console.error('Error in removeParticipant:', error);
@@ -65,7 +71,7 @@ export class SessionController {
 
   async getParticipants(req, res) {
     try {
-      const participants = await this.sessionService.getParticipants(req.params.sessionId);
+      const participants = await this.participantService.getParticipants(req.params.sessionId);
       res.json(participants);
     } catch (error) {
       console.error('Error in getParticipants:', error);
@@ -75,7 +81,7 @@ export class SessionController {
 
   async getAllSessions(req, res) {
     try {
-      const sessions = await this.sessionService.getAllSessions();
+      const sessions = await this.queryService.getAllSessions();
       res.json(sessions);
     } catch (error) {
       console.error('Error in getAllSessions:', error);
@@ -86,7 +92,7 @@ export class SessionController {
   async getLocationParticipants(req, res) {
     try {
       const { locationId } = req.params;
-      const participants = await this.sessionService.getLocationParticipants(locationId);
+      const participants = await this.participantService.getLocationParticipants(locationId);
       res.json(participants);
     } catch (error) {
       console.error('Error in getLocationParticipants:', error);
@@ -98,12 +104,12 @@ export class SessionController {
     try {
       const { sessionId } = req.params;
       const { status } = req.body;
-      
+
       if (!['open', 'closed', 'frozen'].includes(status)) {
         return res.status(400).json({ error: 'Invalid status. Must be open, closed, or frozen' });
       }
-      
-      const session = await this.sessionService.updateSessionStatus(sessionId, status);
+
+      const session = await this.lifecycleService.updateSessionStatus(sessionId, status);
       res.json(session);
     } catch (error) {
       console.error('Error in updateSessionStatus:', error);
@@ -115,11 +121,11 @@ export class SessionController {
     try {
       const { sessionId } = req.params;
       const { isActive } = req.body;
-      
+
       if (typeof isActive !== 'boolean') {
         return res.status(400).json({ error: 'isActive must be a boolean' });
       }
-      
+
       const session = await this.sessionService.updateSessionActive(sessionId, isActive);
       res.json(session);
     } catch (error) {
@@ -131,7 +137,7 @@ export class SessionController {
   async getClosedSessions(req, res) {
     try {
       console.log('Getting closed sessions');
-      const sessions = await this.sessionService.getClosedSessions();
+      const sessions = await this.queryService.getClosedSessions();
       console.log(`Found ${sessions.length} closed sessions`);
       res.json(sessions);
     } catch (error) {
@@ -140,18 +146,14 @@ export class SessionController {
     }
   }
 
-  /**
-   * Get all sessions for logging/admin purposes
-   */
   async getAllSessionsForLogs(req, res) {
     try {
-      // Verify user has admin/master permissions
       if (!['admin', 'master'].includes(req.user.role)) {
         return res.status(403).json({ error: 'Admin or Master access required' });
       }
 
       const { limit } = req.query;
-      const sessions = await this.sessionService.getAllSessionsForLogs(
+      const sessions = await this.queryService.getAllSessionsForLogs(
         limit ? parseInt(limit) : 100
       );
       res.json(sessions);
@@ -161,18 +163,14 @@ export class SessionController {
     }
   }
 
-  /**
-   * Freeze a session
-   */
   async freezeSession(req, res) {
     try {
-      // Verify user has admin/master permissions
       if (!['admin', 'master'].includes(req.user.role)) {
         return res.status(403).json({ error: 'Admin or Master access required' });
       }
 
       const { sessionId } = req.params;
-      const session = await this.sessionService.freezeSession(sessionId);
+      const session = await this.lifecycleService.freezeSession(sessionId);
       res.json(session);
     } catch (error) {
       console.error('Error in freezeSession:', error);
@@ -180,18 +178,14 @@ export class SessionController {
     }
   }
 
-  /**
-   * Unfreeze a session
-   */
   async unfreezeSession(req, res) {
     try {
-      // Verify user has admin/master permissions
       if (!['admin', 'master'].includes(req.user.role)) {
         return res.status(403).json({ error: 'Admin or Master access required' });
       }
 
       const { sessionId } = req.params;
-      const session = await this.sessionService.unfreezeSession(sessionId);
+      const session = await this.lifecycleService.unfreezeSession(sessionId);
       res.json(session);
     } catch (error) {
       console.error('Error in unfreezeSession:', error);
@@ -199,19 +193,15 @@ export class SessionController {
     }
   }
 
-  /**
-   * Close a session
-   */
   async closeSession(req, res) {
     try {
-      // Verify user has admin/master permissions
       if (!['admin', 'master'].includes(req.user.role)) {
         return res.status(403).json({ error: 'Admin or Master access required' });
       }
 
       const { sessionId } = req.params;
       const { reason } = req.body;
-      const session = await this.sessionService.closeSession(sessionId, reason);
+      const session = await this.lifecycleService.closeSession(sessionId, reason);
       res.json(session);
     } catch (error) {
       console.error('Error in closeSession:', error);

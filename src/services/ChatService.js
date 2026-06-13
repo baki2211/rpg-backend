@@ -5,7 +5,7 @@ import { Character } from '../models/characterModel.js';
 import { SkillUsageService } from './SkillUsageService.js';
 import { EngineLogService } from './EngineLogService.js';
 import { SkillEngine } from './SkillEngine.js';
-import { SessionService } from './SessionService.js';
+import { SessionParticipantService } from './SessionParticipantService.js';
 import { logger } from '../utils/logger.js';
 import { CharacterStatsService } from './CharacterStatsService.js';
 import { EventService } from './EventService.js';
@@ -18,7 +18,7 @@ export class ChatService {
   characterRepository = AppDataSource.getRepository(Character);
   engineLogService = new EngineLogService();
   characterStatsService = new CharacterStatsService();
-  sessionService = new SessionService();
+  sessionParticipantService = new SessionParticipantService();
   targetResolutionService = new TargetResolutionService();
   skillExecutionService = new SkillExecutionService();
 
@@ -212,7 +212,7 @@ export class ChatService {
     // Auto-create/manage session when user sends a valid message
     if (isValidMessage) {
       try {
-        await this.sessionService.ensureActiveSessionForLocation(locationId, userId, character.name);
+        await this.sessionParticipantService.ensureActiveSessionForLocation(locationId, userId, character.name);
         logger.session(`User ${userId} (${character.name}) participated in location ${locationId} with valid message`);
       } catch (sessionError) {
         // Log the error but don't fail the message sending

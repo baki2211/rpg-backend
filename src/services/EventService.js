@@ -3,6 +3,7 @@ import { Event } from '../models/eventModel.js';
 import { CombatRound } from '../models/combatRoundModel.js';
 import { Session } from '../models/sessionModel.js';
 import { SessionService } from './SessionService.js';
+import { SessionLifecycleService } from './SessionLifecycleService.js';
 
 export class EventService {
     constructor() {
@@ -10,6 +11,7 @@ export class EventService {
         this.roundRepository = AppDataSource.getRepository(CombatRound);
         this.sessionRepository = AppDataSource.getRepository(Session);
         this.sessionService = new SessionService();
+        this.sessionLifecycleService = new SessionLifecycleService();
     }
 
     /**
@@ -253,7 +255,7 @@ export class EventService {
         }
 
         if (event.sessionId) {
-            await this.sessionService.freezeSession(event.sessionId);
+            await this.sessionLifecycleService.freezeSession(event.sessionId);
         }
 
         return {
@@ -279,7 +281,7 @@ export class EventService {
         }
 
         if (event.sessionId) {
-            await this.sessionService.unfreezeSession(event.sessionId);
+            await this.sessionLifecycleService.unfreezeSession(event.sessionId);
         }
 
         return {
