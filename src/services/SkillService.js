@@ -41,7 +41,7 @@ export const SkillService = {
     validateSkillData(skillData, true);
     await skillRepository.update(id, skillData);
     staticDataCache.clearEntity('Skill');
-    const skill = await skillRepository.findOne({ where: { id }, relations: ['branch', 'type'] });
+    const skill = await skillRepository.findOne({ where: { id }, relations: { branch: true, type: true } });
     if (!skill) throw new HttpError(404, 'Skill not found');
     return skill;
   },

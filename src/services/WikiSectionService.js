@@ -63,7 +63,7 @@ export class WikiSectionService {
 
     return await this.sectionRepository.find({
       where: whereCondition,
-      relations: ['creator', 'entries'],
+      relations: { creator: true, entries: true },
       order: { position: 'ASC', name: 'ASC' }
     });
   }
@@ -76,7 +76,7 @@ export class WikiSectionService {
   async getSectionById(id) {
     return await this.sectionRepository.findOne({
       where: { id },
-      relations: ['creator', 'entries', 'entries.creator']
+      relations: { creator: true, entries: { creator: true } }
     });
   }
 
@@ -88,7 +88,7 @@ export class WikiSectionService {
   async getSectionBySlug(slug) {
     return await this.sectionRepository.findOne({
       where: { slug, isActive: true },
-      relations: ['creator', 'entries', 'entries.creator']
+      relations: { creator: true, entries: { creator: true } }
     });
   }
 

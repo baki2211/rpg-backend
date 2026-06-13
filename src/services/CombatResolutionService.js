@@ -35,7 +35,7 @@ export class CombatResolutionService {
 
             const round = await roundRepo.findOne({
                 where: { id: roundId, status: 'active' },
-                relations: ['actions', 'actions.character', 'actions.skill', 'actions.target']
+                relations: { actions: { character: true, skill: true, target: true } }
             });
 
             if (!round) {
@@ -91,7 +91,7 @@ export class CombatResolutionService {
         try {
             const round = await this.roundRepository.findOne({
                 where: { id: roundId },
-                relations: ['actions']
+                relations: { actions: true }
             });
 
             if (round) {

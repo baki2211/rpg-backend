@@ -49,7 +49,7 @@ export class NPCService {
   async getAllNPCs() {
     return this.characterRepository.find({
       where: { isNPC: true },
-      relations: ['race', 'creator'],
+      relations: { race: true, creator: true },
       select: {
         id: true,
         name: true,
@@ -73,7 +73,7 @@ export class NPCService {
   async updateNPC(npcId, updateData) {
     const npc = await this.characterRepository.findOne({
       where: { id: npcId, isNPC: true },
-      relations: ['race']
+      relations: { race: true }
     });
 
     if (!npc) {
@@ -95,7 +95,7 @@ export class NPCService {
     await this.characterRepository.update(npcId, updateData);
     return this.characterRepository.findOne({
       where: { id: npcId },
-      relations: ['race', 'creator']
+      relations: { race: true, creator: true }
     });
   }
 
@@ -148,7 +148,7 @@ export class NPCService {
   async activateNPC(npcId, userId) {
     const npc = await this.characterRepository.findOne({
       where: { id: npcId, isNPC: true },
-      relations: ['race', 'skills']
+      relations: { race: true, skills: true }
     });
 
     if (!npc) {
@@ -175,7 +175,7 @@ export class NPCService {
 
     return this.characterRepository.findOne({
       where: { id: npcId },
-      relations: ['race', 'skills']
+      relations: { race: true, skills: true }
     });
   }
 
@@ -200,7 +200,7 @@ export class NPCService {
   async getAvailableNPCs() {
     return this.characterRepository.find({
       where: { isNPC: true, isActive: false },
-      relations: ['race'],
+      relations: { race: true },
       select: {
         id: true,
         name: true,
@@ -219,7 +219,7 @@ export class NPCService {
   async getActiveNPCForUser(userId) {
     return this.characterRepository.findOne({
       where: { userId, isNPC: true, isActive: true },
-      relations: ['skills', 'race']
+      relations: { skills: true, race: true }
     });
   }
 

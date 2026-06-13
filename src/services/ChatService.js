@@ -77,7 +77,7 @@ export class ChatService {
     const character = await Promise.race([
       this.characterRepository.findOne({ 
         where: { userId, isActive: true },
-        relations: ['race'], // Need race for skill engine calculations
+        relations: { race: true }, // Need race for skill engine calculations
         select: { id: true, name: true, userId: true, stats: true, raceId: true } // Only select needed fields
       }),
       new Promise((_, reject) => 
@@ -95,7 +95,7 @@ export class ChatService {
         // Get the full skill data if we only have basic info
         const fullSkill = await AppDataSource.getRepository('Skill').findOne({
           where: { id: skill.id },
-          relations: ['branch', 'type']
+          relations: { branch: true, type: true }
         });
 
         if (fullSkill) {
@@ -297,7 +297,7 @@ export class ChatService {
     
     const fullSkill = await skillRepository.findOne({
       where: { id: skill.id },
-      relations: ['branch', 'type']
+      relations: { branch: true, type: true }
     });
 
     if (!fullSkill) {

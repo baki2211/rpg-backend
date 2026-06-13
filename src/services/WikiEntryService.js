@@ -89,7 +89,7 @@ export class WikiEntryService {
 
     return await this.entryRepository.find({
       where: whereCondition,
-      relations: ['creator', 'section'],
+      relations: { creator: true, section: true },
       order: {
         section: { position: 'ASC' },
         position: 'ASC',
@@ -112,7 +112,7 @@ export class WikiEntryService {
 
     return await this.entryRepository.find({
       where: whereCondition,
-      relations: ['creator', 'section', 'parentEntry', 'childEntries'],
+      relations: { creator: true, section: true, parentEntry: true, childEntries: true },
       order: { level: 'ASC', position: 'ASC', title: 'ASC' }
     });
   }
@@ -153,7 +153,7 @@ export class WikiEntryService {
   async getEntryById(id) {
     return await this.entryRepository.findOne({
       where: { id },
-      relations: ['creator', 'section']
+      relations: { creator: true, section: true }
     });
   }
 
@@ -167,7 +167,7 @@ export class WikiEntryService {
   async getEntryBySlug(sectionId, slug, incrementView = false) {
     const entry = await this.entryRepository.findOne({
       where: { sectionId, slug, isPublished: true },
-      relations: ['creator', 'section']
+      relations: { creator: true, section: true }
     });
 
     if (entry && incrementView) {
@@ -264,7 +264,7 @@ export class WikiEntryService {
 
       const entry = await entryRepo.findOne({
         where: { id },
-        relations: ['childEntries']
+        relations: { childEntries: true }
       });
 
       if (!entry) {

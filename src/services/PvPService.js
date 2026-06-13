@@ -18,8 +18,8 @@ export class PvPService {
         if (!defender) throw new HttpError(404, 'Defender character not found');
 
         const [attackerSkill, defenderSkill] = await Promise.all([
-            this.skillRepository.findOne({ where: { id: attackerSkillId }, relations: ['branch', 'type'] }),
-            this.skillRepository.findOne({ where: { id: defenderSkillId }, relations: ['branch', 'type'] }),
+            this.skillRepository.findOne({ where: { id: attackerSkillId }, relations: { branch: true, type: true } }),
+            this.skillRepository.findOne({ where: { id: defenderSkillId }, relations: { branch: true, type: true } }),
         ]);
         if (!attackerSkill) throw new HttpError(404, 'Attacker skill not found');
         if (!defenderSkill) throw new HttpError(404, 'Defender skill not found');
@@ -46,7 +46,7 @@ export class PvPService {
 
         const skill = await this.skillRepository.findOne({
             where: { id: skillId },
-            relations: ['branch', 'type'],
+            relations: { branch: true, type: true },
         });
         if (!skill) throw new HttpError(404, 'Skill not found');
 

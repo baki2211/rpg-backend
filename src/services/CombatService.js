@@ -70,7 +70,7 @@ export class CombatService {
     async getRoundActions(roundId) {
         return await this.actionRepository.find({
             where: { roundId },
-            relations: ['character', 'skill', 'target'],
+            relations: { character: true, skill: true, target: true },
             order: { submittedAt: 'ASC' }
         });
     }
@@ -90,7 +90,7 @@ export class CombatService {
 
         return await this.roundRepository.findOne({
             where: whereCondition,
-            relations: ['actions', 'actions.character', 'actions.skill', 'actions.target']
+            relations: { actions: { character: true, skill: true, target: true } }
         });
     }
 

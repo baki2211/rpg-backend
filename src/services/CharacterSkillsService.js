@@ -49,7 +49,7 @@ export class CharacterSkillsService {
       throw new HttpError(404, 'Character not found');
     }
 
-    const allSkills = await this.skillRepository.find({ relations: ['branch', 'type'] });
+    const allSkills = await this.skillRepository.find({ relations: { branch: true, type: true } });
 
     return allSkills.filter(
       skill => !character.skills?.some(characterSkill => characterSkill.id === skill.id)

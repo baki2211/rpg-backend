@@ -64,13 +64,13 @@ export class CharacterService {
   async getCharactersByUser(userId) {
     return this.characterRepository.find({
       where: { user: { id: userId } },
-      relations: ['race'],
+      relations: { race: true },
     });
   }
 
   async getAllCharacters() {
     return this.characterRepository.find({
-      relations: ['race', 'user'],
+      relations: { race: true, user: true },
       select: {
         id: true,
         name: true,
@@ -91,14 +91,14 @@ export class CharacterService {
   async getCharacterById(characterId, userId) {
     return this.characterRepository.findOne({
       where: { id: characterId, user: { id: userId } },
-      relations: ['skills', 'skills.branch', 'skills.type', 'race']
+      relations: { skills: { branch: true, type: true }, race: true }
     });
   }
 
   async findCharacterWithSkillsAndRace(characterId) {
     return this.characterRepository.findOne({
       where: { id: characterId },
-      relations: ['skills', 'race']
+      relations: { skills: true, race: true }
     });
   }
 
@@ -237,7 +237,7 @@ export class CharacterService {
   async getUserCharacterStatus(userId) {
     const userCharacters = await this.characterRepository.find({
       where: { user: { id: userId } },
-      relations: ['race'],
+      relations: { race: true },
       select: {
         id: true,
         name: true,
@@ -252,7 +252,7 @@ export class CharacterService {
 
     const assignedNPCs = await this.characterRepository.find({
       where: { userId, isNPC: true },
-      relations: ['race'],
+      relations: { race: true },
       select: {
         id: true,
         name: true,

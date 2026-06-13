@@ -21,7 +21,7 @@ export class SessionParticipantService {
         isActive: true,
         status: 'open'
       },
-      relations: ['participants', 'participants.character']
+      relations: { participants: { character: true } }
     });
 
     if (session) {
@@ -61,7 +61,7 @@ export class SessionParticipantService {
 
     const existingUserParticipants = await this.participantRepository.find({
       where: { sessionId },
-      relations: ['character']
+      relations: { character: true }
     });
 
     for (const participant of existingUserParticipants) {

@@ -28,7 +28,7 @@ export class ChatController {
 
     const character = await AppDataSource.getRepository('Character').findOne({
       where: { user: { id: userId }, isActive: true },
-      relations: ['skills']
+      relations: { skills: true }
     });
 
     if (!character) {
@@ -42,7 +42,7 @@ export class ChatController {
 
     const skill = await AppDataSource.getRepository('Skill').findOne({
       where: { id: skillId },
-      relations: ['branch', 'type']
+      relations: { branch: true, type: true }
     });
 
     if (!skill) {

@@ -22,14 +22,14 @@ export class SessionService {
   async getSession(sessionId) {
     return await this.sessionRepository.findOne({
       where: { id: sessionId },
-      relations: ['participants', 'participants.character']
+      relations: { participants: { character: true } }
     });
   }
 
   async getSessionByLocation(locationId) {
     return await this.sessionRepository.findOne({
       where: { locationId },
-      relations: ['participants', 'participants.character']
+      relations: { participants: { character: true } }
     });
   }
 
@@ -40,7 +40,7 @@ export class SessionService {
         isActive: true,
         status: 'open'
       },
-      relations: ['participants']
+      relations: { participants: true }
     });
   }
 

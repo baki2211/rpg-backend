@@ -154,7 +154,7 @@ export class EventService {
 
             const event = await eventRepo.findOne({
                 where: { id: eventId, status: 'active' },
-                relations: ['rounds']
+                relations: { rounds: true }
             });
 
             if (!event) {
@@ -163,7 +163,7 @@ export class EventService {
 
             const rounds = await roundRepo.find({
                 where: { eventId },
-                relations: ['actions']
+                relations: { actions: true }
             });
 
             const eventSummary = {
@@ -271,7 +271,7 @@ export class EventService {
     async getActiveEvent(locationId) {
         return await this.eventRepository.findOne({
             where: { locationId, status: 'active' },
-            relations: ['rounds', 'rounds.actions', 'session']
+            relations: { rounds: { actions: true }, session: true }
         });
     }
 
@@ -290,7 +290,7 @@ export class EventService {
 
         return await this.eventRepository.find({
             where: whereCondition,
-            relations: ['rounds', 'session'],
+            relations: { rounds: true, session: true },
             order: { createdAt: 'DESC' },
             take: limit
         });
@@ -304,7 +304,7 @@ export class EventService {
     async getEventById(eventId) {
         return await this.eventRepository.findOne({
             where: { id: eventId },
-            relations: ['rounds', 'rounds.actions', 'rounds.actions.character', 'rounds.actions.skill', 'session']
+            relations: { rounds: { actions: { character: true, skill: true } }, session: true }
         });
     }
 

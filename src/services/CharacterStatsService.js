@@ -98,7 +98,7 @@ export class CharacterStatsService {
   async updateCharacterStats(characterId, userId, statUpdates) {
     const character = await this.characterRepository.findOne({
       where: { id: characterId, user: { id: userId } },
-      relations: ['skills', 'skills.branch', 'skills.type', 'race']
+      relations: { skills: { branch: true, type: true }, race: true }
     });
     if (!character) {
       throw new HttpError(404, 'Character not found');
@@ -126,14 +126,14 @@ export class CharacterStatsService {
 
     return this.characterRepository.findOne({
       where: { id: characterId, user: { id: userId } },
-      relations: ['skills', 'skills.branch', 'skills.type', 'race']
+      relations: { skills: { branch: true, type: true }, race: true }
     });
   }
 
   async getCharacterStatsWithDefinitions(characterId, userId) {
     const character = await this.characterRepository.findOne({
       where: { id: characterId, user: { id: userId } },
-      relations: ['skills', 'skills.branch', 'skills.type', 'race']
+      relations: { skills: { branch: true, type: true }, race: true }
     });
     if (!character) {
       throw new HttpError(404, 'Character not found');

@@ -45,7 +45,7 @@ export class CombatActionService {
         const [character, skill] = await Promise.all([
             this.characterRepository.findOne({
                 where: { id: characterId },
-                relations: ['race']
+                relations: { race: true }
             }),
             (async () => {
                 const { default: staticDataCache } = await import('../utils/staticDataCache.js');
