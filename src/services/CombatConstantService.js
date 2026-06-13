@@ -1,55 +1,33 @@
 import { AppDataSource } from '../data-source.js';
 import { CombatConstant } from '../models/combatConstantModel.js';
 import staticDataCache from '../utils/staticDataCache.js';
+import { HttpError } from '../utils/HttpError.js';
+
+const VALID_CATEGORIES = ['hp_system', 'aether_system', 'damage_system', 'mastery_system', 'outcome_system'];
+const CONSTANT_KEY_PATTERN = /^[A-Z_0-9]+$/;
 
 export class CombatConstantService {
     constructor() {
         this.combatConstantRepository = AppDataSource.getRepository(CombatConstant);
     }
 
-    /**
-     * Get all combat constants
-     * @param {string} category - Optional category filter
-     * @param {boolean} activeOnly - Only return active constants
-     * @returns {Promise<Array>} Array of combat constants
-     */
     async getAllCombatConstants(category = null, activeOnly = false) {
         const where = {};
-
-        if (category) {
-            where.category = category;
-        }
-
-        if (activeOnly) {
-            where.isActive = true;
-        }
-
+        if (category) where.category = category;
+        if (activeOnly) where.isActive = true;
         return await this.combatConstantRepository.find({ where });
     }
 
-    /**
-     * Get combat constant by ID
-     * @param {number} id - Combat constant ID
-     * @returns {Promise<Object|null>} Combat constant or null
-     */
     async getCombatConstantById(id) {
-        return await this.combatConstantRepository.findOne({ where: { id } });
+        const constant = await this.combatConstantRepository.findOne({ where: { id } });
+        if (!constant) throw new HttpError(404, 'Combat constant not found');
+        return constant;
     }
 
-    /**
-     * Get combat constant by key
-     * @param {string} constantKey - Constant key
-     * @returns {Promise<Object|null>} Combat constant or null
-     */
     async getCombatConstantByKey(constantKey) {
         return await this.combatConstantRepository.findOne({ where: { constantKey } });
     }
 
-    /**
-     * Get constants organized by category
-     * @param {boolean} activeOnly - Only return active constants
-     * @returns {Promise<Object>} Constants organized by category
-     */
     async getConstantsByCategory(activeOnly = true) {
         const constants = await this.getAllCombatConstants(null, activeOnly);
 
@@ -70,42 +48,31 @@ export class CombatConstantService {
         return organized;
     }
 
-    /**
-     * Create a new combat constant
-     * @param {Object} constantData - Combat constant data
-     * @returns {Promise<Object>} Created combat constant
-     */
     async createCombatConstant(constantData) {
-        // Validate category
-        const validCategories = ['hp_system', 'aether_system', 'damage_system', 'mastery_system', 'outcome_system'];
-        if (!validCategories.includes(constantData.category)) {
-            throw new Error('Invalid category. Must be one of: hp_system, aether_system, damage_system, mastery_system, outcome_system');
+        if (!VALID_CATEGORIES.includes(constantData.category)) {
+            throw new HttpError(400, 'Invalid category. Must be one of: hp_system, aether_system, damage_system, mastery_system, outcome_system');
         }
 
-        // Validate constant key format
-        if (!/^[A-Z_0-9]+$/.test(constantData.constantKey)) {
-            throw new Error('Constant key must contain only uppercase letters, numbers, and underscores');
+        if (!CONSTANT_KEY_PATTERN.test(constantData.constantKey)) {
+            throw new HttpError(400, 'Constant key must contain only uppercase letters, numbers, and underscores');
         }
 
-        // Check if constant key already exists
         const existing = await this.getCombatConstantByKey(constantData.constantKey);
         if (existing) {
-            throw new Error('A constant with this key already exists');
+            throw new HttpError(409, 'A constant with this key already exists');
         }
 
-        // Validate min/max values
         if (constantData.minValue !== undefined && constantData.maxValue !== undefined) {
             if (constantData.maxValue < constantData.minValue) {
-                throw new Error('Maximum value cannot be less than minimum value');
+                throw new HttpError(400, 'Maximum value cannot be less than minimum value');
             }
         }
 
-        // Validate value is within range
         if (constantData.minValue !== undefined && constantData.value < constantData.minValue) {
-            throw new Error(`Value must be at least ${constantData.minValue}`);
+            throw new HttpError(400, `Value must be at least ${constantData.minValue}`);
         }
         if (constantData.maxValue !== undefined && constantData.value > constantData.maxValue) {
-            throw new Error(`Value must be at most ${constantData.maxValue}`);
+            throw new HttpError(400, `Value must be at most ${constantData.maxValue}`);
         }
 
         const combatConstant = this.combatConstantRepository.create(constantData);
@@ -114,29 +81,22 @@ export class CombatConstantService {
         return savedConstant;
     }
 
-    /**
-     * Update a combat constant's value
-     * @param {number} id - Combat constant ID
-     * @param {Object} updateData - Data to update (typically just { value })
-     * @returns {Promise<Object>} Updated combat constant
-     */
     async updateCombatConstant(id, updateData) {
-        const constant = await this.getCombatConstantById(id);
+        const constant = await this.combatConstantRepository.findOne({ where: { id } });
         if (!constant) {
-            throw new Error('Combat constant not found');
+            throw new HttpError(404, 'Combat constant not found');
         }
 
         if (!constant.isActive) {
-            throw new Error('Cannot update inactive combat constant');
+            throw new HttpError(400, 'Cannot update inactive combat constant');
         }
 
-        // If updating value, validate against min/max
         if (updateData.value !== undefined) {
             if (constant.minValue !== null && updateData.value < constant.minValue) {
-                throw new Error(`Value must be at least ${constant.minValue}`);
+                throw new HttpError(400, `Value must be at least ${constant.minValue}`);
             }
             if (constant.maxValue !== null && updateData.value > constant.maxValue) {
-                throw new Error(`Value must be at most ${constant.maxValue}`);
+                throw new HttpError(400, `Value must be at most ${constant.maxValue}`);
             }
         }
 
@@ -145,28 +105,14 @@ export class CombatConstantService {
         return await this.combatConstantRepository.findOne({ where: { id } });
     }
 
-    /**
-     * Delete a combat constant
-     * @param {number} id - Combat constant ID
-     * @returns {Promise<boolean>} Success status
-     */
     async deleteCombatConstant(id) {
-        const constant = await this.getCombatConstantById(id);
-        if (!constant) {
-            throw new Error('Combat constant not found');
-        }
-
         const result = await this.combatConstantRepository.delete(id);
-        if (result.affected > 0) {
-            staticDataCache.clearEntity('CombatConstant');
+        if (!result.affected) {
+            throw new HttpError(404, 'Combat constant not found');
         }
-        return result.affected > 0;
+        staticDataCache.clearEntity('CombatConstant');
     }
 
-    /**
-     * Initialize default combat constants from system.txt v2.2
-     * @returns {Promise<Object>} Object with createdConstants count and list
-     */
     async initializeDefaultConstants() {
         const defaultConstants = [
             // HP System
@@ -392,14 +338,9 @@ export class CombatConstantService {
 
         const createdConstants = [];
         for (const constantData of defaultConstants) {
-            try {
-                const existing = await this.getCombatConstantByKey(constantData.constantKey);
-                if (!existing) {
-                    const created = await this.createCombatConstant(constantData);
-                    createdConstants.push(created);
-                }
-            } catch (error) {
-                console.log(`Constant ${constantData.constantKey} already exists, skipping...`);
+            const existing = await this.getCombatConstantByKey(constantData.constantKey);
+            if (!existing) {
+                createdConstants.push(await this.createCombatConstant(constantData));
             }
         }
 

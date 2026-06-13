@@ -1,32 +1,18 @@
 import express from 'express';
 import { CombatConstantController } from '../controllers/CombatConstantController.js';
 import { authenticateToken } from '../middleware/authMiddleware.js';
+import { isAdmin } from '../middleware/adminMiddleware.js';
 
 const router = express.Router();
-const combatConstantController = new CombatConstantController();
 
-// Apply authentication to all routes
 router.use(authenticateToken);
 
-// GET /api/combat-constants/categories - Get constants organized by category
-router.get('/categories', combatConstantController.getConstantsByCategory.bind(combatConstantController));
-
-// POST /api/combat-constants/initialize - Initialize default constants (admin only)
-router.post('/initialize', combatConstantController.initializeDefaultConstants.bind(combatConstantController));
-
-// GET /api/combat-constants - Get all combat constants
-router.get('/', combatConstantController.getAllCombatConstants.bind(combatConstantController));
-
-// GET /api/combat-constants/:id - Get combat constant by ID
-router.get('/:id', combatConstantController.getCombatConstantById.bind(combatConstantController));
-
-// POST /api/combat-constants - Create new combat constant (admin only)
-router.post('/', combatConstantController.createCombatConstant.bind(combatConstantController));
-
-// PUT /api/combat-constants/:id - Update combat constant (admin only)
-router.put('/:id', combatConstantController.updateCombatConstant.bind(combatConstantController));
-
-// DELETE /api/combat-constants/:id - Delete combat constant (admin only)
-router.delete('/:id', combatConstantController.deleteCombatConstant.bind(combatConstantController));
+router.get('/categories', CombatConstantController.getConstantsByCategory);
+router.post('/initialize', isAdmin, CombatConstantController.initializeDefaultConstants);
+router.get('/', CombatConstantController.getAllCombatConstants);
+router.get('/:id', CombatConstantController.getCombatConstantById);
+router.post('/', isAdmin, CombatConstantController.createCombatConstant);
+router.put('/:id', isAdmin, CombatConstantController.updateCombatConstant);
+router.delete('/:id', isAdmin, CombatConstantController.deleteCombatConstant);
 
 export default router;

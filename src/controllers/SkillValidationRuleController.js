@@ -1,206 +1,55 @@
 import { SkillValidationRuleService } from '../services/SkillValidationRuleService.js';
+import { asyncHandler } from '../utils/asyncHandler.js';
+import { HttpError } from '../utils/HttpError.js';
+
+const ruleService = new SkillValidationRuleService();
 
 export class SkillValidationRuleController {
-    constructor() {
-        this.ruleService = new SkillValidationRuleService();
-    }
+    static getAllRules = asyncHandler(async (req, res) => {
+        const { skillType, activeOnly } = req.query;
+        res.json(await ruleService.getAllRules(skillType || null, activeOnly === 'true'));
+    });
 
-    /**
-     * Get all skill validation rules
-     * Query params: skillType, activeOnly
-     */
-    async getAllRules(req, res) {
-        try {
-            const { skillType, activeOnly } = req.query;
-            const rules = await this.ruleService.getAllRules(
-                skillType || null,
-                activeOnly === 'true'
-            );
-            res.json(rules);
-        } catch (error) {
-            console.error('Error in getAllRules:', error);
-            res.status(500).json({ error: 'Failed to retrieve skill validation rules' });
-        }
-    }
+    static getRulesByCategory = asyncHandler(async (req, res) => {
+        const { activeOnly } = req.query;
+        res.json(await ruleService.getRulesByCategory(activeOnly !== 'false'));
+    });
 
-    /**
-     * Get rules organized by category (skill type)
-     * Query params: activeOnly
-     */
-    async getRulesByCategory(req, res) {
-        try {
-            const { activeOnly } = req.query;
-            const rules = await this.ruleService.getRulesByCategory(
-                activeOnly !== 'false' // Default to true
-            );
-            res.json(rules);
-        } catch (error) {
-            console.error('Error in getRulesByCategory:', error);
-            res.status(500).json({ error: 'Failed to retrieve rules by category' });
-        }
-    }
+    static getRuleById = asyncHandler(async (req, res) => {
+        res.json(await ruleService.getRuleById(parseInt(req.params.id)));
+    });
 
-    /**
-     * Get skill validation rule by ID
-     */
-    async getRuleById(req, res) {
-        try {
-            const { id } = req.params;
-            const rule = await this.ruleService.getRuleById(parseInt(id));
+    static getRuleByTypeAndSubtype = asyncHandler(async (req, res) => {
+        const { skillType, skillSubtype } = req.params;
+        const rule = await ruleService.getRuleByTypeAndSubtype(skillType, skillSubtype);
+        if (!rule) throw new HttpError(404, 'Skill validation rule not found');
+        res.json(rule);
+    });
 
-            if (!rule) {
-                return res.status(404).json({ error: 'Skill validation rule not found' });
-            }
+    static createRule = asyncHandler(async (req, res) => {
+        res.status(201).json(await ruleService.createRule(req.body));
+    });
 
-            res.json(rule);
-        } catch (error) {
-            console.error('Error in getRuleById:', error);
-            res.status(500).json({ error: 'Failed to retrieve skill validation rule' });
-        }
-    }
+    static updateRule = asyncHandler(async (req, res) => {
+        res.json(await ruleService.updateRule(parseInt(req.params.id), req.body));
+    });
 
-    /**
-     * Get skill validation rule by type and subtype
-     */
-    async getRuleByTypeAndSubtype(req, res) {
-        try {
-            const { skillType, skillSubtype } = req.params;
-            const rule = await this.ruleService.getRuleByTypeAndSubtype(skillType, skillSubtype);
+    static deleteRule = asyncHandler(async (req, res) => {
+        await ruleService.deleteRule(parseInt(req.params.id));
+        res.json({ message: 'Skill validation rule deleted successfully' });
+    });
 
-            if (!rule) {
-                return res.status(404).json({ error: 'Skill validation rule not found' });
-            }
+    static initializeDefaultRules = asyncHandler(async (req, res) => {
+        const result = await ruleService.initializeDefaultRules();
+        res.json({
+            message: 'Skill validation rules initialized successfully',
+            createdRules: result.createdRules,
+            rules: result.rules
+        });
+    });
 
-            res.json(rule);
-        } catch (error) {
-            console.error('Error in getRuleByTypeAndSubtype:', error);
-            res.status(500).json({ error: 'Failed to retrieve skill validation rule' });
-        }
-    }
-
-    /**
-     * Create a new skill validation rule (admin only)
-     */
-    async createRule(req, res) {
-        try {
-            // Verify user has admin permissions
-            if (!['admin'].includes(req.user.role)) {
-                return res.status(403).json({ error: 'Admin access required' });
-            }
-
-            const ruleData = req.body;
-            const rule = await this.ruleService.createRule(ruleData);
-            res.status(201).json(rule);
-        } catch (error) {
-            console.error('Error in createRule:', error);
-            res.status(400).json({ error: error.message });
-        }
-    }
-
-    /**
-     * Update a skill validation rule (admin only)
-     */
-    async updateRule(req, res) {
-        try {
-            // Verify user has admin permissions
-            if (!['admin'].includes(req.user.role)) {
-                return res.status(403).json({ error: 'Admin access required' });
-            }
-
-            const { id } = req.params;
-            const updateData = req.body;
-
-            const rule = await this.ruleService.updateRule(
-                parseInt(id),
-                updateData
-            );
-
-            res.json({
-                id: rule.id,
-                skillType: rule.skillType,
-                skillSubtype: rule.skillSubtype,
-                message: 'Skill validation rule updated successfully'
-            });
-        } catch (error) {
-            console.error('Error in updateRule:', error);
-            if (error.message.includes('not found')) {
-                return res.status(404).json({ error: error.message });
-            }
-            res.status(400).json({ error: error.message });
-        }
-    }
-
-    /**
-     * Delete a skill validation rule (admin only)
-     */
-    async deleteRule(req, res) {
-        try {
-            // Verify user has admin permissions
-            if (!['admin'].includes(req.user.role)) {
-                return res.status(403).json({ error: 'Admin access required' });
-            }
-
-            const { id } = req.params;
-            const success = await this.ruleService.deleteRule(parseInt(id));
-
-            if (success) {
-                res.json({ message: 'Skill validation rule deleted successfully' });
-            } else {
-                res.status(404).json({ error: 'Skill validation rule not found' });
-            }
-        } catch (error) {
-            console.error('Error in deleteRule:', error);
-            res.status(400).json({ error: error.message });
-        }
-    }
-
-    /**
-     * Initialize default skill validation rules (admin only)
-     */
-    async initializeDefaultRules(req, res) {
-        try {
-            // Verify user has admin permissions
-            if (!['admin'].includes(req.user.role)) {
-                return res.status(403).json({ error: 'Admin access required' });
-            }
-
-            const result = await this.ruleService.initializeDefaultRules();
-            res.json({
-                createdRules: result.createdRules,
-                message: 'Skill validation rules initialized successfully',
-                rules: result.rules
-            });
-        } catch (error) {
-            console.error('Error in initializeDefaultRules:', error);
-            res.status(500).json({ error: 'Failed to initialize default rules' });
-        }
-    }
-
-    /**
-     * Validate a skill against validation rules
-     * POST body: { skillType, skillSubtype, basePower, aetherCost }
-     */
-    async validateSkill(req, res) {
-        try {
-            const { skillType, skillSubtype, basePower, aetherCost } = req.body;
-
-            if (!skillType || !skillSubtype || basePower === undefined || aetherCost === undefined) {
-                return res.status(400).json({
-                    error: 'Missing required fields: skillType, skillSubtype, basePower, aetherCost'
-                });
-            }
-
-            const result = await this.ruleService.validateSkill(
-                skillType,
-                skillSubtype,
-                basePower,
-                aetherCost
-            );
-
-            res.json(result);
-        } catch (error) {
-            console.error('Error in validateSkill:', error);
-            res.status(500).json({ error: 'Failed to validate skill' });
-        }
-    }
+    static validateSkill = asyncHandler(async (req, res) => {
+        const { skillType, skillSubtype, basePower, aetherCost } = req.body;
+        res.json(await ruleService.validateSkill(skillType, skillSubtype, basePower, aetherCost));
+    });
 }

@@ -1,58 +1,34 @@
 import { AppDataSource } from '../data-source.js';
 import { SkillValidationRule } from '../models/skillValidationRuleModel.js';
 import staticDataCache from '../utils/staticDataCache.js';
+import { HttpError } from '../utils/HttpError.js';
+
+const VALID_SKILL_TYPES = ['attack', 'defence', 'counter', 'buff_debuff', 'healing'];
 
 export class SkillValidationRuleService {
     constructor() {
         this.ruleRepository = AppDataSource.getRepository(SkillValidationRule);
     }
 
-    /**
-     * Get all skill validation rules
-     * @param {string} skillType - Optional skill type filter
-     * @param {boolean} activeOnly - Only return active rules
-     * @returns {Promise<Array>} Array of validation rules
-     */
     async getAllRules(skillType = null, activeOnly = false) {
         const where = {};
-
-        if (skillType) {
-            where.skillType = skillType;
-        }
-
-        if (activeOnly) {
-            where.isActive = true;
-        }
-
+        if (skillType) where.skillType = skillType;
+        if (activeOnly) where.isActive = true;
         return await this.ruleRepository.find({ where });
     }
 
-    /**
-     * Get skill validation rule by ID
-     * @param {number} id - Rule ID
-     * @returns {Promise<Object|null>} Validation rule or null
-     */
     async getRuleById(id) {
-        return await this.ruleRepository.findOne({ where: { id } });
+        const rule = await this.ruleRepository.findOne({ where: { id } });
+        if (!rule) throw new HttpError(404, 'Skill validation rule not found');
+        return rule;
     }
 
-    /**
-     * Get skill validation rule by type and subtype
-     * @param {string} skillType - Skill type
-     * @param {string} skillSubtype - Skill subtype
-     * @returns {Promise<Object|null>} Validation rule or null
-     */
     async getRuleByTypeAndSubtype(skillType, skillSubtype) {
         return await this.ruleRepository.findOne({
             where: { skillType, skillSubtype }
         });
     }
 
-    /**
-     * Get rules organized by category (skill type)
-     * @param {boolean} activeOnly - Only return active rules
-     * @returns {Promise<Object>} Rules organized by skill type
-     */
     async getRulesByCategory(activeOnly = true) {
         const rules = await this.getAllRules(null, activeOnly);
 
@@ -73,30 +49,21 @@ export class SkillValidationRuleService {
         return organized;
     }
 
-    /**
-     * Create a new skill validation rule
-     * @param {Object} ruleData - Validation rule data
-     * @returns {Promise<Object>} Created validation rule
-     */
     async createRule(ruleData) {
-        // Validate skill type
-        const validTypes = ['attack', 'defence', 'counter', 'buff_debuff', 'healing'];
-        if (!validTypes.includes(ruleData.skillType)) {
-            throw new Error('Invalid skill type. Must be one of: attack, defence, counter, buff_debuff, healing');
+        if (!VALID_SKILL_TYPES.includes(ruleData.skillType)) {
+            throw new HttpError(400, 'Invalid skill type. Must be one of: attack, defence, counter, buff_debuff, healing');
         }
 
-        // Check if rule for this type/subtype already exists
         const existing = await this.getRuleByTypeAndSubtype(ruleData.skillType, ruleData.skillSubtype);
         if (existing) {
-            throw new Error('A validation rule for this skill type and subtype already exists');
+            throw new HttpError(409, 'A validation rule for this skill type and subtype already exists');
         }
 
-        // Validate min/max values
         if (ruleData.maxBasePower < ruleData.minBasePower) {
-            throw new Error('Maximum base power cannot be less than minimum base power');
+            throw new HttpError(400, 'Maximum base power cannot be less than minimum base power');
         }
         if (ruleData.maxAetherCost < ruleData.minAetherCost) {
-            throw new Error('Maximum aether cost cannot be less than minimum aether cost');
+            throw new HttpError(400, 'Maximum aether cost cannot be less than minimum aether cost');
         }
 
         const rule = this.ruleRepository.create(ruleData);
@@ -105,29 +72,22 @@ export class SkillValidationRuleService {
         return savedRule;
     }
 
-    /**
-     * Update a skill validation rule
-     * @param {number} id - Rule ID
-     * @param {Object} updateData - Data to update
-     * @returns {Promise<Object>} Updated validation rule
-     */
     async updateRule(id, updateData) {
-        const rule = await this.getRuleById(id);
+        const rule = await this.ruleRepository.findOne({ where: { id } });
         if (!rule) {
-            throw new Error('Skill validation rule not found');
+            throw new HttpError(404, 'Skill validation rule not found');
         }
 
-        // Validate min/max values if they're being updated
         const minBasePower = updateData.minBasePower !== undefined ? updateData.minBasePower : rule.minBasePower;
         const maxBasePower = updateData.maxBasePower !== undefined ? updateData.maxBasePower : rule.maxBasePower;
         const minAetherCost = updateData.minAetherCost !== undefined ? updateData.minAetherCost : rule.minAetherCost;
         const maxAetherCost = updateData.maxAetherCost !== undefined ? updateData.maxAetherCost : rule.maxAetherCost;
 
         if (maxBasePower < minBasePower) {
-            throw new Error('Maximum base power cannot be less than minimum base power');
+            throw new HttpError(400, 'Maximum base power cannot be less than minimum base power');
         }
         if (maxAetherCost < minAetherCost) {
-            throw new Error('Maximum aether cost cannot be less than minimum aether cost');
+            throw new HttpError(400, 'Maximum aether cost cannot be less than minimum aether cost');
         }
 
         await this.ruleRepository.update(id, updateData);
@@ -135,28 +95,14 @@ export class SkillValidationRuleService {
         return await this.ruleRepository.findOne({ where: { id } });
     }
 
-    /**
-     * Delete a skill validation rule
-     * @param {number} id - Rule ID
-     * @returns {Promise<boolean>} Success status
-     */
     async deleteRule(id) {
-        const rule = await this.getRuleById(id);
-        if (!rule) {
-            throw new Error('Skill validation rule not found');
-        }
-
         const result = await this.ruleRepository.delete(id);
-        if (result.affected > 0) {
-            staticDataCache.clearEntity('SkillValidationRule');
+        if (!result.affected) {
+            throw new HttpError(404, 'Skill validation rule not found');
         }
-        return result.affected > 0;
+        staticDataCache.clearEntity('SkillValidationRule');
     }
 
-    /**
-     * Initialize default skill validation rules from system.txt v2.2
-     * @returns {Promise<Object>} Object with createdRules count and list
-     */
     async initializeDefaultRules() {
         const defaultRules = [
             // Attack Skills
@@ -282,14 +228,9 @@ export class SkillValidationRuleService {
 
         const createdRules = [];
         for (const ruleData of defaultRules) {
-            try {
-                const existing = await this.getRuleByTypeAndSubtype(ruleData.skillType, ruleData.skillSubtype);
-                if (!existing) {
-                    const created = await this.createRule(ruleData);
-                    createdRules.push(created);
-                }
-            } catch (error) {
-                console.log(`Rule for ${ruleData.skillType}/${ruleData.skillSubtype} already exists, skipping...`);
+            const existing = await this.getRuleByTypeAndSubtype(ruleData.skillType, ruleData.skillSubtype);
+            if (!existing) {
+                createdRules.push(await this.createRule(ruleData));
             }
         }
 
@@ -299,15 +240,11 @@ export class SkillValidationRuleService {
         };
     }
 
-    /**
-     * Validate a skill against its validation rule
-     * @param {string} skillType - Skill type
-     * @param {string} skillSubtype - Skill subtype
-     * @param {number} basePower - Base power to validate
-     * @param {number} aetherCost - Aether cost to validate
-     * @returns {Promise<Object>} Validation result with isValid flag and errors array
-     */
     async validateSkill(skillType, skillSubtype, basePower, aetherCost) {
+        if (!skillType || !skillSubtype || basePower === undefined || aetherCost === undefined) {
+            throw new HttpError(400, 'Missing required fields: skillType, skillSubtype, basePower, aetherCost');
+        }
+
         const rule = await this.getRuleByTypeAndSubtype(skillType, skillSubtype);
 
         if (!rule) {
