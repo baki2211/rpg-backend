@@ -3,15 +3,9 @@ import { PvPController } from '../controllers/PvPController.js';
 import { authenticateToken } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
-const pvpController = new PvPController();
 
-// Resolve PvP encounter between two characters
-router.post('/resolve', authenticateToken, (req, res) => pvpController.resolvePvPEncounter(req, res));
+router.post('/resolve', authenticateToken, PvPController.resolvePvPEncounter);
+router.get('/character/:characterId/skills', authenticateToken, PvPController.getCharacterPvPSkills);
+router.post('/simulate', authenticateToken, PvPController.simulateSkillOutput);
 
-// Get available PvP skills for a character
-router.get('/character/:characterId/skills', authenticateToken, (req, res) => pvpController.getCharacterPvPSkills(req, res));
-
-// Simulate skill output (for testing/preview)
-router.post('/simulate', authenticateToken, (req, res) => pvpController.simulateSkillOutput(req, res));
-
-export default router; 
+export default router;

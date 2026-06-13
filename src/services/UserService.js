@@ -1,5 +1,6 @@
 import { AppDataSource } from '../data-source.js';
 import { User } from '../models/userModel.js';
+import { HttpError } from '../utils/HttpError.js';
 import bcrypt from 'bcrypt';
 
 const PUBLIC_USER_FIELDS = { id: true, username: true, role: true, createdAt: true, updatedAt: true };
@@ -55,12 +56,12 @@ export class UserService {
     async updateUserPassword(userId, oldPassword, newPassword) {
         const user = await this.findById(userId, true);
         if (!user) {
-            throw new Error('User not found');
+            throw new HttpError(404, 'User not found');
         }
 
         const isPasswordValid = await this.verifyPassword(oldPassword, user.password);
         if (!isPasswordValid) {
-            throw new Error('The old password does not match');
+            throw new HttpError(401, 'The old password does not match');
         }
 
         const hashedPassword = await bcrypt.hash(newPassword, 10);
@@ -73,7 +74,7 @@ export class UserService {
     async adminResetPassword(userId, newPassword) {
         const user = await this.findById(userId);
         if (!user) {
-            throw new Error('User not found');
+            throw new HttpError(404, 'User not found');
         }
 
         const hashedPassword = await bcrypt.hash(newPassword, 10);
@@ -85,12 +86,12 @@ export class UserService {
     async updateUserRole(userId, newRole) {
         const validRoles = ['user', 'staffer', 'master', 'admin'];
         if (!validRoles.includes(newRole.toLowerCase())) {
-            throw new Error('Invalid role. Must be one of: user, staffer, master, admin');
+            throw new HttpError(400, 'Invalid role. Must be one of: user, staffer, master, admin');
         }
 
         const user = await this.findById(userId);
         if (!user) {
-            throw new Error('User not found');
+            throw new HttpError(404, 'User not found');
         }
 
         await this.userRepository.update(userId, { role: newRole.toLowerCase() });

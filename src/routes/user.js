@@ -1,26 +1,22 @@
 import express from 'express';
 import { UserController } from '../controllers/UserController.js';
 import { authenticateToken } from '../middleware/authMiddleware.js';
+import { isAdmin } from '../middleware/adminMiddleware.js';
 
 const router = express.Router();
-const userController = new UserController();
 
 router.get('/', authenticateToken, UserController.getUsers);
 router.get('/dashboard', authenticateToken, UserController.getDashboard);
 
-// Get all users (admin only)
-router.get('/all', authenticateToken, userController.getAllUsers.bind(userController));
+// Admin-only listings
+router.get('/all', authenticateToken, isAdmin, UserController.getAllUsers);
+router.get('/role/:role', authenticateToken, isAdmin, UserController.getUsersByRole);
 
-// Get users by role (admin only)
-router.get('/role/:role', authenticateToken, userController.getUsersByRole.bind(userController));
+// Admin-only mutations
+router.put('/:userId/role', authenticateToken, isAdmin, UserController.updateUserRole);
+router.put('/:userId/admin-password-reset', authenticateToken, isAdmin, UserController.adminResetPassword);
 
-// Update user role (admin only)
-router.put('/:userId/role', authenticateToken, userController.updateUserRole.bind(userController));
-
-// Update own password (caller must supply their old password)
-router.put('/:userId/password', authenticateToken, userController.updateUserPassword.bind(userController));
-
-// Admin reset another user's password (no old password required; admin role enforced in controller)
-router.put('/:userId/admin-password-reset', authenticateToken, userController.adminResetPassword.bind(userController));
+// Self-service password update (ownership enforced in controller)
+router.put('/:userId/password', authenticateToken, UserController.updateUserPassword);
 
 export default router;

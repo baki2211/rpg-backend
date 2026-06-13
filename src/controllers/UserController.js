@@ -1,154 +1,58 @@
 import { UserService } from '../services/UserService.js';
+import { asyncHandler } from '../utils/asyncHandler.js';
+import { HttpError } from '../utils/HttpError.js';
+
+const userService = new UserService();
 
 export class UserController {
-    constructor() {
-        this.userService = new UserService();
-    }
+    static getAllUsers = asyncHandler(async (req, res) => {
+        res.json(await userService.getAllUsers());
+    });
 
-    async getAllUsers(req, res) {
-        try {
-            // Check if user is admin
-            if (req.user?.role !== 'admin') {
-                return res.status(403).json({ error: 'Access denied. Admin role required.' });
-            }
+    static updateUserPassword = asyncHandler(async (req, res) => {
+        const { oldPassword, newPassword } = req.body;
+        if (!newPassword) throw new HttpError(400, 'New password is required');
+        if (!oldPassword) throw new HttpError(400, 'Old password is required');
 
-            const users = await this.userService.getAllUsers();
-            res.json(users);
-        } catch (error) {
-            console.error('Error in getAllUsers:', error);
-            res.status(500).json({ error: error.message });
+        const userId = parseInt(req.params.userId);
+        // Self-service only — admins resetting another user's password must use
+        // the admin reset endpoint.
+        if (req.user.id !== userId) {
+            throw new HttpError(403, 'Access denied. You can only update your own password.');
         }
-    }
 
-    async updateUserPassword(req, res) {
-        try {
-            const { userId } = req.params;
-            const { oldPassword, newPassword } = req.body;
-            const requestingUserId = req.user?.id;
+        res.json(await userService.updateUserPassword(userId, oldPassword, newPassword));
+    });
 
-            if (!newPassword) {
-                return res.status(400).json({ error: 'New password is required' });
-            }
+    static adminResetPassword = asyncHandler(async (req, res) => {
+        const { newPassword } = req.body;
+        if (!newPassword) throw new HttpError(400, 'New password is required');
+        res.json(await userService.adminResetPassword(parseInt(req.params.userId), newPassword));
+    });
 
-            if (!oldPassword) {
-                return res.status(400).json({ error: 'Old password is required' });
-            }
+    static updateUserRole = asyncHandler(async (req, res) => {
+        const { role } = req.body;
+        if (!role) throw new HttpError(400, 'Role is required');
+        res.json(await userService.updateUserRole(parseInt(req.params.userId), role));
+    });
 
-            // Self-service only — admins resetting another user's password must use
-            // the admin reset endpoint.
-            if (requestingUserId !== parseInt(userId)) {
-                return res.status(403).json({ error: 'Access denied. You can only update your own password.' });
-            }
+    static getUsersByRole = asyncHandler(async (req, res) => {
+        res.json(await userService.getUsersByRole(req.params.role));
+    });
 
-            const updatedUser = await this.userService.updateUserPassword(
-                parseInt(userId),
-                oldPassword,
-                newPassword,
-            );
-            res.json(updatedUser);
-        } catch (error) {
-            console.error('Error in updateUserPassword:', error);
-            res.status(500).json({ error: error.message });
-        }
-    }
+    static getDashboard = asyncHandler(async (req, res) => {
+        const user = req.user;
+        res.json({
+            message: `Welcome to your dashboard, ${user.username}!`,
+            user: {
+                id: user.id,
+                username: user.username,
+                role: user.role,
+            },
+        });
+    });
 
-    async adminResetPassword(req, res) {
-        try {
-            if (req.user?.role !== 'admin') {
-                return res.status(403).json({ error: 'Access denied. Admin role required.' });
-            }
-
-            const { userId } = req.params;
-            const { newPassword } = req.body;
-
-            if (!newPassword) {
-                return res.status(400).json({ error: 'New password is required' });
-            }
-
-            const updatedUser = await this.userService.adminResetPassword(
-                parseInt(userId),
-                newPassword,
-            );
-            res.json(updatedUser);
-        } catch (error) {
-            console.error('Error in adminResetPassword:', error);
-            res.status(500).json({ error: error.message });
-        }
-    }
-
-    async updateUserRole(req, res) {
-        try {
-            // Check if user is admin
-            if (req.user?.role !== 'admin') {
-                return res.status(403).json({ error: 'Access denied. Admin role required.' });
-            }
-
-            const { userId } = req.params;
-            const { role } = req.body;
-
-            if (!role) {
-                return res.status(400).json({ error: 'Role is required' });
-            }
-
-            const updatedUser = await this.userService.updateUserRole(parseInt(userId), role);
-            res.json(updatedUser);
-        } catch (error) {
-            console.error('Error in updateUserRole:', error);
-            res.status(500).json({ error: error.message });
-        }
-    }
-
-    async getUsersByRole(req, res) {
-        try {
-            // Check if user is admin
-            if (req.user?.role !== 'admin') {
-                return res.status(403).json({ error: 'Access denied. Admin role required.' });
-            }
-
-            const { role } = req.params;
-            const users = await this.userService.getUsersByRole(role);
-            res.json(users);
-        } catch (error) {
-            console.error('Error in getUsersByRole:', error);
-            res.status(500).json({ error: error.message });
-        }
-    }
-
-    static async getDashboard(req, res) {
-        try {
-            const user = (req).user;
-            if (!user) {
-                res.status(401).json({ message: 'Unauthorized access' });
-                return;
-            }
-
-            // Respond with user details (or fetch additional data from the DB if needed)
-            res.status(200).json({
-                message: `Welcome to your dashboard, ${user.username}!`,
-                user: {
-                    id: user.id,
-                    username: user.username,
-                    role: user.role,
-                },
-            });
-        } catch (error) {
-            const errorMessage = (error).message;
-            res.status(500).json({ message: 'Error loading dashboard', error: errorMessage });
-        }
-    }
-
-    static async getUsers(req, res) {
-        try {
-            const user = (req).user;
-            if (!user) {
-                res.status(401).json({ message: 'Unauthorized access' });
-                return;
-            }
-
-            res.status(200).json(user);
-        } catch (error) {
-            const errorMessage = (error).message;
-            res.status(500).json({ message: 'Error fetching users', error: errorMessage });
-        }
-    }
+    static getUsers = asyncHandler(async (req, res) => {
+        res.json(req.user);
+    });
 }

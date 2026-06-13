@@ -4,6 +4,7 @@ import { CombatRound } from '../models/combatRoundModel.js';
 import { Session } from '../models/sessionModel.js';
 import { SessionService } from './SessionService.js';
 import { SessionLifecycleService } from './SessionLifecycleService.js';
+import { HttpError } from '../utils/HttpError.js';
 
 export class EventService {
     constructor() {
@@ -24,13 +25,13 @@ export class EventService {
      */
     async ensureSessionForLocation(locationId, manager = null, forEvent = false) {
         const sessionRepo = manager ? manager.getRepository(Session) : this.sessionRepository;
-        
+
         // If creating for an event, we can create a new session even if there's a frozen one
         if (forEvent) {
             // Check for existing active open session first
             let session = await sessionRepo.findOne({
-                where: { 
-                    locationId, 
+                where: {
+                    locationId,
                     isActive: true,
                     status: 'open'
                 }
@@ -57,8 +58,8 @@ export class EventService {
         // Original logic for non-event sessions
         // Try to find existing active session that is also open (not closed/frozen)
         let session = await sessionRepo.findOne({
-            where: { 
-                locationId, 
+            where: {
+                locationId,
                 isActive: true,
                 status: 'open'  // Only find open sessions, not closed or frozen ones
             }
@@ -92,35 +93,25 @@ export class EventService {
      * @returns {Promise<Object>} The created event with session info
      */
     async createEvent(title, type, locationId, createdBy, description = null) {
-        // Validate event type
         const validTypes = ['lore', 'duel', 'quest'];
         if (!validTypes.includes(type.toLowerCase())) {
-            throw new Error('Invalid event type. Must be one of: lore, duel, quest');
+            throw new HttpError(400, 'Invalid event type. Must be one of: lore, duel, quest');
         }
 
-        // Check if there's already an active event for this location
         const existingEvent = await this.eventRepository.findOne({
             where: { locationId, status: 'active' }
         });
 
         if (existingEvent) {
-            throw new Error('There is already an active event in this location. Close it first.');
+            throw new HttpError(409, 'There is already an active event in this location. Close it first.');
         }
 
         return await AppDataSource.transaction(async (manager) => {
             const eventRepo = manager.getRepository(Event);
             const sessionRepo = manager.getRepository(Session);
 
-            // Ensure there's an active session for this location
-            // Pass forEvent=true to allow creating new session even if location has frozen sessions
-            let session;
-            try {
-                session = await this.ensureSessionForLocation(locationId, manager, true);
-            } catch (sessionError) {
-                throw new Error(`Failed to ensure session for location ${locationId}: ${sessionError.message}`);
-            }
+            const session = await this.ensureSessionForLocation(locationId, manager, true);
 
-            // Create the event
             const event = eventRepo.create({
                 title,
                 type: type.toLowerCase(),
@@ -131,35 +122,21 @@ export class EventService {
                 status: 'active'
             });
 
-            let savedEvent;
-            try {
-                savedEvent = await eventRepo.save(event);
-            } catch (eventError) {
-                throw new Error(`Failed to create event: ${eventError.message}`);
-            }
+            const savedEvent = await eventRepo.save(event);
 
-            // Transform session to event role
-            try {
-                await sessionRepo.update(session.id, { 
-                    name: `Event: ${title}`,
-                    isEvent: true,
-                    eventId: savedEvent.id
-                });
+            await sessionRepo.update(session.id, {
+                name: `Event: ${title}`,
+                isEvent: true,
+                eventId: savedEvent.id
+            });
 
-                // Get updated session to verify transformation
-                const updatedSession = await sessionRepo.findOne({ where: { id: session.id } });
-                if (!updatedSession) {
-                    throw new Error(`Failed to retrieve updated session ${session.id}`);
-                }
+            const updatedSession = await sessionRepo.findOne({ where: { id: session.id } });
 
-                return {
-                    event: savedEvent,
-                    session: updatedSession,
-                    transformation: session.isEvent ? 'event_to_event' : 'free_role_to_event'
-                };
-            } catch (transformError) {
-                throw new Error(`Failed to transform session to event mode: ${transformError.message}`);
-            }
+            return {
+                event: savedEvent,
+                session: updatedSession,
+                transformation: session.isEvent ? 'event_to_event' : 'free_role_to_event'
+            };
         });
     }
 
@@ -175,23 +152,20 @@ export class EventService {
             const roundRepo = manager.getRepository(CombatRound);
             const sessionRepo = manager.getRepository(Session);
 
-            // Get the event
             const event = await eventRepo.findOne({
                 where: { id: eventId, status: 'active' },
                 relations: ['rounds']
             });
 
             if (!event) {
-                throw new Error('Event not found or already closed');
+                throw new HttpError(404, 'Event not found or already closed');
             }
 
-            // Get all rounds for this event
             const rounds = await roundRepo.find({
                 where: { eventId },
                 relations: ['actions']
             });
 
-            // Create event summary
             const eventSummary = {
                 totalRounds: rounds.length,
                 resolvedRounds: rounds.filter(r => r.status === 'resolved').length,
@@ -206,18 +180,16 @@ export class EventService {
                 }))
             };
 
-            // Revert session back to free role
             if (event.sessionId) {
-                await sessionRepo.update(event.sessionId, { 
+                await sessionRepo.update(event.sessionId, {
                     name: `Free Role - Location ${event.locationId}`,
                     isEvent: false,
                     eventId: null,
-                    isActive: false,  // Deactivate the session when closing the event
-                    status: 'closed'  // Mark session as closed
+                    isActive: false,
+                    status: 'closed'
                 });
             }
 
-            // Close the event
             await eventRepo.update(
                 { id: eventId },
                 {
@@ -251,7 +223,7 @@ export class EventService {
         });
 
         if (!event) {
-            throw new Error('Event not found or not active');
+            throw new HttpError(404, 'Event not found or not active');
         }
 
         if (event.sessionId) {
@@ -277,7 +249,7 @@ export class EventService {
         });
 
         if (!event) {
-            throw new Error('Event not found or not active');
+            throw new HttpError(404, 'Event not found or not active');
         }
 
         if (event.sessionId) {
@@ -344,7 +316,7 @@ export class EventService {
     async getEventStatistics(eventId) {
         const event = await this.getEventById(eventId);
         if (!event) {
-            throw new Error('Event not found');
+            throw new HttpError(404, 'Event not found');
         }
 
         const rounds = event.rounds || [];
@@ -379,8 +351,8 @@ export class EventService {
                 title: event.title,
                 type: event.type,
                 status: event.status,
-                duration: event.closedAt ? 
-                    Math.round((new Date(event.closedAt) - new Date(event.createdAt)) / (1000 * 60)) : 
+                duration: event.closedAt ?
+                    Math.round((new Date(event.closedAt) - new Date(event.createdAt)) / (1000 * 60)) :
                     Math.round((new Date() - new Date(event.createdAt)) / (1000 * 60))
             },
             rounds: {
@@ -396,4 +368,4 @@ export class EventService {
             participants: characterStats
         };
     }
-} 
+}
