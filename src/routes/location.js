@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { LocationController } from '../controllers/locationController.js';
+import { LocationController } from '../controllers/LocationController.js';
 import { authenticateToken } from '../middleware/authMiddleware.js';
 import { isAdmin } from '../middleware/adminMiddleware.js';
 

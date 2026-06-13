@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { ChatController } from '../controllers/chatController.js';
+import { ChatController } from '../controllers/ChatController.js';
 import { authenticateToken } from '../middleware/authMiddleware.js';
 import { RateLimitMiddleware } from '../middleware/rateLimitMiddleware.js';
 

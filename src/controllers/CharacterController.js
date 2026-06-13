@@ -297,8 +297,8 @@ export class CharacterController {
     }
   }
 
-  // NPC Management Methods (instance methods)
-  async createNPC(req, res) {
+  // NPC Management Methods
+  static async createNPC(req, res) {
     try {
       // Check if user has admin/master permissions
       if (!['admin', 'master'].includes(req.user.role)) {
@@ -313,7 +313,7 @@ export class CharacterController {
     }
   }
 
-  async getAllNPCs(req, res) {
+  static async getAllNPCs(req, res) {
     try {
       // Check if user has admin/master permissions
       if (!['admin', 'master'].includes(req.user.role)) {
@@ -327,7 +327,7 @@ export class CharacterController {
     }
   }
 
-  async updateNPC(req, res) {
+  static async updateNPC(req, res) {
     try {
       // Check if user has admin/master permissions
       if (!['admin', 'master'].includes(req.user.role)) {
@@ -343,7 +343,7 @@ export class CharacterController {
     }
   }
 
-  async deleteNPC(req, res) {
+  static async deleteNPC(req, res) {
     try {
       // Check if user has admin/master permissions
       if (!['admin', 'master'].includes(req.user.role)) {
@@ -358,7 +358,7 @@ export class CharacterController {
     }
   }
 
-  async getAvailableNPCs(req, res) {
+  static async getAvailableNPCs(req, res) {
     try {
       const npcs = await npcService.getAvailableNPCs();
       res.status(200).json(npcs);
@@ -367,7 +367,7 @@ export class CharacterController {
     }
   }
 
-  async getActiveNPC(req, res) {
+  static async getActiveNPC(req, res) {
     try {
       const userId = req.user.id;
       const activeNPC = await npcService.getActiveNPCForUser(userId);
@@ -377,7 +377,7 @@ export class CharacterController {
     }
   }
 
-  async activateNPC(req, res) {
+  static async activateNPC(req, res) {
     try {
       const userId = req.user.id;
       const { id } = req.params;
@@ -388,7 +388,7 @@ export class CharacterController {
     }
   }
 
-  async deactivateNPC(req, res) {
+  static async deactivateNPC(req, res) {
     try {
       const userId = req.user.id;
       const { id } = req.params;
@@ -399,7 +399,7 @@ export class CharacterController {
     }
   }
 
-  async getCharacterById(req, res) {
+  static async getCharacterById(req, res) {
     try {
       const userId = req.user.id;
       const { id } = req.params;
@@ -420,7 +420,7 @@ export class CharacterController {
     }
   }
 
-  async getAcquiredSkills(req, res) {
+  static async getAcquiredSkills(req, res) {
     try {
       const userId = req.user.id;
       const { id } = req.params;
@@ -437,7 +437,7 @@ export class CharacterController {
     }
   }
 
-  async getCharacterStatsWithDefinitions(req, res) {
+  static async getCharacterStatsWithDefinitions(req, res) {
     try {
       const userId = req.user.id;
       const { id } = req.params;
@@ -454,11 +454,4 @@ export class CharacterController {
     }
   }
 
-  constructor() {
-    // Bind instance methods to preserve 'this' context
-    this.createNPC = this.createNPC.bind(this);
-    this.getAllNPCs = this.getAllNPCs.bind(this);
-    this.updateNPC = this.updateNPC.bind(this);
-    this.deleteNPC = this.deleteNPC.bind(this);
-  }
 }

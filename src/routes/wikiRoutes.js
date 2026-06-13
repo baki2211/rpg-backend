@@ -29,7 +29,7 @@ import {
   searchPublicEntries,
   getPublicEntriesByTag,
   getPublicTags
-} from '../controllers/wikiController.js';
+} from '../controllers/WikiController.js';
 
 const router = express.Router();
 

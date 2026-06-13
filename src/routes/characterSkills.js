@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { CharacterSkillsController } from '../controllers/characterSkillsController.js';
+import { CharacterSkillsController } from '../controllers/CharacterSkillsController.js';
 import { authenticateToken } from '../middleware/authMiddleware.js';
 
 const router = Router();

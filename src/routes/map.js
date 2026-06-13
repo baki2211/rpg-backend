@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { MapController } from '../controllers/mapController.js';
+import { MapController } from '../controllers/MapController.js';
 import { authenticateToken } from '../middleware/authMiddleware.js';
 import { isAdmin } from '../middleware/adminMiddleware.js';
 import upload from '../middleware/uploadMiddleware.js';

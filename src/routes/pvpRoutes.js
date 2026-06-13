@@ -1,5 +1,5 @@
 import express from 'express';
-import { PvPController } from '../controllers/pvpController.js';
+import { PvPController } from '../controllers/PvPController.js';
 import { authenticateToken } from '../middleware/authMiddleware.js';
 
 const router = express.Router();

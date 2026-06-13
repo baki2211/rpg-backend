@@ -1,6 +1,6 @@
 // src/routes/raceRoutes.ts
 import { Router } from 'express';
-import { RaceController } from '../controllers/raceController.js';
+import { RaceController } from '../controllers/RaceController.js';
 import { authenticateToken } from '../middleware/authMiddleware.js';
 import { isAdmin } from '../middleware/adminMiddleware.js';
 
