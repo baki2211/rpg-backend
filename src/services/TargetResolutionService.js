@@ -44,7 +44,7 @@ export class TargetResolutionService {
 
         // Add relations if requested
         if (includeRelations) {
-            queryOptions.relations = ['race', 'skills'];
+            queryOptions.relations = { race: true, skills: true };
         }
 
         const character = await this.characterRepository.findOne(queryOptions);
