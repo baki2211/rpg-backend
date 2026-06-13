@@ -24,7 +24,6 @@ router.post('/npcs/:id/activate', CharacterController.activateNPC);
 router.post('/npcs/:id/deactivate', CharacterController.deactivateNPC);
 
 // Character creation
-router.post('/new', RateLimitMiddleware.characterOperationLimit, upload.single('image'), CharacterController.createCharacter);
 router.post('/', RateLimitMiddleware.characterOperationLimit, upload.single('image'), CharacterController.createCharacter);
 
 // Regular character routes (specific routes first)
@@ -32,7 +31,6 @@ router.get('/all', CharacterController.getAllCharacters);
 router.get('/', CharacterController.getCharacters);
 router.put('/:id/activate', RateLimitMiddleware.characterOperationLimit, CharacterController.activateCharacter);
 router.delete('/:id', RateLimitMiddleware.characterOperationLimit, CharacterController.deleteCharacter);
-router.delete('/:id/delete', RateLimitMiddleware.characterOperationLimit, CharacterController.deleteCharacter);
 
 // Character image management
 router.post('/:characterId/image', upload.single('image'), CharacterController.uploadCharacterImage);
