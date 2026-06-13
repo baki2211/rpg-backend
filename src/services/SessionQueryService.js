@@ -13,7 +13,7 @@ export class SessionQueryService {
         { status: 'open' },
         { status: 'frozen' }
       ],
-      relations: ['participants', 'participants.character', 'event'],
+      relations: { participants: { character: true }, event: true },
       order: { updatedAt: 'DESC' }
     });
 
@@ -40,7 +40,7 @@ export class SessionQueryService {
   async getClosedSessions() {
     const sessions = await this.sessionRepository.find({
       where: { status: 'closed' },
-      relations: ['participants', 'participants.character'],
+      relations: { participants: { character: true } },
       order: { updatedAt: 'DESC' }
     });
 
@@ -60,7 +60,7 @@ export class SessionQueryService {
 
   async getAllSessionsForLogs(limit = 100) {
     const sessions = await this.sessionRepository.find({
-      relations: ['participants', 'participants.character', 'event'],
+      relations: { participants: { character: true }, event: true },
       order: { updatedAt: 'DESC' },
       take: limit
     });

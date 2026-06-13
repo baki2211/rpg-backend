@@ -199,7 +199,7 @@ export class CharacterService {
         { user: { id: userId }, isActive: true },
         { userId, isNPC: true, isActive: true }
       ],
-      relations: ['skills', 'race']
+      relations: { skills: true, race: true }
     });
   }
 
