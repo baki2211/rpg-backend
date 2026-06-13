@@ -5,6 +5,7 @@ import { Character } from '../models/characterModel.js';
 import { SkillUsageService } from './SkillUsageService.js';
 import { TargetResolutionService } from './TargetResolutionService.js';
 import { SkillExecutionService } from './SkillExecutionService.js';
+import { HttpError } from '../utils/HttpError.js';
 
 export class CombatActionService {
     constructor() {
@@ -30,7 +31,7 @@ export class CombatActionService {
         });
 
         if (!round) {
-            throw new Error('Combat round not found or not active');
+            throw new HttpError(404, 'Combat round not found or not active');
         }
 
         const existingAction = await this.actionRepository.findOne({
@@ -38,7 +39,7 @@ export class CombatActionService {
         });
 
         if (existingAction) {
-            throw new Error('Character has already submitted an action for this round');
+            throw new HttpError(409, 'Character has already submitted an action for this round');
         }
 
         const [character, skill] = await Promise.all([
@@ -52,8 +53,8 @@ export class CombatActionService {
             })()
         ]);
 
-        if (!character) throw new Error('Character not found');
-        if (!skill) throw new Error('Skill not found');
+        if (!character) throw new HttpError(404, 'Character not found');
+        if (!skill) throw new HttpError(404, 'Skill not found');
 
         const targetResolution = await this.targetResolutionService.resolveSkillTarget(
             skill,
@@ -63,7 +64,7 @@ export class CombatActionService {
         );
 
         if (!targetResolution.isValid) {
-            throw new Error(targetResolution.error);
+            throw new HttpError(400, targetResolution.error);
         }
 
         const calculationResult = await this.skillExecutionService.calculateSkillOutput(
@@ -73,7 +74,7 @@ export class CombatActionService {
         );
 
         if (!calculationResult.success) {
-            throw new Error(`Skill calculation failed: ${calculationResult.error}`);
+            throw new HttpError(400, `Skill calculation failed: ${calculationResult.error}`);
         }
 
         const { finalOutput, outcomeMultiplier, rollQuality } = calculationResult;

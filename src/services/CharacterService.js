@@ -3,6 +3,7 @@ import { Character } from '../models/characterModel.js';
 import { User } from '../models/userModel.js';
 import { Race } from '../models/raceModel.js';
 import { CharacterStatsService } from './CharacterStatsService.js';
+import { HttpError } from '../utils/HttpError.js';
 import { logger } from '../utils/logger.js';
 import { Not } from 'typeorm';
 
@@ -16,18 +17,18 @@ export class CharacterService {
   async createCharacter(data, userId, imageUrl) {
     const user = await this.userRepository.findOneBy({ id: data.user?.id || userId });
     if (!user) {
-      throw new Error('User not found');
+      throw new HttpError(404, 'User not found');
     }
     const race = await AppDataSource.getRepository(Race).findOneBy({ id: data.race?.id });
     if (!race) {
-      throw new Error('Race not found');
+      throw new HttpError(404, 'Race not found');
     }
 
     const initializedStats = await this.statsService.initializeCharacterStats(data.stats || {});
     const validation = await this.statsService.validateCharacterStats(initializedStats, 'primary_stat');
 
     if (!validation.isValid) {
-      throw new Error(`Stat validation failed: ${validation.errors.join(', ')}`);
+      throw new HttpError(400, `Stat validation failed: ${validation.errors.join(', ')}`);
     }
 
     const derived = await this.statsService.computeDerivedStats(initializedStats, race, 1);
@@ -35,7 +36,7 @@ export class CharacterService {
 
     const totalPrimaryStatPoints = await this.statsService.calculateStatPointsUsed(initializedStats);
     if (totalPrimaryStatPoints > PRIMARY_STAT_POINT_POOL) {
-      throw new Error(`Total primary stat points (${totalPrimaryStatPoints}) exceed the allowed ${PRIMARY_STAT_POINT_POOL} points.`);
+      throw new HttpError(400, `Total primary stat points (${totalPrimaryStatPoints}) exceed the allowed ${PRIMARY_STAT_POINT_POOL} points.`);
     }
 
     if (data.isActive) {
@@ -115,7 +116,7 @@ export class CharacterService {
     });
 
     if (!character) {
-      throw new Error('Character not found or you do not have permission to activate this character');
+      throw new HttpError(404, 'Character not found or you do not have permission to activate this character');
     }
 
     await Promise.all([
@@ -145,11 +146,11 @@ export class CharacterService {
       });
 
       if (!character) {
-        throw new Error('Character not found or you do not have permission to delete this character');
+        throw new HttpError(404, 'Character not found or you do not have permission to delete this character');
       }
 
       if (character.isActive) {
-        throw new Error('Cannot delete an active character. Please deactivate it first.');
+        throw new HttpError(409, 'Cannot delete an active character. Please deactivate it first.');
       }
 
       logger.character(`Deleting character ${character.name} (ID: ${characterId}) for user ${userId}`);
@@ -182,7 +183,7 @@ export class CharacterService {
       });
 
       if (result.affected === 0) {
-        throw new Error('Failed to delete character');
+        throw new HttpError(500, 'Failed to delete character');
       }
 
       logger.character(`Successfully deleted character ${character.name} (ID: ${characterId})`);

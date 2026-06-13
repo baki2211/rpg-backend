@@ -1,661 +1,200 @@
 import { WikiSectionService } from '../services/WikiSectionService.js';
 import { WikiEntryService } from '../services/WikiEntryService.js';
 import { WikiSearchService } from '../services/WikiSearchService.js';
-import { logger } from '../utils/logger.js';
+import { asyncHandler } from '../utils/asyncHandler.js';
+import { HttpError } from '../utils/HttpError.js';
 
 const sectionService = new WikiSectionService();
 const entryService = new WikiEntryService();
 const searchService = new WikiSearchService();
 
-// ============ ADMIN SECTION ENDPOINTS ============
+export class WikiController {
+  // ============ ADMIN SECTION ENDPOINTS ============
 
-export const adminGetSections = async (req, res) => {
-  try {
+  static adminGetSections = asyncHandler(async (req, res) => {
     const includeInactive = req.query.includeInactive === 'true';
     const sections = await sectionService.getAllSections(includeInactive);
-    
-    res.json({
-      success: true,
-      data: sections,
-      meta: {
-        total: sections.length
-      }
-    });
-  } catch (error) {
-    logger.error('Error fetching admin sections:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch sections',
-      error: error.message
-    });
-  }
-};
+    res.json(sections);
+  });
 
-export const adminCreateSection = async (req, res) => {
-  try {
+  static adminCreateSection = asyncHandler(async (req, res) => {
     const { name, description, position, isActive } = req.body;
-    
-    if (!name) {
-      return res.status(400).json({
-        success: false,
-        message: 'Section name is required'
-      });
-    }
+    if (!name) throw new HttpError(400, 'Section name is required');
 
-    const sectionData = {
-      name,
-      description,
-      position,
-      isActive: isActive !== undefined ? isActive : true
-    };
+    const section = await sectionService.createSection(
+      {
+        name,
+        description,
+        position,
+        isActive: isActive !== undefined ? isActive : true
+      },
+      req.user.id
+    );
+    res.status(201).json(section);
+  });
 
-    const section = await sectionService.createSection(sectionData, req.user.id);
-    
-    res.status(201).json({
-      success: true,
-      data: section,
-      message: 'Section created successfully'
-    });
-  } catch (error) {
-    logger.error('Error creating section:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to create section',
-      error: error.message
-    });
-  }
-};
+  static adminUpdateSection = asyncHandler(async (req, res) => {
+    const section = await sectionService.updateSection(parseInt(req.params.id), req.body);
+    res.json(section);
+  });
 
-export const adminUpdateSection = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const updateData = req.body;
+  static adminDeleteSection = asyncHandler(async (req, res) => {
+    await sectionService.deleteSection(parseInt(req.params.id));
+    res.status(204).end();
+  });
 
-    const section = await sectionService.updateSection(parseInt(id), updateData);
-    
-    res.json({
-      success: true,
-      data: section,
-      message: 'Section updated successfully'
-    });
-  } catch (error) {
-    logger.error('Error updating section:', error);
-    
-    if (error.message === 'Section not found') {
-      return res.status(404).json({
-        success: false,
-        message: 'Section not found'
-      });
-    }
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update section',
-      error: error.message
-    });
-  }
-};
-
-export const adminDeleteSection = async (req, res) => {
-  try {
-    const { id } = req.params;
-    
-    await sectionService.deleteSection(parseInt(id));
-    
-    res.json({
-      success: true,
-      message: 'Section and all its entries deleted successfully'
-    });
-  } catch (error) {
-    logger.error('Error deleting section:', error);
-    
-    if (error.message === 'Section not found') {
-      return res.status(404).json({
-        success: false,
-        message: 'Section not found'
-      });
-    }
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to delete section',
-      error: error.message
-    });
-  }
-};
-
-export const adminReorderSections = async (req, res) => {
-  try {
+  static adminReorderSections = asyncHandler(async (req, res) => {
     const { sectionOrder } = req.body;
-    
     if (!Array.isArray(sectionOrder)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Section order must be an array'
-      });
+      throw new HttpError(400, 'Section order must be an array');
     }
-
     const sections = await sectionService.reorderSections(sectionOrder);
-    
-    res.json({
-      success: true,
-      data: sections,
-      message: 'Sections reordered successfully'
-    });
-  } catch (error) {
-    logger.error('Error reordering sections:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to reorder sections',
-      error: error.message
-    });
-  }
-};
+    res.json(sections);
+  });
 
-// ============ ADMIN ENTRY ENDPOINTS ============
+  // ============ ADMIN ENTRY ENDPOINTS ============
 
-export const adminGetEntries = async (req, res) => {
-  try {
-    const { sectionId } = req.params;
+  static adminGetEntries = asyncHandler(async (req, res) => {
     const includeUnpublished = req.query.includeUnpublished === 'true';
-    
-    const entries = await entryService.getEntriesBySection(parseInt(sectionId), includeUnpublished);
-    
-    res.json({
-      success: true,
-      data: entries,
-      meta: {
-        total: entries.length,
-        sectionId: parseInt(sectionId)
-      }
-    });
-  } catch (error) {
-    logger.error('Error fetching admin entries:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch entries',
-      error: error.message
-    });
-  }
-};
+    const entries = await entryService.getEntriesBySection(parseInt(req.params.sectionId), includeUnpublished);
+    res.json(entries);
+  });
 
-export const adminGetEntriesHierarchical = async (req, res) => {
-  try {
-    const { sectionId } = req.params;
+  static adminGetEntriesHierarchical = asyncHandler(async (req, res) => {
     const includeUnpublished = req.query.includeUnpublished === 'true';
-    
-    const entries = await entryService.getEntriesHierarchical(parseInt(sectionId), includeUnpublished);
-    
-    res.json({
-      success: true,
-      data: entries,
-      meta: {
-        total: entries.length,
-        sectionId: parseInt(sectionId)
-      }
-    });
-  } catch (error) {
-    logger.error('Error fetching hierarchical entries:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch hierarchical entries',
-      error: error.message
-    });
-  }
-};
+    const entries = await entryService.getEntriesHierarchical(parseInt(req.params.sectionId), includeUnpublished);
+    res.json(entries);
+  });
 
-export const adminGetAllEntries = async (req, res) => {
-  try {
+  static adminGetAllEntries = asyncHandler(async (req, res) => {
     const includeUnpublished = req.query.includeUnpublished === 'true';
-    
     const entries = await entryService.getAllEntries(includeUnpublished);
-    
-    res.json({
-      success: true,
-      data: entries,
-      meta: {
-        total: entries.length
-      }
-    });
-  } catch (error) {
-    logger.error('Error fetching all admin entries:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch entries',
-      error: error.message
-    });
-  }
-};
+    res.json(entries);
+  });
 
-export const adminGetEntry = async (req, res) => {
-  try {
-    const { id } = req.params;
-    
-    const entry = await entryService.getEntryById(parseInt(id));
-    
-    if (!entry) {
-      return res.status(404).json({
-        success: false,
-        message: 'Entry not found'
-      });
-    }
-    
-    res.json({
-      success: true,
-      data: entry
-    });
-  } catch (error) {
-    logger.error('Error fetching admin entry:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch entry',
-      error: error.message
-    });
-  }
-};
+  static adminGetEntry = asyncHandler(async (req, res) => {
+    const entry = await entryService.getEntryById(parseInt(req.params.id));
+    if (!entry) throw new HttpError(404, 'Entry not found');
+    res.json(entry);
+  });
 
-export const adminCreateEntry = async (req, res) => {
-  try {
+  static adminCreateEntry = asyncHandler(async (req, res) => {
     const { sectionId, title, content, excerpt, tags, isPublished, position, parentEntryId } = req.body;
-    
     if (!sectionId || !title || !content) {
-      return res.status(400).json({
-        success: false,
-        message: 'Section ID, title, and content are required'
-      });
+      throw new HttpError(400, 'Section ID, title, and content are required');
     }
 
-    const entryData = {
-      sectionId: parseInt(sectionId),
-      title,
-      content,
-      excerpt,
-      tags: Array.isArray(tags) ? tags : (tags ? [tags] : []),
-      isPublished: isPublished !== undefined ? isPublished : true,
-      position,
-      parentEntryId: parentEntryId ? parseInt(parentEntryId) : null
-    };
+    const entry = await entryService.createEntry(
+      {
+        sectionId: parseInt(sectionId),
+        title,
+        content,
+        excerpt,
+        tags: Array.isArray(tags) ? tags : (tags ? [tags] : []),
+        isPublished: isPublished !== undefined ? isPublished : true,
+        position,
+        parentEntryId: parentEntryId ? parseInt(parentEntryId) : null
+      },
+      req.user.id
+    );
+    res.status(201).json(entry);
+  });
 
-    const entry = await entryService.createEntry(entryData, req.user.id);
-    
-    res.status(201).json({
-      success: true,
-      data: entry,
-      message: 'Entry created successfully'
-    });
-  } catch (error) {
-    logger.error('Error creating entry:', error);
-    
-    if (error.message === 'Section not found') {
-      return res.status(404).json({
-        success: false,
-        message: 'Section not found'
-      });
-    }
-
-    if (error.message === 'Parent entry not found') {
-      return res.status(404).json({
-        success: false,
-        message: 'Parent entry not found'
-      });
-    }
-
-    if (error.message === 'Maximum nesting level (4) exceeded') {
-      return res.status(400).json({
-        success: false,
-        message: 'Maximum nesting level (4) exceeded'
-      });
-    }
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to create entry',
-      error: error.message
-    });
-  }
-};
-
-export const adminUpdateEntry = async (req, res) => {
-  try {
-    const { id } = req.params;
+  static adminUpdateEntry = asyncHandler(async (req, res) => {
     const updateData = { ...req.body };
 
-    // Ensure tags is an array if provided
     if (updateData.tags && !Array.isArray(updateData.tags)) {
       updateData.tags = [updateData.tags];
     }
 
-    // Handle parentEntryId conversion
     if (updateData.parentEntryId === '') {
       updateData.parentEntryId = null;
     } else if (updateData.parentEntryId && typeof updateData.parentEntryId === 'string') {
       updateData.parentEntryId = parseInt(updateData.parentEntryId);
     }
 
-    const entry = await entryService.updateEntry(parseInt(id), updateData);
-    
-    res.json({
-      success: true,
-      data: entry,
-      message: 'Entry updated successfully'
-    });
-  } catch (error) {
-    logger.error('Error updating entry:', error);
-    
-    if (error.message === 'Entry not found') {
-      return res.status(404).json({
-        success: false,
-        message: 'Entry not found'
-      });
-    }
+    const entry = await entryService.updateEntry(parseInt(req.params.id), updateData);
+    res.json(entry);
+  });
 
-    if (error.message === 'Parent entry not found') {
-      return res.status(404).json({
-        success: false,
-        message: 'Parent entry not found'
-      });
-    }
+  static adminDeleteEntry = asyncHandler(async (req, res) => {
+    await entryService.deleteEntry(parseInt(req.params.id));
+    res.status(204).end();
+  });
 
-    if (error.message === 'Parent entry must be in the same section') {
-      return res.status(400).json({
-        success: false,
-        message: 'Parent entry must be in the same section'
-      });
-    }
-
-    if (error.message === 'Cannot set parent: would create circular reference') {
-      return res.status(400).json({
-        success: false,
-        message: 'Cannot set parent: would create circular reference'
-      });
-    }
-
-    if (error.message === 'Maximum nesting level (4) exceeded' || 
-        error.message.includes('Update would exceed maximum nesting level')) {
-      return res.status(400).json({
-        success: false,
-        message: 'Maximum nesting level (4) exceeded'
-      });
-    }
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update entry',
-      error: error.message
-    });
-  }
-};
-
-export const adminDeleteEntry = async (req, res) => {
-  try {
-    const { id } = req.params;
-    
-    await entryService.deleteEntry(parseInt(id));
-    
-    res.json({
-      success: true,
-      message: 'Entry deleted successfully'
-    });
-  } catch (error) {
-    logger.error('Error deleting entry:', error);
-    
-    if (error.message === 'Entry not found') {
-      return res.status(404).json({
-        success: false,
-        message: 'Entry not found'
-      });
-    }
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to delete entry',
-      error: error.message
-    });
-  }
-};
-
-export const adminReorderEntries = async (req, res) => {
-  try {
-    const { sectionId } = req.params;
+  static adminReorderEntries = asyncHandler(async (req, res) => {
     const { entryOrder } = req.body;
-    
     if (!Array.isArray(entryOrder)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Entry order must be an array'
-      });
+      throw new HttpError(400, 'Entry order must be an array');
     }
+    const entries = await entryService.reorderEntries(parseInt(req.params.sectionId), entryOrder);
+    res.json(entries);
+  });
 
-    const entries = await entryService.reorderEntries(parseInt(sectionId), entryOrder);
-    
-    res.json({
-      success: true,
-      data: entries,
-      message: 'Entries reordered successfully'
-    });
-  } catch (error) {
-    logger.error('Error reordering entries:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to reorder entries',
-      error: error.message
-    });
-  }
-};
+  // ============ ADMIN UTILITY ENDPOINTS ============
 
-// ============ ADMIN UTILITY ENDPOINTS ============
-
-export const adminGetWikiStats = async (req, res) => {
-  try {
+  static adminGetWikiStats = asyncHandler(async (req, res) => {
     const stats = await searchService.getWikiStats();
-    
-    res.json({
-      success: true,
-      data: stats
-    });
-  } catch (error) {
-    logger.error('Error fetching wiki stats:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch wiki statistics',
-      error: error.message
-    });
-  }
-};
+    res.json(stats);
+  });
 
-export const adminGetAllTags = async (req, res) => {
-  try {
+  static adminGetAllTags = asyncHandler(async (req, res) => {
     const tags = await searchService.getAllTags();
-    
-    res.json({
-      success: true,
-      data: tags,
-      meta: {
-        total: tags.length
-      }
-    });
-  } catch (error) {
-    logger.error('Error fetching tags:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch tags',
-      error: error.message
-    });
-  }
-};
+    res.json(tags);
+  });
 
-// ============ PUBLIC ENDPOINTS ============
+  // ============ PUBLIC ENDPOINTS ============
 
-export const getPublicNavigation = async (req, res) => {
-  try {
+  static getPublicNavigation = asyncHandler(async (req, res) => {
     const navigation = await sectionService.getPublicNavigation();
-    
+    res.json(navigation);
+  });
+
+  static getPublicSection = asyncHandler(async (req, res) => {
+    const section = await sectionService.getSectionBySlug(req.params.slug);
+    if (!section) throw new HttpError(404, 'Section not found');
+
     res.json({
-      success: true,
-      data: navigation
+      ...section,
+      entries: section.entries.filter(entry => entry.isPublished)
     });
-  } catch (error) {
-    logger.error('Error fetching public navigation:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch navigation',
-      error: error.message
-    });
-  }
-};
+  });
 
-export const getPublicSection = async (req, res) => {
-  try {
-    const { slug } = req.params;
-    
-    const section = await sectionService.getSectionBySlug(slug);
-    
-    if (!section) {
-      return res.status(404).json({
-        success: false,
-        message: 'Section not found'
-      });
-    }
-
-    // Filter to only published entries for public view
-    const publishedEntries = section.entries.filter(entry => entry.isPublished);
-    
-    res.json({
-      success: true,
-      data: {
-        ...section,
-        entries: publishedEntries
-      }
-    });
-  } catch (error) {
-    logger.error('Error fetching public section:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch section',
-      error: error.message
-    });
-  }
-};
-
-export const getPublicEntry = async (req, res) => {
-  try {
+  static getPublicEntry = asyncHandler(async (req, res) => {
     const { sectionSlug, entrySlug } = req.params;
-    
-    // First get the section to get its ID
+
     const section = await sectionService.getSectionBySlug(sectionSlug);
-    if (!section) {
-      return res.status(404).json({
-        success: false,
-        message: 'Section not found'
-      });
-    }
+    if (!section) throw new HttpError(404, 'Section not found');
 
-    // Get the entry and increment view count
     const entry = await entryService.getEntryBySlug(section.id, entrySlug, true);
-    
-    if (!entry) {
-      return res.status(404).json({
-        success: false,
-        message: 'Entry not found'
-      });
-    }
-    
-    res.json({
-      success: true,
-      data: entry
-    });
-  } catch (error) {
-    logger.error('Error fetching public entry:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch entry',
-      error: error.message
-    });
-  }
-};
+    if (!entry) throw new HttpError(404, 'Entry not found');
 
-export const searchPublicEntries = async (req, res) => {
-  try {
+    res.json(entry);
+  });
+
+  static searchPublicEntries = asyncHandler(async (req, res) => {
     const { q: query, section: sectionId } = req.query;
-    
     if (!query || query.trim().length < 2) {
-      return res.status(400).json({
-        success: false,
-        message: 'Search query must be at least 2 characters long'
-      });
+      throw new HttpError(400, 'Search query must be at least 2 characters long');
     }
 
     const results = await searchService.searchEntries(
       query.trim(),
       sectionId ? parseInt(sectionId) : null
     );
-    
-    res.json({
-      success: true,
-      data: results,
-      meta: {
-        total: results.length,
-        query: query.trim()
-      }
-    });
-  } catch (error) {
-    logger.error('Error searching entries:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to search entries',
-      error: error.message
-    });
-  }
-};
+    res.json(results);
+  });
 
-export const getPublicEntriesByTag = async (req, res) => {
-  try {
+  static getPublicEntriesByTag = asyncHandler(async (req, res) => {
     const { tag } = req.params;
-    
-    if (!tag) {
-      return res.status(400).json({
-        success: false,
-        message: 'Tag is required'
-      });
-    }
+    if (!tag) throw new HttpError(400, 'Tag is required');
 
     const entries = await searchService.getEntriesByTag(tag);
-    
-    res.json({
-      success: true,
-      data: entries,
-      meta: {
-        total: entries.length,
-        tag
-      }
-    });
-  } catch (error) {
-    logger.error('Error fetching entries by tag:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch entries by tag',
-      error: error.message
-    });
-  }
-};
+    res.json(entries);
+  });
 
-export const getPublicTags = async (req, res) => {
-  try {
+  static getPublicTags = asyncHandler(async (req, res) => {
     const tags = await searchService.getAllTags();
-    
-    res.json({
-      success: true,
-      data: tags,
-      meta: {
-        total: tags.length
-      }
-    });
-  } catch (error) {
-    logger.error('Error fetching public tags:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch tags',
-      error: error.message
-    });
-  }
-}; 
+    res.json(tags);
+  });
+}

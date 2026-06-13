@@ -3,6 +3,7 @@ import { Session } from '../models/sessionModel.js';
 import { SessionParticipant } from '../models/sessionParticipantModel.js';
 import { Character } from '../models/characterModel.js';
 import { SessionService } from './SessionService.js';
+import { HttpError } from '../utils/HttpError.js';
 import { logger } from '../utils/logger.js';
 
 export class SessionParticipantService {
@@ -55,7 +56,7 @@ export class SessionParticipantService {
     });
 
     if (!character) {
-      throw new Error('No active character found for user');
+      throw new HttpError(404, 'No active character found for user');
     }
 
     const existingUserParticipants = await this.participantRepository.find({
@@ -88,14 +89,14 @@ export class SessionParticipantService {
   async addParticipant(sessionId, characterId) {
     const session = await this.sessionService.getSession(sessionId);
     if (!session) {
-      throw new Error('Session not found');
+      throw new HttpError(404, 'Session not found');
     }
 
     const character = await this.characterRepository.findOne({
       where: { id: characterId }
     });
     if (!character) {
-      throw new Error('Character not found');
+      throw new HttpError(404, 'Character not found');
     }
 
     const participant = this.participantRepository.create({
@@ -125,20 +126,15 @@ export class SessionParticipantService {
   }
 
   async getLocationParticipants(locationId) {
-    try {
-      const session = await this.sessionService.getSessionByLocation(locationId);
-      if (!session) {
-        return [];
-      }
-
-      return session.participants?.map(participant => ({
-        userId: participant.character?.userId || participant.characterId,
-        username: participant.character?.name || 'Unknown',
-        characterName: participant.character?.name
-      })) || [];
-    } catch (error) {
-      console.error('Error in getLocationParticipants:', error);
+    const session = await this.sessionService.getSessionByLocation(locationId);
+    if (!session) {
       return [];
     }
+
+    return session.participants?.map(participant => ({
+      userId: participant.character?.userId || participant.characterId,
+      username: participant.character?.name || 'Unknown',
+      characterName: participant.character?.name
+    })) || [];
   }
 }

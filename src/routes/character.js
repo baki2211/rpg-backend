@@ -1,20 +1,21 @@
 import express from 'express';
 import { CharacterController } from '../controllers/CharacterController.js';
-import { authenticateToken } from '../middleware/authMiddleware.js';
+import { authenticateToken, requireRole } from '../middleware/authMiddleware.js';
 import { RateLimitMiddleware } from '../middleware/rateLimitMiddleware.js';
 import upload from '../middleware/uploadMiddleware.js';
 
 const router = express.Router();
+const masterOrAdmin = requireRole(['admin', 'master']);
 
 // Apply authentication to all routes
 router.use(authenticateToken);
 
 
-// NPC routes (admin/master only for management)
-router.post('/npcs', CharacterController.createNPC);
-router.get('/npcs', CharacterController.getAllNPCs);
-router.put('/npcs/:id', CharacterController.updateNPC);
-router.delete('/npcs/:id', CharacterController.deleteNPC);
+// NPC management routes (admin/master only)
+router.post('/npcs', masterOrAdmin, CharacterController.createNPC);
+router.get('/npcs', masterOrAdmin, CharacterController.getAllNPCs);
+router.put('/npcs/:id', masterOrAdmin, CharacterController.updateNPC);
+router.delete('/npcs/:id', masterOrAdmin, CharacterController.deleteNPC);
 
 // NPC activation routes (available to all users)
 router.get('/npcs/available', CharacterController.getAvailableNPCs);

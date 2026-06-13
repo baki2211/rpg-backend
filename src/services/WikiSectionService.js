@@ -2,6 +2,7 @@ import { AppDataSource } from '../data-source.js';
 import { WikiSection } from '../models/wikiSectionModel.js';
 import { WikiEntry } from '../models/wikiEntryModel.js';
 import { logger } from '../utils/logger.js';
+import { HttpError } from '../utils/HttpError.js';
 
 export class WikiSectionService {
   sectionRepository = AppDataSource.getRepository(WikiSection);
@@ -134,7 +135,7 @@ export class WikiSectionService {
   async updateSection(id, updateData) {
     const section = await this.getSectionById(id);
     if (!section) {
-      throw new Error('Section not found');
+      throw new HttpError(404, 'Section not found');
     }
 
     if (updateData.name && updateData.name !== section.name) {
@@ -164,7 +165,7 @@ export class WikiSectionService {
 
       const section = await sectionRepo.findOne({ where: { id } });
       if (!section) {
-        throw new Error('Section not found');
+        throw new HttpError(404, 'Section not found');
       }
 
       await entryRepo.delete({ sectionId: id });

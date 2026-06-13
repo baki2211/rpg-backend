@@ -1,7 +1,10 @@
 import { AppDataSource } from '../data-source.js';
 import { Session } from '../models/sessionModel.js';
 import { SessionService } from './SessionService.js';
+import { HttpError } from '../utils/HttpError.js';
 import { logger } from '../utils/logger.js';
+
+const VALID_STATUSES = ['open', 'closed', 'frozen'];
 
 export class SessionLifecycleService {
   constructor() {
@@ -10,9 +13,13 @@ export class SessionLifecycleService {
   }
 
   async updateSessionStatus(sessionId, status) {
+    if (!VALID_STATUSES.includes(status)) {
+      throw new HttpError(400, 'Invalid status. Must be open, closed, or frozen');
+    }
+
     const session = await this.sessionService.getSession(sessionId);
     if (!session) {
-      throw new Error('Session not found');
+      throw new HttpError(404, 'Session not found');
     }
 
     const oldStatus = session.status;
@@ -37,7 +44,7 @@ export class SessionLifecycleService {
   async freezeSession(sessionId) {
     const session = await this.sessionService.getSession(sessionId);
     if (!session) {
-      throw new Error('Session not found');
+      throw new HttpError(404, 'Session not found');
     }
 
     if (session.status === 'frozen') {
@@ -65,7 +72,7 @@ export class SessionLifecycleService {
   async unfreezeSession(sessionId) {
     const session = await this.sessionService.getSession(sessionId);
     if (!session) {
-      throw new Error('Session not found');
+      throw new HttpError(404, 'Session not found');
     }
 
     if (session.status !== 'frozen') {
@@ -93,7 +100,7 @@ export class SessionLifecycleService {
   async closeSession(sessionId, reason = 'Manual close') {
     const session = await this.sessionService.getSession(sessionId);
     if (!session) {
-      throw new Error('Session not found');
+      throw new HttpError(404, 'Session not found');
     }
 
     await this.sessionRepository.update(

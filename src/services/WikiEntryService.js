@@ -2,6 +2,7 @@ import { AppDataSource } from '../data-source.js';
 import { WikiSection } from '../models/wikiSectionModel.js';
 import { WikiEntry } from '../models/wikiEntryModel.js';
 import { logger } from '../utils/logger.js';
+import { HttpError } from '../utils/HttpError.js';
 
 export class WikiEntryService {
   entryRepository = AppDataSource.getRepository(WikiEntry);
@@ -188,21 +189,21 @@ export class WikiEntryService {
   async createEntry(entryData, createdBy) {
     const section = await this.sectionRepository.findOne({ where: { id: entryData.sectionId } });
     if (!section) {
-      throw new Error('Section not found');
+      throw new HttpError(404, 'Section not found');
     }
 
     let level = 1;
     if (entryData.parentEntryId) {
       const parentEntry = await this.getEntryById(entryData.parentEntryId);
       if (!parentEntry) {
-        throw new Error('Parent entry not found');
+        throw new HttpError(404, 'Parent entry not found');
       }
       if (parentEntry.sectionId !== entryData.sectionId) {
-        throw new Error('Parent entry must be in the same section');
+        throw new HttpError(400, 'Parent entry must be in the same section');
       }
       level = parentEntry.level + 1;
       if (level > 4) {
-        throw new Error('Maximum nesting level (4) exceeded');
+        throw new HttpError(400, 'Maximum nesting level (4) exceeded');
       }
     }
 
@@ -267,7 +268,7 @@ export class WikiEntryService {
       });
 
       if (!entry) {
-        throw new Error('Entry not found');
+        throw new HttpError(404, 'Entry not found');
       }
 
       let newLevel = entry.level;
@@ -278,21 +279,21 @@ export class WikiEntryService {
           const newParent = await entryRepo.findOne({ where: { id: updateData.parentEntryId } });
 
           if (!newParent) {
-            throw new Error('Parent entry not found');
+            throw new HttpError(404, 'Parent entry not found');
           }
 
           if (newParent.sectionId !== entry.sectionId) {
-            throw new Error('Parent entry must be in the same section');
+            throw new HttpError(400, 'Parent entry must be in the same section');
           }
 
           if (await this.wouldCreateCircularReference(id, updateData.parentEntryId, manager)) {
-            throw new Error('Cannot set parent: would create circular reference');
+            throw new HttpError(400, 'Cannot set parent: would create circular reference');
           }
 
           newLevel = newParent.level + 1;
 
           if (newLevel > 4) {
-            throw new Error('Maximum nesting level (4) exceeded');
+            throw new HttpError(400, 'Maximum nesting level (4) exceeded');
           }
 
           levelChanged = newLevel !== entry.level;
@@ -379,7 +380,7 @@ export class WikiEntryService {
       const newChildLevel = parentLevel + 1;
 
       if (newChildLevel > 4) {
-        throw new Error(`Update would exceed maximum nesting level for entry ${child.id}`);
+        throw new HttpError(400, `Update would exceed maximum nesting level for entry ${child.id}`);
       }
 
       await entryRepo.update(child.id, { level: newChildLevel });
@@ -396,7 +397,7 @@ export class WikiEntryService {
   async deleteEntry(id) {
     const entry = await this.getEntryById(id);
     if (!entry) {
-      throw new Error('Entry not found');
+      throw new HttpError(404, 'Entry not found');
     }
 
     await this.entryRepository.delete(id);

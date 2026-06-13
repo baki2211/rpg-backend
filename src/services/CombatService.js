@@ -1,6 +1,7 @@
 import { AppDataSource } from '../data-source.js';
 import { CombatRound } from '../models/combatRoundModel.js';
 import { CombatAction } from '../models/combatActionModel.js';
+import { HttpError } from '../utils/HttpError.js';
 
 export class CombatService {
     constructor() {
@@ -121,7 +122,7 @@ export class CombatService {
      * @returns {Promise<Object>} Updated round
      */
     async cancelRound(roundId, cancelledBy) {
-        await this.roundRepository.update(
+        const result = await this.roundRepository.update(
             { id: roundId, status: 'active' },
             {
                 status: 'cancelled',
@@ -129,6 +130,10 @@ export class CombatService {
                 resolvedAt: new Date()
             }
         );
+
+        if (result.affected === 0) {
+            throw new HttpError(404, 'Combat round not found or not active');
+        }
 
         return await this.roundRepository.findOne({ where: { id: roundId } });
     }

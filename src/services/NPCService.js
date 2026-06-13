@@ -2,6 +2,7 @@ import { AppDataSource } from '../data-source.js';
 import { Character } from '../models/characterModel.js';
 import { Race } from '../models/raceModel.js';
 import { CharacterStatsService } from './CharacterStatsService.js';
+import { HttpError } from '../utils/HttpError.js';
 import { logger } from '../utils/logger.js';
 import { Not } from 'typeorm';
 
@@ -12,7 +13,7 @@ export class NPCService {
   async createNPC(data, createdBy, imageUrl = null) {
     const race = await AppDataSource.getRepository(Race).findOneBy({ id: data.race?.id });
     if (!race) {
-      throw new Error('Race not found');
+      throw new HttpError(404, 'Race not found');
     }
 
     const initializedStats = await this.statsService.initializeCharacterStats(data.stats || {});
@@ -76,7 +77,7 @@ export class NPCService {
     });
 
     if (!npc) {
-      throw new Error('NPC not found');
+      throw new HttpError(404, 'NPC not found');
     }
 
     if (updateData.stats) {
@@ -106,11 +107,11 @@ export class NPCService {
       });
 
       if (!npc) {
-        throw new Error('NPC not found');
+        throw new HttpError(404, 'NPC not found');
       }
 
       if (npc.isActive) {
-        throw new Error('Cannot delete an active NPC. Please deactivate it first.');
+        throw new HttpError(409, 'Cannot delete an active NPC. Please deactivate it first.');
       }
 
       logger.character(`Deleting NPC ${npc.name} (ID: ${npcId})`);
@@ -136,7 +137,7 @@ export class NPCService {
       const result = await characterRepo.delete({ id: npcId, isNPC: true });
 
       if (result.affected === 0) {
-        throw new Error('Failed to delete NPC');
+        throw new HttpError(500, 'Failed to delete NPC');
       }
 
       logger.character(`Successfully deleted NPC ${npc.name} (ID: ${npcId})`);
@@ -151,7 +152,7 @@ export class NPCService {
     });
 
     if (!npc) {
-      throw new Error('NPC not found');
+      throw new HttpError(404, 'NPC not found');
     }
 
     await Promise.all([
@@ -184,7 +185,7 @@ export class NPCService {
     });
 
     if (!npc) {
-      throw new Error('NPC not found or not active for this user');
+      throw new HttpError(404, 'NPC not found or not active for this user');
     }
 
     await this.characterRepository.update(

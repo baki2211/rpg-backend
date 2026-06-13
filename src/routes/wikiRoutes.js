@@ -1,71 +1,45 @@
 import express from 'express';
 import { authenticateToken, requireRole } from '../middleware/authMiddleware.js';
-import {
-  // Admin Section endpoints
-  adminGetSections,
-  adminCreateSection,
-  adminUpdateSection,
-  adminDeleteSection,
-  adminReorderSections,
-  
-  // Admin Entry endpoints
-  adminGetEntries,
-  adminGetEntriesHierarchical,
-  adminGetAllEntries,
-  adminGetEntry,
-  adminCreateEntry,
-  adminUpdateEntry,
-  adminDeleteEntry,
-  adminReorderEntries,
-  
-  // Admin Utility endpoints
-  adminGetWikiStats,
-  adminGetAllTags,
-  
-  // Public endpoints
-  getPublicNavigation,
-  getPublicSection,
-  getPublicEntry,
-  searchPublicEntries,
-  getPublicEntriesByTag,
-  getPublicTags
-} from '../controllers/WikiController.js';
+import { WikiController } from '../controllers/WikiController.js';
 
 const router = express.Router();
+const masterOrAdmin = requireRole(['admin', 'master']);
 
 // ============ ADMIN ROUTES (Require admin/master role) ============
 
+router.use('/admin', authenticateToken, masterOrAdmin);
+
 // Section management
-router.get('/admin/sections', authenticateToken, requireRole(['admin', 'master']), adminGetSections);
-router.post('/admin/sections', authenticateToken, requireRole(['admin', 'master']), adminCreateSection);
-router.put('/admin/sections/:id', authenticateToken, requireRole(['admin', 'master']), adminUpdateSection);
-router.delete('/admin/sections/:id', authenticateToken, requireRole(['admin', 'master']), adminDeleteSection);
-router.put('/admin/sections/reorder', authenticateToken, requireRole(['admin', 'master']), adminReorderSections);
+router.get('/admin/sections', WikiController.adminGetSections);
+router.post('/admin/sections', WikiController.adminCreateSection);
+router.put('/admin/sections/reorder', WikiController.adminReorderSections);
+router.put('/admin/sections/:id', WikiController.adminUpdateSection);
+router.delete('/admin/sections/:id', WikiController.adminDeleteSection);
 
 // Entry management
-router.get('/admin/sections/:sectionId/entries', authenticateToken, requireRole(['admin', 'master']), adminGetEntries);
-router.get('/admin/sections/:sectionId/entries/hierarchical', authenticateToken, requireRole(['admin', 'master']), adminGetEntriesHierarchical);
-router.get('/admin/entries', authenticateToken, requireRole(['admin', 'master']), adminGetAllEntries);
-router.get('/admin/entries/:id', authenticateToken, requireRole(['admin', 'master']), adminGetEntry);
-router.post('/admin/entries', authenticateToken, requireRole(['admin', 'master']), adminCreateEntry);
-router.put('/admin/entries/:id', authenticateToken, requireRole(['admin', 'master']), adminUpdateEntry);
-router.delete('/admin/entries/:id', authenticateToken, requireRole(['admin', 'master']), adminDeleteEntry);
-router.put('/admin/sections/:sectionId/entries/reorder', authenticateToken, requireRole(['admin', 'master']), adminReorderEntries);
+router.get('/admin/sections/:sectionId/entries', WikiController.adminGetEntries);
+router.get('/admin/sections/:sectionId/entries/hierarchical', WikiController.adminGetEntriesHierarchical);
+router.put('/admin/sections/:sectionId/entries/reorder', WikiController.adminReorderEntries);
+router.get('/admin/entries', WikiController.adminGetAllEntries);
+router.get('/admin/entries/:id', WikiController.adminGetEntry);
+router.post('/admin/entries', WikiController.adminCreateEntry);
+router.put('/admin/entries/:id', WikiController.adminUpdateEntry);
+router.delete('/admin/entries/:id', WikiController.adminDeleteEntry);
 
 // Utility endpoints
-router.get('/admin/stats', authenticateToken, requireRole(['admin', 'master']), adminGetWikiStats);
-router.get('/admin/tags', authenticateToken, requireRole(['admin', 'master']), adminGetAllTags);
+router.get('/admin/stats', WikiController.adminGetWikiStats);
+router.get('/admin/tags', WikiController.adminGetAllTags);
 
 // ============ PUBLIC ROUTES (No authentication required) ============
 
 // Navigation and browsing
-router.get('/navigation', getPublicNavigation);
-router.get('/sections/:slug', getPublicSection);
-router.get('/sections/:sectionSlug/entries/:entrySlug', getPublicEntry);
+router.get('/navigation', WikiController.getPublicNavigation);
+router.get('/sections/:slug', WikiController.getPublicSection);
+router.get('/sections/:sectionSlug/entries/:entrySlug', WikiController.getPublicEntry);
 
 // Search and discovery
-router.get('/search', searchPublicEntries);
-router.get('/tags/:tag/entries', getPublicEntriesByTag);
-router.get('/tags', getPublicTags);
+router.get('/search', WikiController.searchPublicEntries);
+router.get('/tags/:tag/entries', WikiController.getPublicEntriesByTag);
+router.get('/tags', WikiController.getPublicTags);
 
-export default router; 
+export default router;

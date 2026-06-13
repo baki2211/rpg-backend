@@ -2,6 +2,7 @@ import { AppDataSource } from '../data-source.js';
 import { Character } from '../models/characterModel.js';
 import { StatDefinitionService } from './StatDefinitionService.js';
 import { RankService } from './RankService.js';
+import { HttpError } from '../utils/HttpError.js';
 
 const PRIMARY_STAT_POINT_POOL = 45;
 const DEFAULT_STAT_MAX = 100;
@@ -23,7 +24,7 @@ export class CharacterStatsService {
 
       if (providedValue !== undefined) {
         if (providedValue < statDef.minValue || providedValue > maxValue) {
-          throw new Error(`${statDef.displayName} must be between ${statDef.minValue} and ${maxValue}`);
+          throw new HttpError(400, `${statDef.displayName} must be between ${statDef.minValue} and ${maxValue}`);
         }
         stats[statDef.internalName] = providedValue;
       } else {
@@ -100,19 +101,19 @@ export class CharacterStatsService {
       relations: ['skills', 'skills.branch', 'skills.type', 'race']
     });
     if (!character) {
-      throw new Error('Character not found');
+      throw new HttpError(404, 'Character not found');
     }
 
     const updatedStats = { ...character.stats, ...statUpdates };
 
     const validation = await this.validateCharacterStats(updatedStats);
     if (!validation.isValid) {
-      throw new Error(`Stat validation failed: ${validation.errors.join(', ')}`);
+      throw new HttpError(400, `Stat validation failed: ${validation.errors.join(', ')}`);
     }
 
     const totalPrimaryStatPoints = await this.calculateStatPointsUsed(updatedStats);
     if (totalPrimaryStatPoints > PRIMARY_STAT_POINT_POOL) {
-      throw new Error(`Total primary stat points (${totalPrimaryStatPoints}) exceed the allowed ${PRIMARY_STAT_POINT_POOL} points.`);
+      throw new HttpError(400, `Total primary stat points (${totalPrimaryStatPoints}) exceed the allowed ${PRIMARY_STAT_POINT_POOL} points.`);
     }
 
     const derived = await this.computeDerivedStats(updatedStats, character.race, character.rank);
@@ -135,7 +136,7 @@ export class CharacterStatsService {
       relations: ['skills', 'skills.branch', 'skills.type', 'race']
     });
     if (!character) {
-      throw new Error('Character not found');
+      throw new HttpError(404, 'Character not found');
     }
 
     const statsByCategory = await this.statDefinitionService.getStatsByCategory(true);

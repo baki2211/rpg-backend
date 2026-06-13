@@ -2,210 +2,84 @@ import { SessionService } from '../services/SessionService.js';
 import { SessionParticipantService } from '../services/SessionParticipantService.js';
 import { SessionLifecycleService } from '../services/SessionLifecycleService.js';
 import { SessionQueryService } from '../services/SessionQueryService.js';
+import { asyncHandler } from '../utils/asyncHandler.js';
+import { HttpError } from '../utils/HttpError.js';
+
+const sessionService = new SessionService();
+const participantService = new SessionParticipantService();
+const lifecycleService = new SessionLifecycleService();
+const queryService = new SessionQueryService();
 
 export class SessionController {
-  constructor() {
-    this.sessionService = new SessionService();
-    this.participantService = new SessionParticipantService();
-    this.lifecycleService = new SessionLifecycleService();
-    this.queryService = new SessionQueryService();
-  }
+  static createSession = asyncHandler(async (req, res) => {
+    const { name, locationId } = req.body;
+    res.json(await sessionService.createSession(name, locationId));
+  });
 
-  async createSession(req, res) {
-    try {
-      const { name, locationId } = req.body;
-      const session = await this.sessionService.createSession(name, locationId);
-      res.json(session);
-    } catch (error) {
-      console.error('Error in createSession:', error);
-      res.status(500).json({ error: error.message });
+  static getSession = asyncHandler(async (req, res) => {
+    const session = await sessionService.getSession(req.params.id);
+    if (!session) throw new HttpError(404, 'Session not found');
+    res.json(session);
+  });
+
+  static getSessionByLocation = asyncHandler(async (req, res) => {
+    const session = await sessionService.getSessionByLocation(req.params.locationId);
+    if (!session) throw new HttpError(404, 'Session not found');
+    res.json(session);
+  });
+
+  static addParticipant = asyncHandler(async (req, res) => {
+    const { characterId } = req.body;
+    res.json(await participantService.addParticipant(req.params.sessionId, characterId));
+  });
+
+  static removeParticipant = asyncHandler(async (req, res) => {
+    await participantService.removeParticipant(req.params.sessionId, req.params.characterId);
+    res.status(204).end();
+  });
+
+  static getParticipants = asyncHandler(async (req, res) => {
+    res.json(await participantService.getParticipants(req.params.sessionId));
+  });
+
+  static getAllSessions = asyncHandler(async (req, res) => {
+    res.json(await queryService.getAllSessions());
+  });
+
+  static getLocationParticipants = asyncHandler(async (req, res) => {
+    res.json(await participantService.getLocationParticipants(req.params.locationId));
+  });
+
+  static updateSessionStatus = asyncHandler(async (req, res) => {
+    res.json(await lifecycleService.updateSessionStatus(req.params.sessionId, req.body.status));
+  });
+
+  static updateSessionActive = asyncHandler(async (req, res) => {
+    const { isActive } = req.body;
+    if (typeof isActive !== 'boolean') {
+      throw new HttpError(400, 'isActive must be a boolean');
     }
-  }
+    res.json(await sessionService.updateSessionActive(req.params.sessionId, isActive));
+  });
 
-  async getSession(req, res) {
-    try {
-      const session = await this.sessionService.getSession(req.params.id);
-      if (!session) {
-        return res.status(404).json({ error: 'Session not found' });
-      }
-      res.json(session);
-    } catch (error) {
-      console.error('Error in getSession:', error);
-      res.status(500).json({ error: error.message });
-    }
-  }
+  static getClosedSessions = asyncHandler(async (req, res) => {
+    res.json(await queryService.getClosedSessions());
+  });
 
-  async getSessionByLocation(req, res) {
-    try {
-      const session = await this.sessionService.getSessionByLocation(req.params.locationId);
-      if (!session) {
-        return res.status(404).json({ error: 'Session not found' });
-      }
-      res.json(session);
-    } catch (error) {
-      console.error('Error in getSessionByLocation:', error);
-      res.status(500).json({ error: error.message });
-    }
-  }
+  static getAllSessionsForLogs = asyncHandler(async (req, res) => {
+    const { limit } = req.query;
+    res.json(await queryService.getAllSessionsForLogs(limit ? parseInt(limit) : 100));
+  });
 
-  async addParticipant(req, res) {
-    try {
-      const { characterId } = req.body;
-      const participant = await this.participantService.addParticipant(req.params.sessionId, characterId);
-      res.json(participant);
-    } catch (error) {
-      console.error('Error in addParticipant:', error);
-      res.status(500).json({ error: error.message });
-    }
-  }
+  static freezeSession = asyncHandler(async (req, res) => {
+    res.json(await lifecycleService.freezeSession(req.params.sessionId));
+  });
 
-  async removeParticipant(req, res) {
-    try {
-      await this.participantService.removeParticipant(req.params.sessionId, req.params.characterId);
-      res.status(204).end();
-    } catch (error) {
-      console.error('Error in removeParticipant:', error);
-      res.status(500).json({ error: error.message });
-    }
-  }
+  static unfreezeSession = asyncHandler(async (req, res) => {
+    res.json(await lifecycleService.unfreezeSession(req.params.sessionId));
+  });
 
-  async getParticipants(req, res) {
-    try {
-      const participants = await this.participantService.getParticipants(req.params.sessionId);
-      res.json(participants);
-    } catch (error) {
-      console.error('Error in getParticipants:', error);
-      res.status(500).json({ error: error.message });
-    }
-  }
-
-  async getAllSessions(req, res) {
-    try {
-      const sessions = await this.queryService.getAllSessions();
-      res.json(sessions);
-    } catch (error) {
-      console.error('Error in getAllSessions:', error);
-      res.status(500).json({ error: 'Failed to retrieve sessions' });
-    }
-  }
-
-  async getLocationParticipants(req, res) {
-    try {
-      const { locationId } = req.params;
-      const participants = await this.participantService.getLocationParticipants(locationId);
-      res.json(participants);
-    } catch (error) {
-      console.error('Error in getLocationParticipants:', error);
-      res.status(500).json({ error: error.message });
-    }
-  }
-
-  async updateSessionStatus(req, res) {
-    try {
-      const { sessionId } = req.params;
-      const { status } = req.body;
-
-      if (!['open', 'closed', 'frozen'].includes(status)) {
-        return res.status(400).json({ error: 'Invalid status. Must be open, closed, or frozen' });
-      }
-
-      const session = await this.lifecycleService.updateSessionStatus(sessionId, status);
-      res.json(session);
-    } catch (error) {
-      console.error('Error in updateSessionStatus:', error);
-      res.status(500).json({ error: error.message });
-    }
-  }
-
-  async updateSessionActive(req, res) {
-    try {
-      const { sessionId } = req.params;
-      const { isActive } = req.body;
-
-      if (typeof isActive !== 'boolean') {
-        return res.status(400).json({ error: 'isActive must be a boolean' });
-      }
-
-      const session = await this.sessionService.updateSessionActive(sessionId, isActive);
-      res.json(session);
-    } catch (error) {
-      console.error('Error in updateSessionActive:', error);
-      res.status(500).json({ error: error.message });
-    }
-  }
-
-  async getClosedSessions(req, res) {
-    try {
-      console.log('Getting closed sessions');
-      const sessions = await this.queryService.getClosedSessions();
-      console.log(`Found ${sessions.length} closed sessions`);
-      res.json(sessions);
-    } catch (error) {
-      console.error('Error in getClosedSessions:', error);
-      res.status(500).json({ error: error.message });
-    }
-  }
-
-  async getAllSessionsForLogs(req, res) {
-    try {
-      if (!['admin', 'master'].includes(req.user.role)) {
-        return res.status(403).json({ error: 'Admin or Master access required' });
-      }
-
-      const { limit } = req.query;
-      const sessions = await this.queryService.getAllSessionsForLogs(
-        limit ? parseInt(limit) : 100
-      );
-      res.json(sessions);
-    } catch (error) {
-      console.error('Error in getAllSessionsForLogs:', error);
-      res.status(500).json({ error: error.message });
-    }
-  }
-
-  async freezeSession(req, res) {
-    try {
-      if (!['admin', 'master'].includes(req.user.role)) {
-        return res.status(403).json({ error: 'Admin or Master access required' });
-      }
-
-      const { sessionId } = req.params;
-      const session = await this.lifecycleService.freezeSession(sessionId);
-      res.json(session);
-    } catch (error) {
-      console.error('Error in freezeSession:', error);
-      res.status(500).json({ error: error.message });
-    }
-  }
-
-  async unfreezeSession(req, res) {
-    try {
-      if (!['admin', 'master'].includes(req.user.role)) {
-        return res.status(403).json({ error: 'Admin or Master access required' });
-      }
-
-      const { sessionId } = req.params;
-      const session = await this.lifecycleService.unfreezeSession(sessionId);
-      res.json(session);
-    } catch (error) {
-      console.error('Error in unfreezeSession:', error);
-      res.status(500).json({ error: error.message });
-    }
-  }
-
-  async closeSession(req, res) {
-    try {
-      if (!['admin', 'master'].includes(req.user.role)) {
-        return res.status(403).json({ error: 'Admin or Master access required' });
-      }
-
-      const { sessionId } = req.params;
-      const { reason } = req.body;
-      const session = await this.lifecycleService.closeSession(sessionId, reason);
-      res.json(session);
-    } catch (error) {
-      console.error('Error in closeSession:', error);
-      res.status(500).json({ error: error.message });
-    }
-  }
+  static closeSession = asyncHandler(async (req, res) => {
+    res.json(await lifecycleService.closeSession(req.params.sessionId, req.body.reason));
+  });
 }

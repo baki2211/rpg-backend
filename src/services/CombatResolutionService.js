@@ -4,6 +4,7 @@ import { CombatAction } from '../models/combatActionModel.js';
 import { PvPResolutionService } from './PvPResolutionService.js';
 import { EngineLogService } from './EngineLogService.js';
 import { logger } from '../utils/logger.js';
+import { HttpError } from '../utils/HttpError.js';
 
 export class CombatResolutionService {
     constructor() {
@@ -19,107 +20,92 @@ export class CombatResolutionService {
      * @returns {Promise<Object>} Resolution result
      */
     async resolveRound(roundId, resolvedBy) {
-        try {
-            return await AppDataSource.transaction(async (manager) => {
-                const roundRepo = manager.getRepository(CombatRound);
-                const actionRepo = manager.getRepository(CombatAction);
+        const results = await AppDataSource.transaction(async (manager) => {
+            const roundRepo = manager.getRepository(CombatRound);
+            const actionRepo = manager.getRepository(CombatAction);
 
-                const roundLock = await roundRepo.findOne({
-                    where: { id: roundId, status: 'active' },
-                    lock: { mode: 'pessimistic_write' }
-                });
-
-                if (!roundLock) {
-                    throw new Error('Combat round not found or not active');
-                }
-
-                const round = await roundRepo.findOne({
-                    where: { id: roundId, status: 'active' },
-                    relations: ['actions', 'actions.character', 'actions.skill', 'actions.target']
-                });
-
-                if (!round) {
-                    throw new Error('Combat round not found or not active');
-                }
-
-                const actions = round.actions || [];
-                if (actions.length === 0) {
-                    throw new Error('No actions to resolve');
-                }
-
-                const { clashes, independentActions } = this.identifyClashes(actions);
-
-                const resolutionResults = {
-                    roundId,
-                    roundNumber: round.roundNumber,
-                    clashes: [],
-                    independentActions: [],
-                    summary: {
-                        totalActions: actions.length,
-                        clashCount: clashes.length,
-                        independentCount: independentActions.length
-                    }
-                };
-
-                for (let i = 0; i < clashes.length; i++) {
-                    try {
-                        const clashResult = await this.resolveClash(clashes[i], manager);
-                        resolutionResults.clashes.push(clashResult);
-                    } catch (clashError) {
-                        throw new Error(`Failed to resolve clash ${i + 1}: ${clashError.message}`);
-                    }
-                }
-
-                for (let i = 0; i < independentActions.length; i++) {
-                    try {
-                        const independentResult = this.processIndependentAction(independentActions[i]);
-                        resolutionResults.independentActions.push(independentResult);
-                    } catch (independentError) {
-                        throw new Error(`Failed to process independent action ${i + 1}: ${independentError.message}`);
-                    }
-                }
-
-                await Promise.all([
-                    actionRepo.update(
-                        { roundId },
-                        { processed: true }
-                    ),
-                    roundRepo.update(
-                        { id: roundId },
-                        {
-                            status: 'resolved',
-                            resolvedBy,
-                            resolvedAt: new Date(),
-                            resolutionData: resolutionResults
-                        }
-                    )
-                ]);
-
-                return resolutionResults;
-            }).then(async (results) => {
-                try {
-                    const round = await this.roundRepository.findOne({
-                        where: { id: roundId },
-                        relations: ['actions']
-                    });
-
-                    if (round) {
-                        await this.logRoundResolution(round.locationId, round.roundNumber, results);
-                    }
-                } catch (logError) {
-                    // Don't fail the entire operation if logging fails
-                }
-
-                return results;
+            const roundLock = await roundRepo.findOne({
+                where: { id: roundId, status: 'active' },
+                lock: { mode: 'pessimistic_write' }
             });
-        } catch (mainError) {
-            logger.error(`Combat round resolution failed`, {
+
+            if (!roundLock) {
+                throw new HttpError(404, 'Combat round not found or not active');
+            }
+
+            const round = await roundRepo.findOne({
+                where: { id: roundId, status: 'active' },
+                relations: ['actions', 'actions.character', 'actions.skill', 'actions.target']
+            });
+
+            if (!round) {
+                throw new HttpError(404, 'Combat round not found or not active');
+            }
+
+            const actions = round.actions || [];
+            if (actions.length === 0) {
+                throw new HttpError(400, 'No actions to resolve');
+            }
+
+            const { clashes, independentActions } = this.identifyClashes(actions);
+
+            const resolutionResults = {
                 roundId,
-                error: mainError.message,
-                stack: mainError.stack
+                roundNumber: round.roundNumber,
+                clashes: [],
+                independentActions: [],
+                summary: {
+                    totalActions: actions.length,
+                    clashCount: clashes.length,
+                    independentCount: independentActions.length
+                }
+            };
+
+            for (const clash of clashes) {
+                resolutionResults.clashes.push(await this.resolveClash(clash, manager));
+            }
+
+            for (const independent of independentActions) {
+                resolutionResults.independentActions.push(this.processIndependentAction(independent));
+            }
+
+            await Promise.all([
+                actionRepo.update(
+                    { roundId },
+                    { processed: true }
+                ),
+                roundRepo.update(
+                    { id: roundId },
+                    {
+                        status: 'resolved',
+                        resolvedBy,
+                        resolvedAt: new Date(),
+                        resolutionData: resolutionResults
+                    }
+                )
+            ]);
+
+            return resolutionResults;
+        });
+
+        try {
+            const round = await this.roundRepository.findOne({
+                where: { id: roundId },
+                relations: ['actions']
             });
-            throw mainError;
+
+            if (round) {
+                await this.logRoundResolution(round.locationId, round.roundNumber, results);
+            }
+        } catch (logError) {
+            logger.error('Failed to log combat round resolution', {
+                roundId,
+                error: logError.message,
+                stack: logError.stack
+            });
         }
+
+        return results;
     }
 
     /**
