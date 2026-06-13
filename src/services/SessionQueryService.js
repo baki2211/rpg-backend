@@ -1,3 +1,4 @@
+import { In } from 'typeorm';
 import { AppDataSource } from '../data-source.js';
 import { Session } from '../models/sessionModel.js';
 import { Location } from '../models/locationModel.js';
@@ -88,8 +89,9 @@ export class SessionQueryService {
 
   async loadLocations(sessions) {
     const locationIds = [...new Set(sessions.map(session => session.locationId))];
+    if (locationIds.length === 0) return new Map();
     const locationRepository = AppDataSource.getRepository(Location);
-    const locations = await locationRepository.findByIds(locationIds);
+    const locations = await locationRepository.findBy({ id: In(locationIds) });
     return new Map(locations.map(loc => [loc.id, loc]));
   }
 }
