@@ -1,54 +1,25 @@
 import { RankService } from '../services/RankService.js';
+import { asyncHandler } from '../utils/asyncHandler.js';
+
+const rankService = new RankService();
 
 export class RankController {
-  constructor() {
-    this.rankService = new RankService();
-  }
+    static getAllRanks = asyncHandler(async (req, res) => {
+        res.json(await rankService.getAllRanks());
+    });
 
-  async getAllRanks(req, res) {
-    try {
-      const ranks = await this.rankService.getAllRanks();
-      res.json(ranks);
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  }
+    static createRank = asyncHandler(async (req, res) => {
+        res.json(await rankService.createRank(req.body));
+    });
 
-  async createRank(req, res) {
-    try {
-      if (!['admin'].includes(req.user.role)) {
-        return res.status(403).json({ error: 'Admin access required' });
-      }
-      const rank = await this.rankService.createRank(req.body);
-      res.json(rank);
-    } catch (err) {
-      res.status(400).json({ error: err.message });
-    }
-  }
+    static updateRank = asyncHandler(async (req, res) => {
+        const { level } = req.params;
+        res.json(await rankService.updateRank({ ...req.body, level: parseInt(level) }));
+    });
 
-  async updateRank(req, res) {
-    try {
-      if (!['admin'].includes(req.user.role)) {
-        return res.status(403).json({ error: 'Admin access required' });
-      }
-      const { level } = req.params;
-      const rank = await this.rankService.updateRank({ ...req.body, level: parseInt(level) });
-      res.json(rank);
-    } catch (err) {
-      res.status(400).json({ error: err.message });
-    }
-  }
-
-  async deleteRank(req, res) {
-    try {
-      if (!['admin'].includes(req.user.role)) {
-        return res.status(403).json({ error: 'Admin access required' });
-      }
-      const { level } = req.params;
-      await this.rankService.deleteRank(parseInt(level));
-      res.json({ success: true });
-    } catch (err) {
-      res.status(400).json({ error: err.message });
-    }
-  }
-} 
+    static deleteRank = asyncHandler(async (req, res) => {
+        const { level } = req.params;
+        await rankService.deleteRank(parseInt(level));
+        res.json({ success: true });
+    });
+}

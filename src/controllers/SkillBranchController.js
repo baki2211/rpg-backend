@@ -1,57 +1,25 @@
 import { SkillBranchService } from '../services/SkillBranchService.js';
+import { asyncHandler } from '../utils/asyncHandler.js';
 
 export const SkillBranchController = {
-  async getAllSkillBranches(req, res) {
-    try {
-      const branches = await SkillBranchService.getAllSkillBranches();
-      res.json(branches);
-    } catch (error) {
-      res.status(500).json({ message: error.message });
-    }
-  },
+    getAllSkillBranches: asyncHandler(async (req, res) => {
+        res.json(await SkillBranchService.getAllSkillBranches());
+    }),
 
-  async getSkillBranchById(req, res) {
-    try {
-      const branch = await SkillBranchService.getSkillBranchById(req.params.id);
-      if (!branch) {
-        return res.status(404).json({ message: 'Skill branch not found' });
-      }
-      res.json(branch);
-    } catch (error) {
-      res.status(500).json({ message: error.message });
-    }
-  },
+    getSkillBranchById: asyncHandler(async (req, res) => {
+        res.json(await SkillBranchService.getSkillBranchById(req.params.id));
+    }),
 
-  async createSkillBranch(req, res) {
-    try {
-      const branch = await SkillBranchService.createSkillBranch(req.body);
-      res.status(201).json(branch);
-    } catch (error) {
-      res.status(500).json({ message: error.message });
-    }
-  },
+    createSkillBranch: asyncHandler(async (req, res) => {
+        res.status(201).json(await SkillBranchService.createSkillBranch(req.body));
+    }),
 
-  async updateSkillBranch(req, res) {
-    try {
-      const branch = await SkillBranchService.updateSkillBranch(req.params.id, req.body);
-      if (!branch) {
-        return res.status(404).json({ message: 'Skill branch not found' });
-      }
-      res.json(branch);
-    } catch (error) {
-      res.status(500).json({ message: error.message });
-    }
-  },
+    updateSkillBranch: asyncHandler(async (req, res) => {
+        res.json(await SkillBranchService.updateSkillBranch(req.params.id, req.body));
+    }),
 
-  async deleteSkillBranch(req, res) {
-    try {
-      const success = await SkillBranchService.deleteSkillBranch(req.params.id);
-      if (!success) {
-        return res.status(404).json({ message: 'Skill branch not found' });
-      }
-      res.status(204).end();
-    } catch (error) {
-      res.status(500).json({ message: error.message });
-    }
-  }
-}; 
+    deleteSkillBranch: asyncHandler(async (req, res) => {
+        await SkillBranchService.deleteSkillBranch(req.params.id);
+        res.status(204).end();
+    }),
+};

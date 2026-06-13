@@ -4,13 +4,12 @@ import { authenticateToken } from '../middleware/authMiddleware.js';
 import { isAdmin } from '../middleware/adminMiddleware.js';
 
 const router = express.Router();
-const rankController = new RankController();
 
 router.use(authenticateToken);
 
-router.get('/', rankController.getAllRanks.bind(rankController));
-router.post('/', isAdmin, rankController.createRank.bind(rankController));
-router.put('/:level', isAdmin, rankController.updateRank.bind(rankController));
-router.delete('/delete/:level', isAdmin, rankController.deleteRank.bind(rankController));
+router.get('/', RankController.getAllRanks);
+router.post('/', isAdmin, RankController.createRank);
+router.put('/:level', isAdmin, RankController.updateRank);
+router.delete('/delete/:level', isAdmin, RankController.deleteRank);
 
-export default router; 
+export default router;

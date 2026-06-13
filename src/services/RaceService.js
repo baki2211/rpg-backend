@@ -1,6 +1,7 @@
 import { AppDataSource } from '../data-source.js';
 import { Race } from '../models/raceModel.js';
 import staticDataCache from '../utils/staticDataCache.js';
+import { HttpError } from '../utils/HttpError.js';
 
 export class RaceService {
     raceRepository = AppDataSource.getRepository(Race);
@@ -15,7 +16,9 @@ export class RaceService {
     }
 
     async getRaceById(id) {
-        return staticDataCache.getRaceById(id);
+        const race = await staticDataCache.getRaceById(id);
+        if (!race) throw new HttpError(404, 'Race not found');
+        return race;
     }
 
     async createRace(raceData) {
@@ -27,7 +30,7 @@ export class RaceService {
 
     async updateRace(id, raceData) {
         const race = await this.raceRepository.findOne({ where: { id } });
-        if (!race) return null;
+        if (!race) throw new HttpError(404, 'Race not found');
         Object.assign(race, raceData);
         const savedRace = await this.raceRepository.save(race);
         staticDataCache.clearEntity('Race');
@@ -36,7 +39,7 @@ export class RaceService {
 
     async deleteRace(id) {
         const race = await this.raceRepository.findOne({ where: { id } });
-        if (!race) throw new Error('Race not found');
+        if (!race) throw new HttpError(404, 'Race not found');
         await this.raceRepository.remove(race);
         staticDataCache.clearEntity('Race');
     }

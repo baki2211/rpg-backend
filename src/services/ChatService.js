@@ -12,6 +12,7 @@ import { EventService } from './EventService.js';
 import { PvPResolutionService } from './PvPResolutionService.js';
 import { TargetResolutionService } from './TargetResolutionService.js';
 import { SkillExecutionService } from './SkillExecutionService.js';
+import { HttpError } from '../utils/HttpError.js';
 
 export class ChatService {
   chatRepository = AppDataSource.getRepository(ChatMessage);
@@ -85,7 +86,7 @@ export class ChatService {
     ]);
     
     if (!character) {
-      throw new Error('No active character found for this user.');
+      throw new HttpError(404, 'No active character found for this user.');
     }
 
     // If skill is provided, validate and process it

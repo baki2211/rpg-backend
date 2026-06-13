@@ -1,38 +1,21 @@
 import { CharacterSkillsService } from '../services/CharacterSkillsService.js';
+import { asyncHandler } from '../utils/asyncHandler.js';
 
 const characterSkillsService = new CharacterSkillsService();
 
 export class CharacterSkillsController {
-  static async getAvailableSkills(req, res) {
-    try {
-      const userId = req.user.id;
-      const { characterId } = req.params;
-      const availableSkills = await characterSkillsService.getAvailableSkills(Number(characterId), userId);
-      res.status(200).json(availableSkills);
-    } catch (error) {
-      res.status(400).json({ error: error.message });
-    }
-  }
+    static getAvailableSkills = asyncHandler(async (req, res) => {
+        const { characterId } = req.params;
+        res.status(200).json(await characterSkillsService.getAvailableSkills(Number(characterId), req.user.id));
+    });
 
-  static async getAcquiredSkills(req, res) {
-    try {
-      const userId = req.user.id;
-      const { characterId } = req.params;
-      const acquiredSkills = await characterSkillsService.getAcquiredSkills(Number(characterId), userId);
-      res.status(200).json(acquiredSkills);
-    } catch (error) {
-      res.status(400).json({ error: error.message });
-    }
-  }
+    static getAcquiredSkills = asyncHandler(async (req, res) => {
+        const { characterId } = req.params;
+        res.status(200).json(await characterSkillsService.getAcquiredSkills(Number(characterId), req.user.id));
+    });
 
-  static async acquireSkill(req, res) {
-    try {
-      const userId = req.user.id;
-      const { skillId } = req.params;
-      const character = await characterSkillsService.acquireSkill(Number(skillId), userId);
-      res.status(200).json(character);
-    } catch (error) {
-      res.status(400).json({ error: error.message });
-    }
-  }
+    static acquireSkill = asyncHandler(async (req, res) => {
+        const { skillId } = req.params;
+        res.status(200).json(await characterSkillsService.acquireSkill(Number(skillId), req.user.id));
+    });
 }
