@@ -1,3 +1,7 @@
+# Local dev only. Do not deploy this file.
+# Values come from a sibling `.env` (see `.env-example`). `JWT_SECRET` is
+# required — compose will refuse to start if it isn't set.
+
 services:
   app:
     build: .
@@ -7,10 +11,11 @@ services:
       - PORT=5001
       - DB_HOST=db
       - DB_PORT=5432
-      - DB_USER=postgres
-      - DB_PASSWORD=postgres
-      - DB_NAME=rpg
-      - JWT_SECRET=your_jwt_secret_here
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-postgres}
+      - DB_NAME=${DB_NAME:-rpg}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required — see .env-example}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-}
     volumes:
       - ./uploads:/usr/src/app/uploads
       - ./src:/usr/src/app/src  # Add this to ensure src files are watched
@@ -22,9 +27,9 @@ services:
   db:
     image: postgres:12
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=rpg
+      - POSTGRES_USER=${DB_USER:-postgres}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
+      - POSTGRES_DB=${DB_NAME:-rpg}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:

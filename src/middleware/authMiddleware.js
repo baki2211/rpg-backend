@@ -4,11 +4,6 @@ import { AuditLogger } from '../utils/auditLogger.js';
 const JWT_SECRET = process.env.JWT_SECRET;
 
 export const authenticateToken = (req, res, next) => {
-  if (!JWT_SECRET) {
-    res.status(500).json({ message: 'Server configuration error' });
-    return;
-  }
-
   const token = req.cookies?.token;
 
   if (!token) {
@@ -58,11 +53,6 @@ export const authenticateToken = (req, res, next) => {
 };
 
 export const requireAuth = (req, res, next) => {
-  if (!JWT_SECRET) {
-    res.status(500).json({ message: 'Server configuration error' });
-    return;
-  }
-
   const token = req.cookies?.token;
 
   if (!token) {

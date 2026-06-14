@@ -165,7 +165,7 @@ NODE_ENV=production npm start
 ### 2. Environment Variables
 Ensure the `.env` file is correctly configured for the production environment. See the env-var list under [Project Setup](#3-set-up-environment-variables) above.
 
-> The `docker-compose.yml` in this repo is for **local development only** — its default credentials (`postgres/postgres`, `JWT_SECRET=your_jwt_secret_here`) must not be used in production.
+> The `docker-compose.yml` in this repo is for **local development only**. DB creds fall back to `postgres/postgres` if unset; `JWT_SECRET` must be provided via `.env` (compose refuses to start otherwise) but a dev value there is not a production-safe secret. Don't deploy this file.
 
 ---
 

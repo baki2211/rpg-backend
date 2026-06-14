@@ -120,11 +120,6 @@ router.post('/login', RateLimitMiddleware.authAttemptLimit, async (req, res) => 
             return;
         }
 
-        if (!JWT_SECRET) {
-            res.status(500).json({ message: 'Server configuration error' });
-            return;
-        }
-
         const token = createToken(user);
         setTokenCookie(res, token);
         setCsrfCookie(res);

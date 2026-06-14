@@ -52,12 +52,6 @@ export function createUpgradeHandler({ chatWS, jwtSecret }) {
         return;
       }
 
-      if (!jwtSecret) {
-        logger.error('Chat WebSocket upgrade rejected - JWT_SECRET not configured');
-        rejectUpgrade(socket, '500 Internal Server Error', 'Server configuration error');
-        return;
-      }
-
       const token = extractTokenFromCookieHeader(req.headers.cookie);
       if (!token) {
         rejectUpgrade(socket, '401 Unauthorized', 'Missing session cookie');

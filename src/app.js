@@ -41,11 +41,20 @@ import { verifyCsrfToken } from './middleware/csrfMiddleware.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const DEFAULT_CORS_ORIGINS = ['http://localhost:3000', 'http://localhost:3001', 'https://arcanerealms.org'];
+
+function resolveCorsOrigins() {
+  const raw = process.env.CORS_ALLOWED_ORIGINS;
+  if (!raw) return DEFAULT_CORS_ORIGINS;
+  const list = raw.split(',').map((s) => s.trim()).filter(Boolean);
+  return list.length > 0 ? list : DEFAULT_CORS_ORIGINS;
+}
+
 export function createApp() {
   const app = express();
 
   app.use(cors({
-    origin: ['http://localhost:3000', 'http://localhost:3001', 'https://arcanerealms.org'],
+    origin: resolveCorsOrigins(),
     credentials: true,
   }));
 
