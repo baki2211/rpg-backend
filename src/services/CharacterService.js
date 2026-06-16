@@ -89,17 +89,21 @@ export class CharacterService {
   }
 
   async getCharacterById(characterId, userId) {
-    return this.characterRepository.findOne({
+    const character = await this.characterRepository.findOne({
       where: { id: characterId, user: { id: userId } },
-      relations: { skills: { branch: true, type: true }, race: true }
+      relations: { characterSkills: { skill: { branch: true, type: true } }, race: true }
     });
+    if (character) character.skills = character.characterSkills?.map(cs => cs.skill) ?? [];
+    return character;
   }
 
   async findCharacterWithSkillsAndRace(characterId) {
-    return this.characterRepository.findOne({
+    const character = await this.characterRepository.findOne({
       where: { id: characterId },
-      relations: { skills: true, race: true }
+      relations: { characterSkills: { skill: true }, race: true }
     });
+    if (character) character.skills = character.characterSkills?.map(cs => cs.skill) ?? [];
+    return character;
   }
 
   async updateCharacterImage(characterId, userId, imagePath) {
@@ -194,13 +198,15 @@ export class CharacterService {
   async getActiveCharacter(userId) {
     await this.fixActivationConflicts(userId);
 
-    return this.characterRepository.findOne({
+    const character = await this.characterRepository.findOne({
       where: [
         { user: { id: userId }, isActive: true },
         { userId, isNPC: true, isActive: true }
       ],
-      relations: { skills: true, race: true }
+      relations: { characterSkills: { skill: true }, race: true }
     });
+    if (character) character.skills = character.characterSkills?.map(cs => cs.skill) ?? [];
+    return character;
   }
 
   async fixActivationConflicts(userId) {

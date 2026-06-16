@@ -20,7 +20,7 @@ export const CharacterSkill = new EntitySchema({
     },
     unlockedAt: {
       type: 'timestamp',
-      createDate: true,
+      default: () => 'now()',
     },
     rank: {
       type: 'int',
@@ -39,12 +39,14 @@ export const CharacterSkill = new EntitySchema({
     character: {
       target: 'Character',
       type: 'many-to-one',
+      inverseSide: 'characterSkills',
       joinColumn: { name: 'characterId' },
       onDelete: 'CASCADE',
     },
     skill: {
       target: 'Skill',
       type: 'many-to-one',
+      inverseSide: 'characterSkills',
       joinColumn: { name: 'skillId' },
       onDelete: 'CASCADE',
     },

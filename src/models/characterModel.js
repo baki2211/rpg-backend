@@ -1,7 +1,6 @@
 import { EntitySchema } from 'typeorm';
 import { Race } from './raceModel.js';
 import { User } from './userModel.js';
-import { Skill } from './skillModel.js';
 
 export const Character = new EntitySchema({
   name: 'Character',
@@ -105,14 +104,10 @@ export const Character = new EntitySchema({
       inverseSide: 'characters',
       onDelete: 'CASCADE',
     },
-    skills: {
-      target: 'Skill',
-      type: 'many-to-many',
-      joinTable: {
-        name: 'character_skills',
-        joinColumn: { name: 'characterId' },
-        inverseJoinColumn: { name: 'skillId' }
-      }
+    characterSkills: {
+      target: 'CharacterSkill',
+      type: 'one-to-many',
+      inverseSide: 'character',
     },
     creator: {
       target: 'User',

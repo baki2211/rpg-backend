@@ -9,6 +9,7 @@
     "seed": "node src/jobs/seed.js",
     "migration:run": "node --experimental-specifier-resolution=node ./node_modules/typeorm/cli.js migration:run -d src/data-source.js",
     "migration:revert": "node --experimental-specifier-resolution=node ./node_modules/typeorm/cli.js migration:revert -d src/data-source.js",
+    "migration:generate": "node --experimental-specifier-resolution=node ./node_modules/typeorm/cli.js migration:generate -d src/data-source.js -o --esm",
     "test": "echo \"No tests yet\" && exit 0"
   },
   "keywords": [],

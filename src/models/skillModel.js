@@ -1,5 +1,4 @@
 import { EntitySchema } from 'typeorm';
-import { Character } from './characterModel.js';
 
 export const Skill = new EntitySchema({
   name: 'Skill',
@@ -114,14 +113,10 @@ export const Skill = new EntitySchema({
       type: 'one-to-many',
       inverseSide: 'parentSkill'
     },
-    characters: {
-      target: 'Character',
-      type: 'many-to-many',
-      joinTable: {
-        name: 'character_skills',
-        joinColumn: { name: 'skillId' },
-        inverseJoinColumn: { name: 'characterId' }
-      }
+    characterSkills: {
+      target: 'CharacterSkill',
+      type: 'one-to-many',
+      inverseSide: 'skill',
     },
     branch: {
       type: 'many-to-one',

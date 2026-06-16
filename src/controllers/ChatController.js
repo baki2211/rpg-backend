@@ -28,14 +28,14 @@ export class ChatController {
 
     const character = await AppDataSource.getRepository('Character').findOne({
       where: { user: { id: userId }, isActive: true },
-      relations: { skills: true }
+      relations: { characterSkills: true }
     });
 
     if (!character) {
       throw new HttpError(404, 'No active character found');
     }
 
-    const hasSkill = character.skills.some(s => s.id === Number(skillId));
+    const hasSkill = character.characterSkills.some(cs => cs.skillId === Number(skillId));
     if (!hasSkill) {
       throw new HttpError(403, 'Character does not have this skill');
     }

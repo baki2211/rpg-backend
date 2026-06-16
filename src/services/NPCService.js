@@ -148,7 +148,7 @@ export class NPCService {
   async activateNPC(npcId, userId) {
     const npc = await this.characterRepository.findOne({
       where: { id: npcId, isNPC: true },
-      relations: { race: true, skills: true }
+      relations: { race: true, characterSkills: { skill: true } }
     });
 
     if (!npc) {
@@ -173,10 +173,12 @@ export class NPCService {
 
     logger.character(`User ${userId} activated NPC ${npc.name} (ID: ${npcId})`);
 
-    return this.characterRepository.findOne({
+    const activated = await this.characterRepository.findOne({
       where: { id: npcId },
-      relations: { race: true, skills: true }
+      relations: { race: true, characterSkills: { skill: true } }
     });
+    if (activated) activated.skills = activated.characterSkills?.map(cs => cs.skill) ?? [];
+    return activated;
   }
 
   async deactivateNPC(npcId, userId) {
@@ -217,10 +219,12 @@ export class NPCService {
   }
 
   async getActiveNPCForUser(userId) {
-    return this.characterRepository.findOne({
+    const npc = await this.characterRepository.findOne({
       where: { userId, isNPC: true, isActive: true },
-      relations: { skills: true, race: true }
+      relations: { characterSkills: { skill: true }, race: true }
     });
+    if (npc) npc.skills = npc.characterSkills?.map(cs => cs.skill) ?? [];
+    return npc;
   }
 
   async isNPC(characterId) {

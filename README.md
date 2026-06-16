@@ -131,7 +131,7 @@ If there are changes to the TypeORM entities, generate a new migration:
 ```bash
 npx typeorm-ts-node-esm migration:generate ./src/migrations/<MigrationName> -d src/data-source.js
 ```
-> Note: `src/migrations/` does not exist yet. The first generated migration will create it. See [`docs/fix_plan.md`](docs/fix_plan.md) §3.2.
+> Note: `src/migrations/` is empty until the first migration is generated.
 
 ### Run Migrations
 To apply the latest migrations to your database:
@@ -198,7 +198,6 @@ Ensure the `.env` file is correctly configured for the production environment. S
 │   ├── index.js          # Entry point (env, app, server, WS, startup, shutdown wiring)
 │   ├── app.js            # Express app builder (middleware + /api/* mounts + static + errorHandler)
 │   ├── lifecycle.js      # startServer + installShutdownHandlers
-├── supabase              # Supabase SQL mirror (hand-maintained)
 ├── docs                  # Project documentation catalog
 ├── uploads               # User uploads (runtime)
 ├── docker-compose.yml    # Local dev stack

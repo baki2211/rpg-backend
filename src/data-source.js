@@ -35,7 +35,7 @@ export const AppDataSource = new DataSource({
   username: process.env.DB_USER || 'postgres',
   password: process.env.DB_PASSWORD || 'postgres',
   database: process.env.DB_NAME || 'rpg',
-  synchronize: process.env.NODE_ENV !== 'production', // Only sync in development
+  synchronize: process.env.DB_SYNC === 'true' || (process.env.DB_SYNC !== 'false' && process.env.NODE_ENV === 'development'),
   logging: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : false,
   
   // Connection pooling configuration for memory optimization

@@ -1,12 +1,14 @@
 import { AppDataSource } from '../data-source.js';
 import { Character } from '../models/characterModel.js';
 import { Skill } from '../models/skillModel.js';
+import { CharacterSkill } from '../models/characterSkillModel.js';
 import { CharacterService } from './CharacterService.js';
 import { HttpError } from '../utils/HttpError.js';
 
 export class CharacterSkillsService {
   characterRepository = AppDataSource.getRepository(Character);
   skillRepository = AppDataSource.getRepository(Skill);
+  characterSkillRepository = AppDataSource.getRepository(CharacterSkill);
   characterService = new CharacterService();
 
   async acquireSkill(skillId, userId) {
@@ -29,11 +31,10 @@ export class CharacterSkillsService {
       throw new HttpError(400, 'Not enough skill points');
     }
 
-    await AppDataSource
-      .createQueryBuilder()
-      .relation(Character, 'skills')
-      .of(character)
-      .add(skill);
+    await this.characterSkillRepository.save({
+      characterId: character.id,
+      skillId: skill.id,
+    });
 
     await this.characterRepository.update(
       { id: character.id },
