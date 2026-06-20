@@ -7,16 +7,14 @@ class MemoryManager {
     this.isMonitoring = false;
     this.webSocketServers = null; // Will be set by setWebSocketServers
     
-    // Memory thresholds (in bytes)
-    this.WARNING_THRESHOLD = 400 * 1024 * 1024; // 400MB
-    this.CRITICAL_THRESHOLD = 450 * 1024 * 1024; // 450MB
-    this.STARTER_LIMIT = 512 * 1024 * 1024; // 512MB
+    this.STARTER_LIMIT = parseInt(process.env.RSS_BUDGET_BYTES, 10) || 512 * 1024 * 1024;
 
-    // Memory thresholds for Render.com (512MB limit)
+    this.WARNING_THRESHOLD = Math.round(this.STARTER_LIMIT * 0.78);
+    this.CRITICAL_THRESHOLD = Math.round(this.STARTER_LIMIT * 0.88);
     this.thresholds = {
-      warning: 350 * 1024 * 1024,    // 350MB - 68% of limit
-      critical: 400 * 1024 * 1024,   // 400MB - 78% of limit
-      emergency: 450 * 1024 * 1024   // 450MB - 88% of limit
+      warning:   Math.round(this.STARTER_LIMIT * 0.68),
+      critical:  Math.round(this.STARTER_LIMIT * 0.78),
+      emergency: Math.round(this.STARTER_LIMIT * 0.88),
     };
   }
 
@@ -207,7 +205,7 @@ class MemoryManager {
 
   checkMemory() {
     const memUsage = process.memoryUsage();
-    const rssPercent = (memUsage.rss / (512 * 1024 * 1024)) * 100;
+    const rssPercent = (memUsage.rss / this.STARTER_LIMIT) * 100;
     
     if (memUsage.rss > this.thresholds.emergency) {
       logger.error('EMERGENCY: Memory usage at 88%', {
