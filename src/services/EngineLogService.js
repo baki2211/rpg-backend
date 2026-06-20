@@ -133,7 +133,7 @@ export class EngineLogService {
         const result = await this.engineLogRepository
             .createQueryBuilder()
             .delete()
-            .where('createdAt < :cutoffDate', { cutoffDate })
+            .where('"createdAt" < :cutoffDate', { cutoffDate })
             .execute();
 
         return result.affected || 0;
