@@ -10,7 +10,10 @@
     "migration:run": "node --experimental-specifier-resolution=node ./node_modules/typeorm/cli.js migration:run -d src/data-source.js",
     "migration:revert": "node --experimental-specifier-resolution=node ./node_modules/typeorm/cli.js migration:revert -d src/data-source.js",
     "migration:generate": "node --experimental-specifier-resolution=node ./node_modules/typeorm/cli.js migration:generate -d src/data-source.js -o --esm",
-    "test": "echo \"No tests yet\" && exit 0"
+    "test": "vitest run",
+    "test:unit": "vitest run tests/unit",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "keywords": [],
   "author": "",
@@ -24,7 +27,7 @@
     "express": "5.2.1",
     "ioredis": "5.11.1",
     "jsonwebtoken": "9.0.3",
-    "multer": "2.1.1",
+    "multer": "2.2.0",
     "pg": "8.21.0",
     "reflect-metadata": "0.2.2",
     "typeorm": "1.0.0",
@@ -32,6 +35,9 @@
     "ws": "8.21.0"
   },
   "devDependencies": {
-    "nodemon": "3.1.14"
+    "@vitest/coverage-v8": "4.1.9",
+    "nodemon": "3.1.14",
+    "supertest": "7.2.2",
+    "vitest": "4.1.9"
   }
 }
