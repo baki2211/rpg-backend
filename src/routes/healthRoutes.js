@@ -5,6 +5,8 @@ import dbHealthMonitor from '../utils/dbHealthMonitor.js';
 import staticDataCache from '../utils/staticDataCache.js';
 import { MemoryCleanupJob } from '../jobs/memoryCleanup.js';
 import { RateLimitMiddleware } from '../middleware/rateLimitMiddleware.js';
+import { authenticateToken } from '../middleware/authMiddleware.js';
+import { isAdmin } from '../middleware/adminMiddleware.js';
 
 // Track compression statistics
 let compressionStats = {
@@ -481,8 +483,8 @@ router.get('/memory/status', (req, res) => {
   }
 });
 
-// Rate limiting status endpoint
-router.get('/rate-limits', async (req, res) => {
+// Rate limiting status endpoint (admin only)
+router.get('/rate-limits', authenticateToken, isAdmin, async (req, res) => {
   try {
     const activeLimits = await RateLimitMiddleware.getActiveRateLimits();
 
@@ -513,7 +515,7 @@ router.get('/rate-limits', async (req, res) => {
 });
 
 // Clear specific rate limit (admin only)
-router.post('/rate-limits/clear', async (req, res) => {
+router.post('/rate-limits/clear', authenticateToken, isAdmin, async (req, res) => {
   try {
     const { key } = req.body;
 
