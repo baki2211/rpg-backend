@@ -118,7 +118,7 @@ class StaticDataCache {
     
     if (!skills) {
       const skillRepo = AppDataSource.getRepository(Skill);
-      const relations = includeRelations ? ['branch', 'type'] : [];
+      const relations = includeRelations ? { branch: true, type: true } : {};
       skills = await skillRepo.find({ relations });
       this.set(key, skills, 5 * 60 * 1000); // 5 minutes for skills
       logger.debug('Skills loaded from database and cached');
@@ -136,7 +136,7 @@ class StaticDataCache {
     
     if (!skill) {
       const skillRepo = AppDataSource.getRepository(Skill);
-      const relations = includeRelations ? ['branch', 'type'] : [];
+      const relations = includeRelations ? { branch: true, type: true } : {};
       skill = await skillRepo.findOne({ where: { id }, relations });
       if (skill) {
         this.set(key, skill, 5 * 60 * 1000);

@@ -56,8 +56,8 @@ export const AppDataSource = new DataSource({
     statement_timeout: parseInt(process.env.DB_STATEMENT_TIMEOUT) || 30000, // 30 seconds
     query_timeout: parseInt(process.env.DB_QUERY_TIMEOUT) || 30000, // 30 seconds
     
-    // SSL configuration for production
-    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+    // No SSL needed — db is only reachable on the private docker network
+    ssl: false,
   },
   
   // Enable connection monitoring
