@@ -2,6 +2,13 @@ import { AppDataSource } from '../data-source.js';
 import { CombatConstant } from '../models/combatConstantModel.js';
 import staticDataCache from '../utils/staticDataCache.js';
 import { HttpError } from '../utils/HttpError.js';
+import { DEFAULT_CHAT_RULES, CHAT_RULE_KEYS } from '../domain/chat/messageRewards.js';
+import { DEFAULT_BRANCH_RANKS } from '../domain/skills/ranks.js';
+import { DEFAULT_OUTCOMES } from '../domain/skills/outcome.js';
+import { BRANCH_RANK_MULTIPLIER_KEYS, OUTCOME_MULTIPLIER_KEYS } from '../domain/skills/rules.js';
+
+const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
+const defaultOutcomeMultiplier = (quality) => DEFAULT_OUTCOMES.find(outcome => outcome.quality === quality).multiplier;
 
 const VALID_CATEGORIES = ['hp_system', 'aether_system', 'damage_system', 'mastery_system', 'outcome_system', 'chat_system'];
 const CONSTANT_KEY_PATTERN = /^[A-Z_0-9]+$/;
@@ -203,133 +210,45 @@ export class CombatConstantService {
                 maxValue: 3.0,
                 isPercentage: false
             },
-            {
-                constantKey: 'MASTERY_TIER_1',
-                displayName: 'Mastery Tier I',
-                description: 'Tier I mastery multiplier',
-                value: 1.00,
+            // Branch rank multipliers, read by the engine (src/domain/skills/rules.js).
+            // The key keeps its historical MASTERY_TIER_n name; the uses thresholds stay in code.
+            ...DEFAULT_BRANCH_RANKS.map(({ rank, minUses, multiplier }, index) => ({
+                constantKey: BRANCH_RANK_MULTIPLIER_KEYS[index],
+                displayName: `Branch Rank ${ROMAN[index]} Multiplier`,
+                description: `Branch rank multiplier once the branch has ${minUses} uses (rank ${rank})`,
+                value: multiplier,
                 category: 'mastery_system',
                 minValue: 1.0,
                 maxValue: 1.65,
                 isPercentage: false
-            },
-            {
-                constantKey: 'MASTERY_TIER_2',
-                displayName: 'Mastery Tier II',
-                description: 'Tier II mastery multiplier',
-                value: 1.08,
-                category: 'mastery_system',
-                minValue: 1.0,
-                maxValue: 1.65,
-                isPercentage: false
-            },
-            {
-                constantKey: 'MASTERY_TIER_3',
-                displayName: 'Mastery Tier III',
-                description: 'Tier III mastery multiplier',
-                value: 1.16,
-                category: 'mastery_system',
-                minValue: 1.0,
-                maxValue: 1.65,
-                isPercentage: false
-            },
-            {
-                constantKey: 'MASTERY_TIER_4',
-                displayName: 'Mastery Tier IV',
-                description: 'Tier IV mastery multiplier',
-                value: 1.24,
-                category: 'mastery_system',
-                minValue: 1.0,
-                maxValue: 1.65,
-                isPercentage: false
-            },
-            {
-                constantKey: 'MASTERY_TIER_5',
-                displayName: 'Mastery Tier V',
-                description: 'Tier V mastery multiplier',
-                value: 1.32,
-                category: 'mastery_system',
-                minValue: 1.0,
-                maxValue: 1.65,
-                isPercentage: false
-            },
-            {
-                constantKey: 'MASTERY_TIER_6',
-                displayName: 'Mastery Tier VI',
-                description: 'Tier VI mastery multiplier',
-                value: 1.40,
-                category: 'mastery_system',
-                minValue: 1.0,
-                maxValue: 1.65,
-                isPercentage: false
-            },
-            {
-                constantKey: 'MASTERY_TIER_7',
-                displayName: 'Mastery Tier VII',
-                description: 'Tier VII mastery multiplier',
-                value: 1.48,
-                category: 'mastery_system',
-                minValue: 1.0,
-                maxValue: 1.65,
-                isPercentage: false
-            },
-            {
-                constantKey: 'MASTERY_TIER_8',
-                displayName: 'Mastery Tier VIII',
-                description: 'Tier VIII mastery multiplier',
-                value: 1.55,
-                category: 'mastery_system',
-                minValue: 1.0,
-                maxValue: 1.65,
-                isPercentage: false
-            },
-            {
-                constantKey: 'MASTERY_TIER_9',
-                displayName: 'Mastery Tier IX',
-                description: 'Tier IX mastery multiplier',
-                value: 1.60,
-                category: 'mastery_system',
-                minValue: 1.0,
-                maxValue: 1.65,
-                isPercentage: false
-            },
-            {
-                constantKey: 'MASTERY_TIER_10',
-                displayName: 'Mastery Tier X (Cap)',
-                description: 'Tier X mastery multiplier (maximum)',
-                value: 1.65,
-                category: 'mastery_system',
-                minValue: 1.0,
-                maxValue: 1.65,
-                isPercentage: false
-            },
+            })),
 
             // Outcome System
             {
-                constantKey: 'OUTCOME_POOR_MULT',
+                constantKey: OUTCOME_MULTIPLIER_KEYS.Poor,
                 displayName: 'Poor Outcome Multiplier',
-                description: 'Damage multiplier for poor quality outcomes',
-                value: 0.9,
+                description: 'Skill output multiplier for a Poor success (d20 roll 1-3)',
+                value: defaultOutcomeMultiplier('Poor'),
                 category: 'outcome_system',
                 minValue: 0.5,
                 maxValue: 1.0,
                 isPercentage: false
             },
             {
-                constantKey: 'OUTCOME_STANDARD_MULT',
+                constantKey: OUTCOME_MULTIPLIER_KEYS.Standard,
                 displayName: 'Standard Outcome Multiplier',
-                description: 'Damage multiplier for standard quality outcomes',
-                value: 1.0,
+                description: 'Skill output multiplier for a Standard success (d20 roll 4-17)',
+                value: defaultOutcomeMultiplier('Standard'),
                 category: 'outcome_system',
                 minValue: 0.8,
                 maxValue: 1.2,
                 isPercentage: false
             },
             {
-                constantKey: 'OUTCOME_CRITICAL_MULT',
+                constantKey: OUTCOME_MULTIPLIER_KEYS.Critical,
                 displayName: 'Critical Outcome Multiplier',
-                description: 'Damage multiplier for critical quality outcomes (capped at 1.15 per system.txt)',
-                value: 1.15,
+                description: 'Skill output multiplier for a Critical success (d20 roll 18-20)',
+                value: defaultOutcomeMultiplier('Critical'),
                 category: 'outcome_system',
                 minValue: 1.0,
                 maxValue: 2.0,
@@ -338,20 +257,20 @@ export class CombatConstantService {
 
             // Chat System
             {
-                constantKey: 'CHAT_POST_MIN_LENGTH',
+                constantKey: CHAT_RULE_KEYS.minLength,
                 displayName: 'Chat Post Minimum Length',
                 description: 'A chat post must be longer than this many characters to count for sessions and experience',
-                value: 800,
+                value: DEFAULT_CHAT_RULES.minLength,
                 category: 'chat_system',
                 minValue: 0,
                 maxValue: 1000,
                 isPercentage: false
             },
             {
-                constantKey: 'CHAT_XP_COOLDOWN_MS',
+                constantKey: CHAT_RULE_KEYS.cooldownMs,
                 displayName: 'Chat Experience Cooldown (ms)',
                 description: 'Minimum time between two experience-granting chat posts by the same user, in milliseconds',
-                value: 30000,
+                value: DEFAULT_CHAT_RULES.cooldownMs,
                 category: 'chat_system',
                 minValue: 0,
                 maxValue: 600000, // decimal(10,4) holds at most 999999.9999

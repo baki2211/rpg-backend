@@ -16,9 +16,11 @@ npm start                   # node src/index.js
 npm run seed                # admin/user/map/location seed (src/jobs/seed.js)
 docker compose up           # app + postgres for local dev
 
-npm test                    # vitest run (all tests/**/*.test.js)
-npm run test:unit           # tests/unit only
-npx vitest run tests/unit/SkillEngine.test.js          # single file
+npm test                    # unit tests only (tests/unit, no DB needed)
+npm run test:unit           # same as npm test
+npm run test:integration    # tests/integration against the rpg_test DB (needs `docker compose up -d db`)
+npm run test:all            # unit, then integration
+npx vitest run tests/unit/domain/clashTable.test.js    # single file
 npx vitest run -t "<test name substring>"              # single test by name
 npm run test:coverage
 
@@ -39,6 +41,8 @@ DB_SYNC=false DB_NAME=rpg_baseline npm run migration:run
 DB_SYNC=false DB_NAME=rpg_baseline npm run migration:generate -- src/migrations/<DescriptiveName>
 ```
 
+Data migrations also exist. `AlignSkillRuleRows` rewrites seeded `mastery_tiers` and `MASTERY_TIER_*`/`OUTCOME_*` rows to the code defaults. Run `npm run migration:run` on a seeded DB **before** you start code from this version, or gameplay values change.
+
 To verify, re-run generate into a throwaway name. It must report "No changes in database schema were found". `docs/migrations.md` covers the full workflow and the VPS sync.
 
 ## Architecture
@@ -50,19 +54,20 @@ To verify, re-run generate into a throwaway name. It must report "No changes in 
 - Models are TypeORM `EntitySchema` definitions, not classes, so entities are plain objects. Persist them with `repository.save(entity)` or `manager.save(...)`, never `entity.save()`. DB column names are camelCase, so quote them in raw SQL (`"userId"`). Check `src/models/` for real field names. For example, HP is `stats.hp`.
 - Auth: the JWT is read only from the `token` httpOnly cookie. Mutating `/api` requests need an `X-CSRF-Token` header that matches the `csrfToken` cookie (double-submit); login and register are exempt. Roles are `user`, `staffer`, `master` and `admin`, gated by `requireRole([...])` in `middleware/authMiddleware.js`. Older map and race routes use `isAdmin` instead.
 - Realtime: chat lives at `/ws/chat` and is authenticated in `websockets/upgradeHandler.js`. That handler also caps chat connections based on RSS memory pressure. Presence WS is a separate server, cross-wired through `chatWS.setPresenceBroadcaster(...)`. `utils/memoryManager.js` can force-close WS connections under memory pressure.
-- `utils/staticDataCache.js` preloads read-mostly tables (races, skills, stat definitions, combat constants). After editing those tables with direct SQL, bust the cache with `POST /api/admin/cache/reload[/:entity]`. Game tunables live in the `CombatConstant` and `StatDefinition` rows, not in code.
+- `utils/staticDataCache.js` preloads read-mostly tables (races, skills, stat definitions, combat constants). After editing those tables with direct SQL, bust the cache with `POST /api/admin/cache/reload[/:entity]`. Game tunables live in the `CombatConstant`, `MasteryTier` and `StatDefinition` rows. `staticDataCache.getSkillRules()` turns those rows into the rank and outcome tables. The defaults in `src/domain/skills/` are used when rows are missing or invalid. The game design isn't final: refactors keep current values, and rule questions go to the "Game design status" list in `RULEBOOK_REVIEW.md`.
 - Domain flows that span several services:
   - **Session/Event**: creating an event mutates the location's existing free-role session in place (`isEvent=true`, `eventId` set), and closing the event reverts it. See `EventService` and the `Session*Service` split (CRUD / Lifecycle / Participant / Query).
-  - **Combat**: `CombatService` handles the round lifecycle. `CombatActionService` handles submission through `TargetResolutionService` and `SkillExecutionService`. `CombatResolutionService` handles clash detection and resolution through `PvPResolutionService`.
-  - **Skills**: the path is `SkillEngine` → `SkillExecutionService` → `SkillValidationRuleService`. Mastery progresses through `MasteryTier` based on usage (`SkillUsageService`).
+  - **Combat**: `CombatService` handles the round lifecycle. `CombatActionService` handles submission through `TargetResolutionService` and `SkillExecutionService`. `CombatResolutionService` handles clash detection and resolution through `src/domain/combat/{roundClashes,clashTable}.js`. The d20 is rolled once per side at the request edge (`utils/dice.js`) and passed down.
+  - **Skills**: `SkillEngine` is a thin shell over `src/domain/skills/{output,ranks,outcome,skillCost}.js`. Rank comes from usage (`SkillUsageService.incrementSkillUsage(…, manager)`) and the rules from `getSkillRules()`.
+- **Transactions and locks**: a chat post, combat submit, `useSkill`, acquire skill and activate character each run in one transaction. Rows that get rewritten are locked through `utils/rowLocks.js`, in this order: users → characters by id → skill rows. `getActiveCharacter` is read-only.
 - `AuditLogger` calls (`utils/auditLogger.js`) are observable security and support events, so don't remove them. Plain `logger` calls are diagnostic only.
 
 ## Code & test rules (from `docs/dev_rulebook.md`)
 
-The repo is moving pure game rules out of services into `src/domain/`, which doesn't exist yet. `.unit-testing-review.md` lists which service methods count as domain code until that move happens.
+Pure game rules live in `src/domain/{chat,combat,skills,character}`. Services and controllers are shells around them. `.unit-testing-review.md` describes how the code is classified.
 
 - **Domain code** (formulas, clash table, rank thresholds, derived stats, level-up) has no I/O: no repositories, services, logger, Redis or fs, and no work at import time. Pass d20 rolls and timestamps in as arguments, never `Math.random()` or `Date.now()` inside a decision. No module-level mutable state. Each rule table has one source of truth.
 - **Controllers and services** follow validate → load → call domain → persist → notify, with no business `if`s. `await` every async call (a missing `await` on `resolveClash` once shipped). Each business operation runs in a single `AppDataSource.transaction(async (manager) => ...)`, and nested services take the `manager` as an argument.
 - Don't add test-only exports, flags or `NODE_ENV === 'test'` branches.
-- **Unit tests** (`tests/unit/`): no `vi.mock` for domain code (needing one means the code is in the wrong layer). Use hard-coded expected literals, AAA layout, small factory functions instead of shared `beforeEach` state, `it.each` across both sides of each threshold, and plain-English test names. The existing tests still mock `data-source.js`, which is a legacy pattern.
-- **Integration tests** (`tests/integration/`, planned): supertest against `createApp()` with real Postgres from docker-compose and schema from migrations. Mock only WebSocket pushes. Clean data at the start and run sequentially.
+- **Unit tests** (`tests/unit/`): no `vi.mock` for domain code (needing one means the code is in the wrong layer). Use hard-coded expected literals, AAA layout, small factory functions instead of shared `beforeEach` state, `it.each` across both sides of each threshold, and plain-English test names. No `vi.mock` remains in `tests/unit/`, so keep it that way.
+- **Integration tests** (`tests/integration/`, `vitest.integration.config.js`): supertest against `createApp()` with real Postgres from docker-compose on a `*_test` DB (`rpg_test`), schema from migrations. Log in for real (cookie + CSRF, `support/auth.js`) and build data with `support/factories.js`. The only mocks allowed are the d20 module (`src/utils/dice.js` → `support/dice.js`, which always rolls 11) and WebSocket pushes. Clean data at the start, run sequentially, and keep to at most 5 logins per file (the in-memory login rate limit).

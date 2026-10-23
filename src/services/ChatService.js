@@ -2,6 +2,7 @@ import { AppDataSource } from '../data-source.js';
 import { ChatMessage } from '../models/chatMessageModel.js';
 import { MoreThan } from 'typeorm';
 import { Character } from '../models/characterModel.js';
+import { CharacterSkill } from '../models/characterSkillModel.js';
 import { SkillUsageService } from './SkillUsageService.js';
 import { EngineLogService } from './EngineLogService.js';
 import { SessionParticipantService } from './SessionParticipantService.js';
@@ -11,9 +12,11 @@ import { EventService } from './EventService.js';
 import { TargetResolutionService } from './TargetResolutionService.js';
 import { SkillExecutionService } from './SkillExecutionService.js';
 import { HttpError } from '../utils/HttpError.js';
+import { rollD20 } from '../utils/dice.js';
 import staticDataCache from '../utils/staticDataCache.js';
 import { evaluatePost, chatRulesFromConstants } from '../domain/chat/messageRewards.js';
 import { planChatSkillUse } from '../domain/chat/skillUse.js';
+import { lockCharacter } from '../utils/rowLocks.js';
 
 export class ChatService {
   chatRepository = AppDataSource.getRepository(ChatMessage);
@@ -79,10 +82,8 @@ export class ChatService {
       this.characterRepository.findOne({ 
         where: { userId, isActive: true },
         relations: { race: true }, // Need race for skill engine calculations
-        select: {
-          id: true, name: true, userId: true, stats: true, raceId: true,
-          experience: true, rank: true, statPoints: true, skillPoints: true // read by checkLevelUp
-        }
+        // Experience and level-up use the row re-read under lock inside the post's transaction
+        select: { id: true, name: true, userId: true, stats: true, raceId: true }
       }),
       new Promise((_, reject) => 
         setTimeout(() => reject(new Error('Character lookup timeout')), 3000)
@@ -109,11 +110,49 @@ export class ChatService {
       ...chatRulesFromConstants(constants)
     });
 
+    // Checks, target plan and the single roll happen before anything is written
     const skillUse = fullSkill
-      ? await this.useSkill(locationId, character, fullSkill, skill.selectedTarget, post.grantsExperience)
+      ? await this.prepareSkillUse(locationId, character, fullSkill, skill.selectedTarget, post.grantsExperience)
       : null;
 
-    // Auto-create/manage session when user sends a valid message
+    const chatMessage = this.chatRepository.create({
+      location: { id: locationId },
+      userId,
+      characterId: character.id,
+      message,
+      senderName: character.name || 'Unknown',
+      username: character.name || 'Unknown',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      ...(skillUse && toChatSkillFields(fullSkill, skillUse.calculation)),
+    });
+
+    // One post is one commit: combat action, skill usage, experience/level-up and the message.
+    // If any step fails, none of them is saved.
+    const savedMessage = await AppDataSource.transaction(async (manager) => {
+      // The author's row is locked first (lock order in utils/rowLocks.js) and re-read, so the
+      // experience and level-up write the current values
+      const author = await lockCharacter(manager, character.id);
+
+      if (skillUse?.plan.submitToCombat) {
+        await this.submitToCombat(skillUse.roundId, character, fullSkill, skill.selectedTarget, skillUse.calculation, manager);
+      }
+
+      // Count the use here unless the combat submission already counted it
+      if (skillUse?.plan.incrementUsageInChat) {
+        await SkillUsageService.incrementSkillUsage(character.id, fullSkill.id, fullSkill.branchId, manager);
+      }
+
+      if (post.grantsExperience) {
+        author.experience = (author.experience ?? 0) + post.experienceDelta;
+        await manager.update(Character, author.id, { experience: author.experience });
+        await this.characterStatsService.checkLevelUp(author, manager);
+      }
+
+      return manager.getRepository(ChatMessage).save(chatMessage);
+    });
+
+    // After commit: best-effort side effects that must not undo the post
     if (post.isValidPost) {
       try {
         await this.sessionParticipantService.ensureActiveSessionForLocation(locationId, userId, character.name);
@@ -129,42 +168,6 @@ export class ChatService {
       }
     }
 
-    if (post.grantsExperience) {
-      character.experience = (character.experience ?? 0) + post.experienceDelta;
-      await this.characterStatsService.checkLevelUp(character);
-    }
-
-    const chatMessage = this.chatRepository.create({
-      location: { id: locationId },
-      userId,
-      characterId: character.id,
-      message,
-      senderName: character.name || 'Unknown',
-      username: character.name || 'Unknown',
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      ...(skillUse && toChatSkillFields(fullSkill, skillUse.calculation)),
-    });
-
-    // Use a transaction to ensure atomicity
-    const savedMessage = await AppDataSource.transaction(async (transactionalEntityManager) => {
-      const characterRepository = transactionalEntityManager.getRepository(Character);
-      const chatRepository = transactionalEntityManager.getRepository(ChatMessage);
-      
-      // Save the character (if experience was gained)
-      if (post.grantsExperience) {
-        await characterRepository.save(character);
-      }
-
-      // Count the use here unless the combat submission already counted it
-      if (skillUse?.plan.incrementUsageInChat) {
-        await SkillUsageService.incrementSkillUsage(character.id, fullSkill.id, fullSkill.branchId, transactionalEntityManager);
-      }
-      
-      // Save the chat message
-      return await chatRepository.save(chatMessage);
-    });
-
     if (skillUse?.plan.writeEngineLog) {
       try {
         await this.logChatSkillUse(locationId, character, fullSkill, skill.selectedTarget, skillUse.calculation);
@@ -177,13 +180,22 @@ export class ChatService {
   }
 
   /**
-   * Check that a skill may be used with this post, roll it once and submit it to combat when required.
+   * Check that a skill may be used with this post and roll it once. Writes nothing: the caller
+   * submits it to combat (when `plan.submitToCombat`) inside the post's transaction.
    * The single calculation is reused for the chat message, the combat action and the engine log.
-   * @returns {Promise<{ plan: Object, calculation: Object }>}
+   * @returns {Promise<{ plan: Object, calculation: Object, roundId: number|null }>}
    */
-  async useSkill(locationId, character, fullSkill, selectedTarget, grantsExperience) {
+  async prepareSkillUse(locationId, character, fullSkill, selectedTarget, grantsExperience) {
+    // Both the HTTP launch route and WS chat land here, so the ownership check covers both
+    const ownsSkill = await AppDataSource.getRepository(CharacterSkill).existsBy({
+      characterId: character.id,
+      skillId: fullSkill.id
+    });
+    if (!ownsSkill) {
+      throw new HttpError(403, 'Character does not have this skill');
+    }
+
     const { CombatService } = await import('./CombatService.js');
-    const { CombatActionService } = await import('./CombatActionService.js');
 
     const [activeRound, activeEvent] = await Promise.all([
       new CombatService().getActiveRound(locationId),
@@ -202,22 +214,21 @@ export class ChatService {
       throw new HttpError(400, plan.error);
     }
 
-    const calculation = await this.skillExecutionService.calculateSkillOutput(character, fullSkill);
+    const calculation = await this.skillExecutionService.calculateSkillOutput(character, fullSkill, { roll: rollD20() });
     if (!calculation.success) {
       throw new HttpError(500, `Skill calculation failed: ${calculation.error}`);
     }
 
-    if (plan.submitToCombat) {
-      await this.submitToCombat(new CombatActionService(), activeRound.id, character, fullSkill, selectedTarget, calculation);
-    }
-
-    return { plan, calculation };
+    return { plan, calculation, roundId: activeRound?.id ?? null };
   }
 
   /**
-   * Submit the chat skill to the active combat round. Failures reach the sender.
+   * Submit the chat skill to the active combat round, inside the post's transaction.
+   * Failures reach the sender and roll the whole post back.
    */
-  async submitToCombat(combatActionService, roundId, character, fullSkill, selectedTarget, calculation) {
+  async submitToCombat(roundId, character, fullSkill, selectedTarget, calculation, manager) {
+    const { CombatActionService } = await import('./CombatActionService.js');
+
     // The client sends the selected chat user, so the target is looked up by userId
     const targetResolution = await this.targetResolutionService.resolveSkillTarget(
       fullSkill,
@@ -231,12 +242,13 @@ export class ChatService {
     }
 
     try {
-      await combatActionService.submitAction(
+      await new CombatActionService().submitAction(
         roundId,
         character.id,
         fullSkill.id,
         targetResolution.targetId,
-        { finalOutput: calculation.finalOutput, rollQuality: calculation.rollQuality }
+        { finalOutput: calculation.finalOutput, rollQuality: calculation.rollQuality },
+        manager
       );
     } catch (error) {
       logger.error('Failed to submit action to combat:', { error: error.message });

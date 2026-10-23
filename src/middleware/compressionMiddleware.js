@@ -29,6 +29,7 @@ export const compressionMiddleware = (req, res, next) => {
   // Override res.json
   res.json = function(data) {
     const jsonString = JSON.stringify(data);
+    if (!this.get('Content-Type')) this.type('json');
     if (shouldCompress(req, res, jsonString)) {
       compressResponse(req, res, jsonString, originalSend.bind(this));
     } else {

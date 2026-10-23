@@ -34,7 +34,7 @@ router.post('/cache/reload', authenticateToken, isAdmin, async (req, res) => {
 });
 
 // Reload a single entity. Entity name must match the cache key prefix
-// (Race, Skill, SkillBranch, SkillType, StatDefinition, Rank, CombatConstant).
+// (Race, Skill, SkillBranch, SkillType, StatDefinition, Rank, CombatConstant, MasteryTier).
 router.post('/cache/reload/:entity', authenticateToken, isAdmin, async (req, res) => {
     const { entity } = req.params;
     const reloaders = {
@@ -44,7 +44,8 @@ router.post('/cache/reload/:entity', authenticateToken, isAdmin, async (req, res
         SkillType: () => staticDataCache.getSkillTypes(),
         StatDefinition: () => staticDataCache.getStatDefinitions(),
         Rank: () => staticDataCache.getRanks(),
-        CombatConstant: () => staticDataCache.getCombatConstants()
+        CombatConstant: () => staticDataCache.getCombatConstants(),
+        MasteryTier: () => staticDataCache.getMasteryTiers()
     };
 
     if (!reloaders[entity]) {

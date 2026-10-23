@@ -4,6 +4,7 @@ import { CombatResolutionService } from '../services/CombatResolutionService.js'
 import { SessionService } from '../services/SessionService.js';
 import { CharacterService } from '../services/CharacterService.js';
 import { EventService } from '../services/EventService.js';
+import { AppDataSource } from '../data-source.js';
 import { InputValidator } from '../utils/inputValidator.js';
 import { AuditLogger } from '../utils/auditLogger.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
@@ -85,12 +86,15 @@ export class CombatController {
             throw new HttpError(404, 'No active character found');
         }
 
-        const action = await combatActionService.submitAction(
+        // The action and its skill usage commit together
+        const action = await AppDataSource.transaction((manager) => combatActionService.submitAction(
             roundId,
             character.id,
             skillId,
-            targetId
-        );
+            targetId,
+            null,
+            manager
+        ));
 
         AuditLogger.logCombat(
             AuditLogger.EventTypes.COMBAT_ACTION,

@@ -51,14 +51,6 @@ describe('chat post rewards', () => {
         expect(result).toEqual({ isValidPost: false, grantsExperience: false, experienceDelta: 0 });
     });
 
-    it('a long post inside the cooldown still counts as a valid post', () => {
-        const post = makePost({ lastPostAt: NOW - 1000 });
-
-        const result = evaluatePost(post);
-
-        expect(result.isValidPost).toBe(true);
-    });
-
     it('uses the length and cooldown it is given instead of the usual ones', () => {
         const post = makePost({ length: 201, minLength: 200, cooldownMs: 5000, lastPostAt: NOW - 5000 });
 

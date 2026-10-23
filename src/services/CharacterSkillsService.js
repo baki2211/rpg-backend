@@ -4,13 +4,21 @@ import { Skill } from '../models/skillModel.js';
 import { CharacterSkill } from '../models/characterSkillModel.js';
 import { CharacterService } from './CharacterService.js';
 import { HttpError } from '../utils/HttpError.js';
+import { lockCharacter } from '../utils/rowLocks.js';
+import { planSkillAcquisition } from '../domain/skills/acquisition.js';
+
+// HTTP status for each reason planSkillAcquisition refuses
+const REFUSAL_STATUS = { already_known: 409, not_enough_points: 400 };
 
 export class CharacterSkillsService {
-  characterRepository = AppDataSource.getRepository(Character);
   skillRepository = AppDataSource.getRepository(Skill);
-  characterSkillRepository = AppDataSource.getRepository(CharacterSkill);
   characterService = new CharacterService();
 
+  /**
+   * Learn a skill with the active character's skill points. The points are spent and the
+   * character_skills row is added in one transaction, on the locked character row, so two
+   * concurrent requests can't spend the same points.
+   */
   async acquireSkill(skillId, userId) {
     const character = await this.characterService.getActiveCharacter(userId);
     if (!character) {
@@ -22,24 +30,18 @@ export class CharacterSkillsService {
       throw new HttpError(404, 'Skill not found');
     }
 
-    const hasSkill = character.skills?.some(s => s.id === skillId);
-    if (hasSkill) {
-      throw new HttpError(409, 'Character already has this skill');
-    }
+    await AppDataSource.transaction(async (manager) => {
+      const { skillPoints } = await lockCharacter(manager, character.id);
+      const alreadyKnown = await manager.getRepository(CharacterSkill).existsBy({ characterId: character.id, skillId: skill.id });
 
-    if (character.skillPoints < skill.skillPointCost) {
-      throw new HttpError(400, 'Not enough skill points');
-    }
+      const plan = planSkillAcquisition({ skillPoints, skillPointCost: skill.skillPointCost, alreadyKnown });
+      if (!plan.allowed) {
+        throw new HttpError(REFUSAL_STATUS[plan.reason], plan.error);
+      }
 
-    await this.characterSkillRepository.save({
-      characterId: character.id,
-      skillId: skill.id,
+      await manager.insert(CharacterSkill, { characterId: character.id, skillId: skill.id });
+      await manager.update(Character, { id: character.id }, { skillPoints: plan.remainingSkillPoints });
     });
-
-    await this.characterRepository.update(
-      { id: character.id },
-      { skillPoints: character.skillPoints - skill.skillPointCost }
-    );
 
     return this.characterService.getActiveCharacter(userId);
   }

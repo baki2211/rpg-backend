@@ -4,10 +4,18 @@ import { User } from '../models/userModel.js';
 import { Race } from '../models/raceModel.js';
 import { CharacterStatsService } from './CharacterStatsService.js';
 import { HttpError } from '../utils/HttpError.js';
+import { PRIMARY_STAT_POINT_POOL, exceedsPrimaryStatPool } from '../domain/character/statPoints.js';
 import { logger } from '../utils/logger.js';
 import { Not } from 'typeorm';
+import { lockUser } from '../utils/rowLocks.js';
 
-const PRIMARY_STAT_POINT_POOL = 45;
+// Fields a player may set when creating a character. Progression (rank, experience, skillPoints,
+// statPoints), ownership (userId, createdBy) and isNPC are server-controlled.
+const CLIENT_CREATABLE_FIELDS = ['name', 'surname', 'age', 'gender', 'background'];
+
+const pickClientFields = (data) => Object.fromEntries(
+  CLIENT_CREATABLE_FIELDS.filter(field => data[field] !== undefined).map(field => [field, data[field]])
+);
 
 export class CharacterService {
   characterRepository = AppDataSource.getRepository(Character);
@@ -15,7 +23,8 @@ export class CharacterService {
   statsService = new CharacterStatsService();
 
   async createCharacter(data, userId, imageUrl) {
-    const user = await this.userRepository.findOneBy({ id: data.user?.id || userId });
+    // The owner is always the authenticated user, never a user id from the request body
+    const user = await this.userRepository.findOneBy({ id: userId });
     if (!user) {
       throw new HttpError(404, 'User not found');
     }
@@ -35,16 +44,15 @@ export class CharacterService {
     Object.assign(initializedStats, derived);
 
     const totalPrimaryStatPoints = await this.statsService.calculateStatPointsUsed(initializedStats);
-    if (totalPrimaryStatPoints > PRIMARY_STAT_POINT_POOL) {
+    if (exceedsPrimaryStatPool(totalPrimaryStatPoints)) {
       throw new HttpError(400, `Total primary stat points (${totalPrimaryStatPoints}) exceed the allowed ${PRIMARY_STAT_POINT_POOL} points.`);
     }
 
-    if (data.isActive) {
-      await this.characterRepository.update({ user }, { isActive: false });
-    }
+    const activate = data.isActive === true;
 
     const newCharacter = this.characterRepository.create({
-      ...data,
+      ...pickClientFields(data),
+      isActive: activate,
       stats: initializedStats,
       user,
       userId: user.id,
@@ -58,7 +66,14 @@ export class CharacterService {
       stats: initializedStats
     });
 
-    return this.characterRepository.save(newCharacter);
+    // Deactivating the others and inserting the new active character commit together
+    return AppDataSource.transaction(async (manager) => {
+      if (activate) {
+        await lockUser(manager, user.id);
+        await manager.update(Character, { userId: user.id }, { isActive: false });
+      }
+      return manager.getRepository(Character).save(newCharacter);
+    });
   }
 
   async getCharactersByUser(userId) {
@@ -114,30 +129,29 @@ export class CharacterService {
     return this.getCharacterById(characterId, userId);
   }
 
+  /**
+   * Make one of the user's characters the active one. Every other character of the user is
+   * deactivated and any NPC they control is released, in the same transaction, so the user
+   * always ends up with exactly one active character.
+   */
   async activateCharacter(characterId, userId) {
-    const character = await this.characterRepository.findOne({
-      where: { id: characterId, user: { id: userId } }
+    const character = await AppDataSource.transaction(async (manager) => {
+      // Serializes concurrent activations by the same user
+      await lockUser(manager, userId);
+
+      const character = await manager.getRepository(Character).findOne({
+        where: { id: characterId, user: { id: userId } }
+      });
+
+      if (!character) {
+        throw new HttpError(404, 'Character not found or you do not have permission to activate this character');
+      }
+
+      await manager.update(Character, { user: { id: userId }, id: Not(characterId) }, { isActive: false });
+      await manager.update(Character, { userId, isNPC: true }, { isActive: false, userId: null });
+      await manager.update(Character, { id: characterId }, { isActive: true });
+      return character;
     });
-
-    if (!character) {
-      throw new HttpError(404, 'Character not found or you do not have permission to activate this character');
-    }
-
-    await Promise.all([
-      this.characterRepository.update(
-        { user: { id: userId }, id: Not(characterId) },
-        { isActive: false }
-      ),
-      this.characterRepository.update(
-        { userId, isNPC: true },
-        { isActive: false, userId: null }
-      )
-    ]);
-
-    await this.characterRepository.update(
-      { id: characterId },
-      { isActive: true }
-    );
 
     logger.character(`User ${userId} activated character ${character.name} (ID: ${characterId})`);
   }
@@ -195,49 +209,22 @@ export class CharacterService {
     });
   }
 
+  /**
+   * The character the user is playing: their active character or the NPC they control.
+   * Read-only. Activation (activateCharacter, NPCService.activateNPC, createCharacter) keeps a
+   * single active row; if older data still has several, the most recently updated one is returned.
+   */
   async getActiveCharacter(userId) {
-    await this.fixActivationConflicts(userId);
-
     const character = await this.characterRepository.findOne({
       where: [
         { user: { id: userId }, isActive: true },
         { userId, isNPC: true, isActive: true }
       ],
-      relations: { characterSkills: { skill: true }, race: true }
+      relations: { characterSkills: { skill: true }, race: true },
+      order: { updatedAt: 'DESC', id: 'DESC' }
     });
     if (character) character.skills = character.characterSkills?.map(cs => cs.skill) ?? [];
     return character;
-  }
-
-  async fixActivationConflicts(userId) {
-    const activeCharacters = await this.characterRepository.find({
-      where: [
-        { user: { id: userId }, isActive: true },
-        { userId, isNPC: true, isActive: true }
-      ]
-    });
-
-    if (activeCharacters.length > 1) {
-      logger.character(`Found ${activeCharacters.length} active characters for user ${userId}, fixing conflicts`);
-
-      activeCharacters.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
-
-      const toKeep = activeCharacters[0];
-      const toDeactivate = activeCharacters.slice(1);
-
-      for (const character of toDeactivate) {
-        await this.characterRepository.update(
-          { id: character.id },
-          {
-            isActive: false,
-            userId: character.isNPC ? null : character.userId
-          }
-        );
-        logger.character(`Deactivated conflicting character: ${character.name} (ID: ${character.id})`);
-      }
-
-      logger.character(`Kept active character: ${toKeep.name} (ID: ${toKeep.id})`);
-    }
   }
 
   async getUserCharacterStatus(userId) {

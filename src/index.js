@@ -8,6 +8,7 @@ import { setupWebSocketServer } from './websockets/ChatWebSocket.js';
 import { setupPresenceWebSocketServer } from './websockets/PresenceWebSocket.js';
 import { createUpgradeHandler } from './websockets/upgradeHandler.js';
 import { setWebSocketServers } from './routes/healthRoutes.js';
+import { startPresenceCleanup } from './routes/presenceRoutes.js';
 import memoryManager from './utils/memoryManager.js';
 import { logger } from './utils/logger.js';
 import { startServer, installShutdownHandlers } from './lifecycle.js';
@@ -29,6 +30,7 @@ const presenceWS = setupPresenceWebSocketServer();
 chatWS.setPresenceBroadcaster(presenceWS.broadcastOnlineUsers);
 setWebSocketServers(presenceWS, chatWS);
 memoryManager.setWebSocketServers(presenceWS, chatWS);
+startPresenceCleanup();
 
 server.on('upgrade', createUpgradeHandler({ chatWS, jwtSecret: JWT_SECRET }));
 

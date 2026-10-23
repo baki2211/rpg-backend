@@ -170,47 +170,6 @@ export class TargetResolutionService {
     }
 
     /**
-     * Batch resolve multiple targets for efficiency
-     * @param {Array} targetRequests - Array of {skill, caster, targetIdentifier} objects
-     * @param {Object} options - Resolution options
-     * @returns {Promise<Array>} Array of resolved target results
-     */
-    async batchResolveTargets(targetRequests, options = {}) {
-        const results = await Promise.all(
-            targetRequests.map(request => 
-                this.resolveSkillTarget(request.skill, request.caster, request.targetIdentifier, options)
-            )
-        );
-
-        return results;
-    }
-
-    /**
-     * Get all active characters with optional filtering
-     * @param {Object} filters - Optional filters
-     * @param {number} filters.locationId - Filter by location
-     * @param {number} filters.excludeUserId - Exclude specific user
-     * @returns {Promise<Array>} Array of active characters
-     */
-    async getAvailableTargets(filters = {}) {
-        const whereCondition = { isActive: true };
-        
-        if (filters.locationId) {
-            whereCondition.locationId = filters.locationId;
-        }
-
-        if (filters.excludeUserId) {
-            whereCondition.userId = { $ne: filters.excludeUserId };
-        }
-
-        return await this.characterRepository.find({
-            where: whereCondition,
-            select: { id: true, name: true, surname: true, userId: true, locationId: true },
-            order: { name: 'ASC' }
-        });
-    }
-
-    /**
      * Validate if a character can target another character
      * @param {Character} caster - Character using the skill
      * @param {Character} target - Target character

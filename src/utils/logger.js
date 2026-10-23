@@ -14,15 +14,20 @@ class Logger {
     // Only log WARN and above to console in production
     this.consoleLevel = process.env.NODE_ENV === 'production' ? this.logLevels.WARN : this.logLevels.INFO;
     
-    // Create logs directory if it doesn't exist
+    // Log files (ENABLE_FILE_LOGGING=true). The directory is created and rotated on the first
+    // file write, not when this module is imported.
     this.logDir = path.join(process.cwd(), 'logs');
+    this.maxLogFiles = 7; // Keep 7 days of logs
+    this.logDirReady = false;
+  }
+
+  ensureLogDir() {
+    if (this.logDirReady) return;
     if (!fs.existsSync(this.logDir)) {
       fs.mkdirSync(this.logDir, { recursive: true });
     }
-
-    // Set up log rotation
-    this.maxLogFiles = 7; // Keep 7 days of logs
     this.rotateLogs();
+    this.logDirReady = true;
   }
 
   rotateLogs() {
@@ -63,6 +68,7 @@ class Logger {
     const formattedMessage = this.formatMessage(level, message, context) + '\n';
     
     try {
+      this.ensureLogDir();
       fs.appendFileSync(logFile, formattedMessage);
     } catch (error) {
       console.error('Error writing to log file:', error);

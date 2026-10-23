@@ -3,6 +3,7 @@ import { AppDataSource } from '../data-source.js';
 import { Location } from '../models/locationModel.js';
 import { ChatService } from '../services/ChatService.js';
 import { logger } from '../utils/logger.js';
+import staticDataCache from '../utils/staticDataCache.js';
 import { HttpError } from '../utils/HttpError.js';
 
 const chatErrorReply = (error) => {
@@ -132,6 +133,7 @@ export const setupWebSocketServer = () => {
     ws.userId = userId;
     ws.locationId = locationId;
     ws.username = username;
+    ws.role = req.user.role; // from the JWT verified in upgradeHandler; gates master-only pushes
     ws.lastActivity = new Date();
     ws.messageCount = 0;
     ws.isAlive = true; // For heartbeat monitoring
@@ -237,10 +239,10 @@ export const setupWebSocketServer = () => {
         }
 
         // Generate skill engine log for masters if skill was used (async, non-blocking)
-        if (parsedMessage.skill && savedMessage.skillId) {
-          const skillLogPayload = { ...parsedMessage, userId: ws.userId, username: ws.username };
+        if (savedMessage.skillId) {
+          const selectedTarget = parsedMessage.skill?.selectedTarget;
           setImmediate(() => {
-            generateSkillEngineLog(skillLogPayload, locationId);
+            generateSkillEngineLog(savedMessage, selectedTarget, locationId);
           });
         }
 
@@ -339,26 +341,31 @@ export const setupWebSocketServer = () => {
     }
   };
 
-  // Helper function to generate skill engine logs for masters
-  const generateSkillEngineLog = (messageData, locationId) => {
+  // Helper function to generate skill engine logs for masters.
+  // Skill fields come from the saved message; the client's selectedTarget is only used as a display label.
+  const generateSkillEngineLog = async (savedMessage, selectedTarget, locationId) => {
     try {
-      // Create skill engine log
+      // The message does not store the skill's target type, so read it from the skill cache
+      const skill = await staticDataCache.getSkillById(savedMessage.skillId);
+      const skillTarget = skill?.target;
+
       const skillEngineLog = {
         id: Date.now().toString(),
         timestamp: new Date().toISOString(),
         type: 'skill_use',
-        actor: messageData.username,
-        target: messageData.skill.selectedTarget?.characterName || 
-                messageData.skill.selectedTarget?.username || 
-                (messageData.skill.target === 'self' ? 'Self' : 'Area'),
-        skill: messageData.skill.name,
+        locationId,
+        actor: savedMessage.username,
+        target: selectedTarget?.characterName ||
+                selectedTarget?.username ||
+                (skillTarget === 'self' ? 'Self' : 'Area'),
+        skill: savedMessage.skillName,
         effects: [
-          `Skill: ${messageData.skill.name}`,
-          `Branch: ${messageData.skill.branch?.name || messageData.skill.branch}`,
-          `Type: ${messageData.skill.type?.name || messageData.skill.type}`,
-          `Target: ${messageData.skill.target}`
+          `Skill: ${savedMessage.skillName}`,
+          `Branch: ${savedMessage.skillBranch}`,
+          `Type: ${savedMessage.skillType}`,
+          `Target: ${skillTarget}`
         ],
-        details: `${messageData.username} used ${messageData.skill.name} (${messageData.skill.target} target)`
+        details: `${savedMessage.username} used ${savedMessage.skillName} (${skillTarget} target)`
       };
 
       logger.skill('Generated skill engine log:', { 
@@ -378,6 +385,7 @@ export const setupWebSocketServer = () => {
   };
 
   // Function to broadcast skill engine logs to masters
+  const SKILL_LOG_RECIPIENT_ROLES = ['master', 'admin'];
   const broadcastSkillEngineLogToMasters = (skillEngineLog) => {
     try {
       const skillLogMessage = JSON.stringify({
@@ -389,13 +397,11 @@ export const setupWebSocketServer = () => {
       let masterCount = 0;
       let failedCount = 0;
       
-      // Get all connections across all locations
-      for (const [locId, connections] of locationConnections.entries()) {
+      // Engine logs carry rolls and outputs, so only master/admin sockets receive them
+      for (const connections of locationConnections.values()) {
         for (const ws of connections) {
-          if (ws.readyState === WebSocket.OPEN) {
+          if (ws.readyState === WebSocket.OPEN && SKILL_LOG_RECIPIENT_ROLES.includes(ws.role)) {
             try {
-              // Note: We can't easily determine master status from WebSocket
-              // This would need to be enhanced with user role tracking
               ws.send(skillLogMessage);
               masterCount++;
             } catch (error) {

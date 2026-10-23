@@ -6,6 +6,8 @@ import { SkillType } from '../models/skillTypeModel.js';
 import { StatDefinition } from '../models/statDefinitionModel.js';
 import { Rank } from '../models/rankModel.js';
 import { CombatConstant } from '../models/combatConstantModel.js';
+import { MasteryTier } from '../models/masteryTierModel.js';
+import { skillRulesFromRows } from '../domain/skills/rules.js';
 import { logger } from './logger.js';
 
 class StaticDataCache {
@@ -238,6 +240,32 @@ class StaticDataCache {
   }
 
   /**
+   * Get active mastery tiers (the skill rank ladder) with caching
+   */
+  async getMasteryTiers() {
+    const key = this.getCacheKey('MasteryTier', { isActive: true });
+    let tiers = this.get(key);
+
+    if (!tiers) {
+      const tierRepo = AppDataSource.getRepository(MasteryTier);
+      tiers = await tierRepo.find({ where: { isActive: true }, order: { usesRequired: 'ASC' } });
+      this.set(key, tiers, 15 * 60 * 1000); // 15 minutes, like combat constants
+      logger.debug('Mastery tiers loaded from database and cached');
+    }
+
+    return tiers;
+  }
+
+  /**
+   * Skill rank, branch rank and outcome tables built from the cached rows,
+   * with the code defaults for anything missing or invalid (src/domain/skills/rules.js)
+   */
+  async getSkillRules() {
+    const [masteryTiers, combatConstants] = await Promise.all([this.getMasteryTiers(), this.getCombatConstants()]);
+    return skillRulesFromRows({ masteryTiers, combatConstants });
+  }
+
+  /**
    * Preload all static data into cache
    */
   async preloadCache() {
@@ -256,7 +284,8 @@ class StaticDataCache {
         this.getSkillTypes(),
         this.getStatDefinitions(),
         this.getRanks(),
-        this.getCombatConstants()
+        this.getCombatConstants(),
+        this.getMasteryTiers()
       ]);
       
       const loadTime = Date.now() - startTime;
@@ -264,7 +293,7 @@ class StaticDataCache {
       
       logger.info(`Static data cache preloaded in ${loadTime}ms`, {
         cacheSize: this.cache.size,
-        entities: ['Race', 'Skill', 'SkillBranch', 'SkillType', 'StatDefinition', 'Rank', 'CombatConstant']
+        entities: ['Race', 'Skill', 'SkillBranch', 'SkillType', 'StatDefinition', 'Rank', 'CombatConstant', 'MasteryTier']
       });
     } catch (error) {
       logger.error('Failed to preload static data cache:', { error: error.message });

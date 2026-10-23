@@ -1,10 +1,10 @@
 import { AppDataSource } from '../data-source.js';
 import { CombatRound } from '../models/combatRoundModel.js';
 import { CombatAction } from '../models/combatActionModel.js';
-import { PvPResolutionService } from './PvPResolutionService.js';
 import { EngineLogService } from './EngineLogService.js';
 import { logger } from '../utils/logger.js';
 import { HttpError } from '../utils/HttpError.js';
+import { identifyClashes, resolveActionClash, summarizeIndependentAction } from '../domain/combat/roundClashes.js';
 
 export class CombatResolutionService {
     constructor() {
@@ -47,7 +47,7 @@ export class CombatResolutionService {
                 throw new HttpError(400, 'No actions to resolve');
             }
 
-            const { clashes, independentActions } = this.identifyClashes(actions);
+            const { clashes, independentActions } = identifyClashes(actions);
 
             const resolutionResults = {
                 roundId,
@@ -66,7 +66,7 @@ export class CombatResolutionService {
             }
 
             for (const independent of independentActions) {
-                resolutionResults.independentActions.push(this.processIndependentAction(independent));
+                resolutionResults.independentActions.push(summarizeIndependentAction(independent));
             }
 
             await Promise.all([
@@ -109,196 +109,13 @@ export class CombatResolutionService {
     }
 
     /**
-     * Identify which actions clash with each other using optimized O(n) algorithm
-     * @param {Array} actions - Array of combat actions
-     * @returns {Object} Object with clashes and independent actions
-     */
-    identifyClashes(actions) {
-        const clashes = [];
-        const independentActions = [];
-        const processedActions = new Set();
-
-        const actionsByCharacter = new Map();
-        const actionsByTarget = new Map();
-        const actionsByType = new Map();
-
-        actions.forEach(action => {
-            if (!actionsByCharacter.has(action.characterId)) {
-                actionsByCharacter.set(action.characterId, []);
-            }
-            actionsByCharacter.get(action.characterId).push(action);
-
-            if (action.targetId) {
-                if (!actionsByTarget.has(action.targetId)) {
-                    actionsByTarget.set(action.targetId, []);
-                }
-                actionsByTarget.get(action.targetId).push(action);
-            }
-
-            const skillType = PvPResolutionService.getSkillTypeCategory(action.skillData.type);
-            if (!actionsByType.has(skillType)) {
-                actionsByType.set(skillType, []);
-            }
-            actionsByType.get(skillType).push(action);
-        });
-
-        actions.forEach(action1 => {
-            if (processedActions.has(action1.id)) return;
-
-            let clashFound = false;
-            const potentialClashActions = new Set();
-
-            const actionsTargetingChar = actionsByTarget.get(action1.characterId) || [];
-            actionsTargetingChar.forEach(a => potentialClashActions.add(a));
-
-            if (action1.targetId) {
-                const actionsFromTarget = actionsByCharacter.get(action1.targetId) || [];
-                actionsFromTarget.forEach(a => potentialClashActions.add(a));
-            }
-
-            const action1Type = PvPResolutionService.getSkillTypeCategory(action1.skillData.type);
-            if (action1Type === 'Attack' && action1.targetId) {
-                const defenseActions = actionsByType.get('Defence') || [];
-                defenseActions.forEach(defense => {
-                    if (defense.targetId === action1.targetId) {
-                        potentialClashActions.add(defense);
-                    }
-                });
-            }
-
-            for (const action2 of potentialClashActions) {
-                if (processedActions.has(action2.id) || action1.id === action2.id) continue;
-
-                if (this.actionsClash(action1, action2)) {
-                    clashes.push([action1, action2]);
-                    processedActions.add(action1.id);
-                    processedActions.add(action2.id);
-                    clashFound = true;
-                    break;
-                }
-            }
-
-            if (!clashFound) {
-                independentActions.push(action1);
-                processedActions.add(action1.id);
-            }
-        });
-
-        return { clashes, independentActions };
-    }
-
-    /**
-     * Determine if two actions clash
-     * @param {Object} action1 - First combat action
-     * @param {Object} action2 - Second combat action
-     * @returns {boolean} True if actions clash
-     */
-    actionsClash(action1, action2) {
-        const type1 = PvPResolutionService.getSkillTypeCategory(action1.skillData.type);
-        const type2 = PvPResolutionService.getSkillTypeCategory(action2.skillData.type);
-
-        const action1TargetsAction2 = action1.targetId === action2.characterId;
-        const action2TargetsAction1 = action2.targetId === action1.characterId;
-        const targetsEachOther = action1TargetsAction2 && action2TargetsAction1;
-
-        if (type1 === 'Attack' && type2 === 'Attack' && targetsEachOther) {
-            return true;
-        }
-
-        if ((type1 === 'Attack' && type2 === 'Defence') ||
-            (type1 === 'Defence' && type2 === 'Attack')) {
-
-            const attackAction = type1 === 'Attack' ? action1 : action2;
-            const defenceAction = type1 === 'Defence' ? action1 : action2;
-
-            const attackTargetsDefended = attackAction.targetId === defenceAction.targetId;
-            const defenceTargetsAttacker = defenceAction.targetId === attackAction.characterId;
-            const attackTargetsDefender = attackAction.targetId === defenceAction.characterId;
-            const isSelfDefense = defenceAction.targetId === defenceAction.characterId;
-            const attacksDefensiveTarget = attackAction.targetId === defenceAction.characterId;
-
-            if (targetsEachOther || attackTargetsDefended || defenceTargetsAttacker ||
-                attackTargetsDefender || (isSelfDefense && attacksDefensiveTarget)) {
-                return true;
-            }
-        }
-
-        if ((type1 === 'Attack' && type2 === 'Counter') ||
-            (type1 === 'Counter' && type2 === 'Attack')) {
-            return true;
-        }
-
-        if ((type1 === 'Attack' && (type2 === 'Buff' || type2 === 'Heal')) ||
-            ((type1 === 'Buff' || type1 === 'Heal') && type2 === 'Attack')) {
-            return true;
-        }
-
-        if ((type1 === 'Attack' && type2 === 'Debuff') ||
-            (type1 === 'Debuff' && type2 === 'Attack')) {
-            return true;
-        }
-
-        if ((type1 === 'Attack' && type2 === 'Crafting') ||
-            (type1 === 'Crafting' && type2 === 'Attack')) {
-            return true;
-        }
-
-        return false;
-    }
-
-    /**
-     * Resolve a clash between two actions
-     * @param {Array} clashActions - Array of two clashing actions
+     * Record the clash result on both actions (rule in src/domain/combat/roundClashes.js)
+     * @param {[Object, Object]} actions - The two clashing actions
      * @param {Object} manager - Transaction manager
      * @returns {Promise<Object>} Clash resolution result
      */
-    async resolveClash(clashActions, manager) {
-        const [action1, action2] = clashActions;
-
-        const skillObj1 = {
-            id: action1.skillData.id,
-            name: action1.skillData.name,
-            type: { name: action1.skillData.type },
-            target: action1.skillData.target
-        };
-
-        const skillObj2 = {
-            id: action2.skillData.id,
-            name: action2.skillData.name,
-            type: { name: action2.skillData.type },
-            target: action2.skillData.target
-        };
-
-        const clashResult = PvPResolutionService.determineClash(
-            skillObj1, skillObj2, action1.finalOutput, action2.finalOutput
-        );
-
-        const result = {
-            isClash: clashResult.isClash,
-            participants: [
-                {
-                    character: action1.characterData.name,
-                    skill: action1.skillData.name,
-                    skillType: action1.skillData.type,
-                    target: action1.targetData?.name || 'Self',
-                    finalOutput: action1.finalOutput,
-                    rollQuality: action1.rollQuality
-                },
-                {
-                    character: action2.characterData.name,
-                    skill: action2.skillData.name,
-                    skillType: action2.skillData.type,
-                    target: action2.targetData?.name || 'Self',
-                    finalOutput: action2.finalOutput,
-                    rollQuality: action2.rollQuality
-                }
-            ],
-            winner: clashResult.winner,
-            damage: clashResult.damage,
-            effects: clashResult.effects,
-            resolution: clashResult.resolution,
-            details: clashResult.resolution || `${action1.characterData.name} (${action1.skillData.name}: ${action1.finalOutput}) vs ${action2.characterData.name} (${action2.skillData.name}: ${action2.finalOutput})`
-        };
+    async resolveClash([action1, action2], manager) {
+        const result = resolveActionClash(action1, action2);
 
         const actionRepo = manager.getRepository(CombatAction);
         await Promise.all([
@@ -307,24 +124,6 @@ export class CombatResolutionService {
         ]);
 
         return result;
-    }
-
-    /**
-     * Process an independent (non-clashing) action
-     * @param {Object} action - Combat action
-     * @returns {Object} Independent action result
-     */
-    processIndependentAction(action) {
-        return {
-            isClash: false,
-            character: action.characterData.name,
-            skill: action.skillData.name,
-            skillType: action.skillData.type,
-            target: action.targetData?.name || (action.skillData.target === 'self' ? 'Self' : 'Area'),
-            finalOutput: action.finalOutput,
-            rollQuality: action.rollQuality,
-            details: `${action.characterData.name} used ${action.skillData.name} on ${action.targetData?.name || action.skillData.target} (Output: ${action.finalOutput})`
-        };
     }
 
     /**

@@ -5,6 +5,12 @@ import { HttpError } from '../utils/HttpError.js';
 
 const chatService = new ChatService();
 
+// Ids must be positive integers; anything else is a 400 (TypeORM 1.0 throws on undefined in `where`)
+const parseId = (raw) => {
+  const id = Number(raw);
+  return raw != null && raw !== '' && Number.isInteger(id) && id > 0 ? id : null;
+};
+
 export class ChatController {
   static getMessages = asyncHandler(async (req, res) => {
     const { locationId } = req.params;
@@ -12,32 +18,29 @@ export class ChatController {
   });
 
   static addMessage = asyncHandler(async (req, res) => {
-    const { locationId } = req.params;
-    const { userId, username, message } = req.body;
-    res.status(201).json(await chatService.addMessage(Number(locationId), userId, username, message));
+    const locationId = parseId(req.params.locationId);
+    const { message } = req.body;
+    if (!locationId) {
+      throw new HttpError(400, 'Location ID is required');
+    }
+    if (typeof message !== 'string' || message.length === 0) {
+      throw new HttpError(400, 'Message is required');
+    }
+    // The author is the logged-in user, never a userId from the body
+    res.status(201).json(await chatService.addMessage(locationId, req.user.id, req.user.username, message));
   });
 
   static launchSkill = asyncHandler(async (req, res) => {
     const userId = req.user.id;
-    const { skillId } = req.params;
-    const { locationId, message } = req.body;
+    const skillId = parseId(req.params.skillId);
+    const locationId = parseId(req.body.locationId);
+    const { message } = req.body;
 
     if (!locationId) {
       throw new HttpError(400, 'Location ID is required');
     }
-
-    const character = await AppDataSource.getRepository('Character').findOne({
-      where: { user: { id: userId }, isActive: true },
-      relations: { characterSkills: true }
-    });
-
-    if (!character) {
-      throw new HttpError(404, 'No active character found');
-    }
-
-    const hasSkill = character.characterSkills.some(cs => cs.skillId === Number(skillId));
-    if (!hasSkill) {
-      throw new HttpError(403, 'Character does not have this skill');
+    if (!skillId) {
+      throw new HttpError(400, 'Invalid skill ID provided');
     }
 
     const skill = await AppDataSource.getRepository('Skill').findOne({
@@ -49,10 +52,11 @@ export class ChatController {
       throw new HttpError(404, 'Skill not found');
     }
 
+    // ChatService.addMessage loads the active character and checks it owns the skill (403 otherwise)
     const savedMessage = await chatService.addMessage(
-      Number(locationId),
+      locationId,
       userId,
-      character.name,
+      req.user.username,
       message || `*launches ${skill.name}*`,
       {
         id: skill.id,

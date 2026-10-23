@@ -2,10 +2,11 @@
 const EXPERIENCE_PER_POST = 0.5;
 
 // Fallbacks used when the CombatConstant rows are missing or not numeric.
-const DEFAULT_CHAT_RULES = { minLength: 800, cooldownMs: 30000 };
+// Also the seed values of the chat_system rows (CombatConstantService.initializeDefaultConstants).
+export const DEFAULT_CHAT_RULES = Object.freeze({ minLength: 800, cooldownMs: 30000 });
 
 // CombatConstant keys that tune chat rewards.
-const CHAT_RULE_KEYS = { minLength: 'CHAT_POST_MIN_LENGTH', cooldownMs: 'CHAT_XP_COOLDOWN_MS' };
+export const CHAT_RULE_KEYS = Object.freeze({ minLength: 'CHAT_POST_MIN_LENGTH', cooldownMs: 'CHAT_XP_COOLDOWN_MS' });
 
 /**
  * Read the chat reward tunables from CombatConstant rows, falling back to the defaults.

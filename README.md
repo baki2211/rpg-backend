@@ -159,12 +159,13 @@ npm run migration:revert
 
 ## Testing
 
-Tests use [Vitest](https://vitest.dev/) (`vitest.config.js`, files under `tests/**/*.test.js`). Only unit tests exist today (`tests/unit/`); there are no integration or route tests yet. CI runs `npm test` on every push and PR (`.github/workflows/pr-tests.yml`).
+Tests use [Vitest](https://vitest.dev/). Unit tests (`tests/unit/`, `vitest.config.js`) cover the pure game rules in `src/domain/` and need no database. Integration tests (`tests/integration/`, `vitest.integration.config.js`) use supertest against real Postgres, on a dedicated `rpg_test` database created and migrated automatically. CI runs `npm test` (unit) on every push and PR (`.github/workflows/pr-tests.yml`).
 
 ```bash
-npm test                                   # all tests
-npm run test:unit                          # tests/unit only
-npx vitest run tests/unit/SkillEngine.test.js
+npm test                                   # unit tests
+npm run test:integration                   # integration (docker compose up -d db first)
+npm run test:all                           # both
+npx vitest run tests/unit/domain/clashTable.test.js
 npm run test:watch
 npm run test:coverage
 ```
@@ -199,8 +200,10 @@ Ensure the `.env` file is correctly configured for the production environment. S
 | `npm run migration:run`       | Apply migrations to the database                       |
 | `npm run migration:revert`    | Revert the last migration                              |
 | `npm run migration:generate -- <path>` | Generate a migration (see Database Management) |
-| `npm test`                    | Run the Vitest suite                                   |
+| `npm test`                    | Run unit tests                                         |
 | `npm run test:unit`           | Run unit tests only                                    |
+| `npm run test:integration`    | Run integration tests against `rpg_test`               |
+| `npm run test:all`            | Unit, then integration                                 |
 | `npm run test:watch`          | Vitest in watch mode                                   |
 | `npm run test:coverage`       | Run tests with v8 coverage                             |
 

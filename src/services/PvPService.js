@@ -3,7 +3,9 @@ import { Skill } from '../models/skillModel.js';
 import { CharacterService } from './CharacterService.js';
 import { PvPResolutionService } from './PvPResolutionService.js';
 import { SkillEngine } from './SkillEngine.js';
+import { SkillUsageService } from './SkillUsageService.js';
 import { HttpError } from '../utils/HttpError.js';
+import { rollD20 } from '../utils/dice.js';
 
 export class PvPService {
     characterService = new CharacterService();
@@ -31,7 +33,17 @@ export class PvPService {
             throw new HttpError(400, 'Defender does not have the specified skill');
         }
 
-        return PvPResolutionService.resolvePvPEncounter(attacker, attackerSkill, defender, defenderSkill);
+        const result = await PvPResolutionService.resolvePvPEncounter(
+            attacker, attackerSkill, defender, defenderSkill, { attacker: rollD20(), defender: rollD20() }
+        );
+
+        // An encounter is one use of each skill, recorded in a single transaction
+        await AppDataSource.transaction(async (manager) => {
+            await SkillUsageService.incrementSkillUsage(attacker.id, attackerSkill.id, attackerSkill.branchId, manager);
+            await SkillUsageService.incrementSkillUsage(defender.id, defenderSkill.id, defenderSkill.branchId, manager);
+        });
+
+        return result;
     }
 
     async getCharacterPvPSkills(characterId, userId) {
@@ -54,8 +66,7 @@ export class PvPService {
             throw new HttpError(400, 'Character does not have this skill');
         }
 
-        const skillEngine = new SkillEngine(character, skill);
-        const estimatedOutput = await skillEngine.computeFinalOutput();
+        const { finalOutput: estimatedOutput } = await new SkillEngine(character, skill).computeFinalOutput(rollD20());
 
         return {
             character: character.name,

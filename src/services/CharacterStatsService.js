@@ -2,10 +2,11 @@ import { AppDataSource } from '../data-source.js';
 import { Character } from '../models/characterModel.js';
 import { StatDefinitionService } from './StatDefinitionService.js';
 import { RankService } from './RankService.js';
+import { Rank } from '../models/rankModel.js';
+import { lockCharacter } from '../utils/rowLocks.js';
 import { HttpError } from '../utils/HttpError.js';
-
-const PRIMARY_STAT_POINT_POOL = 45;
-const DEFAULT_STAT_MAX = 100;
+import { PRIMARY_STAT_POINT_POOL, primaryStatPointsUsed, exceedsPrimaryStatPool } from '../domain/character/statPoints.js';
+import { DEFAULT_STAT_MAX, validateCharacterStats, computeDerivedStats, levelUp } from '../domain/character/stats.js';
 
 export class CharacterStatsService {
   characterRepository = AppDataSource.getRepository(Character);
@@ -41,88 +42,43 @@ export class CharacterStatsService {
 
   async validateCharacterStats(stats, category = null) {
     const statDefinitions = await this.statDefinitionService.getAllStatDefinitions(category, true);
-    const errors = [];
-    const warnings = [];
-
-    for (const statDef of statDefinitions) {
-      const value = stats[statDef.internalName];
-      const maxValue = statDef.maxValue ?? DEFAULT_STAT_MAX;
-
-      if (value === undefined || value === null) {
-        if (statDef.category === 'primary_stat') {
-          errors.push(`Missing required stat: ${statDef.displayName}`);
-        }
-        continue;
-      }
-
-      if (typeof value !== 'number') {
-        errors.push(`${statDef.displayName} must be a number`);
-        continue;
-      }
-
-      if (value < statDef.minValue) {
-        errors.push(`${statDef.displayName} cannot be less than ${statDef.minValue}`);
-      }
-
-      if (value > maxValue) {
-        errors.push(`${statDef.displayName} cannot be greater than ${maxValue}`);
-      }
-    }
-
-    for (const statName in stats) {
-      const statDef = statDefinitions.find(def => def.internalName === statName);
-      if (!statDef) {
-        warnings.push(`Unknown stat: ${statName}`);
-      }
-    }
-
-    return {
-      isValid: errors.length === 0,
-      errors,
-      warnings
-    };
+    return validateCharacterStats(stats, statDefinitions);
   }
 
   async calculateStatPointsUsed(stats) {
     const primaryStats = await this.statDefinitionService.getAllStatDefinitions('primary_stat', true);
-    let totalPoints = 0;
-
-    for (const statDef of primaryStats) {
-      const value = stats[statDef.internalName] || statDef.defaultValue;
-      totalPoints += value;
-    }
-
-    return totalPoints;
+    return primaryStatPointsUsed(stats, primaryStats);
   }
 
   async updateCharacterStats(characterId, userId, statUpdates) {
-    const character = await this.characterRepository.findOne({
-      where: { id: characterId, user: { id: userId } },
-      relations: { characterSkills: { skill: { branch: true, type: true } }, race: true }
+    await AppDataSource.transaction(async (manager) => {
+      // Re-read the stats under a row lock so a concurrent skill use or level-up isn't overwritten
+      const character = await manager.getRepository(Character).findOne({
+        where: { id: characterId, user: { id: userId } },
+        relations: { race: true }
+      });
+      if (!character) {
+        throw new HttpError(404, 'Character not found');
+      }
+      const { stats, rank } = await lockCharacter(manager, characterId);
+
+      const updatedStats = { ...stats, ...statUpdates };
+
+      const validation = await this.validateCharacterStats(updatedStats);
+      if (!validation.isValid) {
+        throw new HttpError(400, `Stat validation failed: ${validation.errors.join(', ')}`);
+      }
+
+      const totalPrimaryStatPoints = await this.calculateStatPointsUsed(updatedStats);
+      if (exceedsPrimaryStatPool(totalPrimaryStatPoints)) {
+        throw new HttpError(400, `Total primary stat points (${totalPrimaryStatPoints}) exceed the allowed ${PRIMARY_STAT_POINT_POOL} points.`);
+      }
+
+      const derived = await this.computeDerivedStats(updatedStats, character.race, rank);
+      Object.assign(updatedStats, derived);
+
+      await manager.update(Character, { id: characterId }, { stats: updatedStats });
     });
-    if (!character) {
-      throw new HttpError(404, 'Character not found');
-    }
-
-    const updatedStats = { ...character.stats, ...statUpdates };
-
-    const validation = await this.validateCharacterStats(updatedStats);
-    if (!validation.isValid) {
-      throw new HttpError(400, `Stat validation failed: ${validation.errors.join(', ')}`);
-    }
-
-    const totalPrimaryStatPoints = await this.calculateStatPointsUsed(updatedStats);
-    if (totalPrimaryStatPoints > PRIMARY_STAT_POINT_POOL) {
-      throw new HttpError(400, `Total primary stat points (${totalPrimaryStatPoints}) exceed the allowed ${PRIMARY_STAT_POINT_POOL} points.`);
-    }
-
-    const derived = await this.computeDerivedStats(updatedStats, character.race, character.rank);
-    Object.assign(updatedStats, derived);
-
-    await this.characterRepository.update(
-      { id: characterId, user: { id: userId } },
-      { stats: updatedStats }
-    );
 
     const updated = await this.characterRepository.findOne({
       where: { id: characterId, user: { id: userId } },
@@ -177,65 +133,30 @@ export class CharacterStatsService {
     };
   }
 
-  async checkLevelUp(character) {
-    let nextRank = await this.rankService.getNextRank(character.rank);
-    let leveledUp = false;
-    while (nextRank && character.experience >= nextRank.requiredExperience) {
-      character.rank = nextRank.level;
-      character.statPoints += nextRank.statPoints;
-      character.skillPoints += nextRank.skillPoints;
-
-      if (nextRank.aetherPercent && character.stats.aether !== undefined) {
-        character.stats.aether = Math.floor(character.stats.aether * (1 + nextRank.aetherPercent / 100));
-      }
-      if (nextRank.hpPercent && character.stats.hp !== undefined) {
-        character.stats.hp = Math.floor(character.stats.hp * (1 + nextRank.hpPercent / 100));
-      }
-
-      leveledUp = true;
-      nextRank = await this.rankService.getNextRank(character.rank);
-    }
+  /**
+   * Apply every rank the character's experience has reached and save it when it levels up
+   * (rule in src/domain/character/stats.js#levelUp). Updates `character` in place.
+   * `character` must be the row locked in the caller's transaction (lockCharacter), so the
+   * whole-`stats` write can't overwrite a concurrent change.
+   * @param {Object} character - Locked character row
+   * @param {EntityManager} manager - The caller's transaction
+   * @returns {Promise<boolean>} Whether the character leveled up
+   */
+  async checkLevelUp(character, manager) {
+    const ranks = await manager.getRepository(Rank).find({ order: { level: 'ASC' } });
+    const { leveledUp, ...progress } = levelUp(character, ranks);
     if (leveledUp) {
-      await this.characterRepository.save(character);
+      Object.assign(character, progress);
+      await manager.save(Character, character);
     }
     return leveledUp;
   }
 
   async computeDerivedStats(baseStats, race, rankLevel) {
-    const rank = await this.rankService.getRank(rankLevel) || { hpPercent: 0, aetherPercent: 0 };
-
-    const primaryStats = await this.statDefinitionService.getAllStatDefinitions('primary_stat', true);
-
-    const statValues = {};
-    let primarySum = 0;
-
-    for (const statDef of primaryStats) {
-      const baseValue = baseStats[statDef.internalName] || 0;
-      const raceBonus = race?.[`${statDef.internalName}Bonus`] || 0;
-      const finalValue = baseValue + raceBonus;
-      statValues[statDef.internalName] = finalValue;
-      primarySum += finalValue;
-    }
-
-    const FOC = statValues.foc || 0;
-    const CON = statValues.con || 0;
-    const RES = statValues.res || 0;
-    const INS = statValues.ins || 0;
-    const FOR = statValues.for || 0;
-
-    const reactions = ((INS + FOC) / 2) + (INS * 0.165);
-
-    const BSP = race?.speedBonus || 0;
-    const speed = ((FOR + CON + RES) / 3) + (FOR * 0.165) + BSP;
-
-    const BHP = race?.healthBonus || 0;
-    const baseHP = ((RES * 2) + (CON * 3)) + BHP;
-    const hp = Math.floor(baseHP * (1 + (rank.hpPercent || 0) / 100));
-
-    const BAE = race?.manaBonus || 0;
-    const baseAE = BAE + Math.sqrt(primarySum) * 5;
-    const aether = Math.floor(baseAE * (1 + (rank.aetherPercent || 0) / 100));
-
-    return { reactions: Math.floor(reactions), speed: Math.floor(speed), hp, aether };
+    const [rank, primaryStats] = await Promise.all([
+      this.rankService.getRank(rankLevel),
+      this.statDefinitionService.getAllStatDefinitions('primary_stat', true)
+    ]);
+    return computeDerivedStats({ baseStats, race, rank, primaryStatNames: primaryStats.map(stat => stat.internalName) });
   }
 }

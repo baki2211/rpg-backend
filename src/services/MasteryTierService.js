@@ -1,6 +1,17 @@
 import { AppDataSource } from '../data-source.js';
 import { MasteryTier } from '../models/masteryTierModel.js';
 import { HttpError } from '../utils/HttpError.js';
+import staticDataCache from '../utils/staticDataCache.js';
+import { DEFAULT_SKILL_RANKS, skillRankFor } from '../domain/skills/ranks.js';
+
+// Display text for the seeded tiers; uses and multipliers come from the skill rank ladder.
+const DEFAULT_TIER_TEXT = {
+    1: { tierName: 'Tier I', description: 'Novice - Base proficiency' },
+    2: { tierName: 'Tier II', description: 'Apprentice - Growing skill' },
+    3: { tierName: 'Tier III', description: 'Journeyman - Competent practitioner' },
+    4: { tierName: 'Tier IV', description: 'Adept - Skilled performer' },
+    5: { tierName: 'Tier V', description: 'Expert - Highly proficient' }
+};
 
 export class MasteryTierService {
     constructor() {
@@ -24,21 +35,23 @@ export class MasteryTierService {
         });
     }
 
+    /**
+     * The skill rank the engine gives for a number of uses, as a mastery tier.
+     * Same ladder as the skill formulas (staticDataCache.getSkillRules, src/domain/skills/ranks.js):
+     * the matching active row, or the code default tier when the rows don't form a valid ladder.
+     */
     async getMasteryTierForUses(uses) {
-        const tiers = await this.masteryTierRepository.find({
-            where: { isActive: true },
-            order: { usesRequired: 'DESC' }
-        });
+        const [{ skillRanks }, activeTiers] = await Promise.all([
+            staticDataCache.getSkillRules(),
+            staticDataCache.getMasteryTiers()
+        ]);
+        const { rank } = skillRankFor(uses, skillRanks);
 
-        for (const tier of tiers) {
-            if (uses >= tier.usesRequired) {
-                return tier;
-            }
-        }
+        const row = activeTiers.find(tier => tier.tier === rank);
+        if (row) return row;
 
-        const fallback = tiers[tiers.length - 1];
-        if (!fallback) throw new HttpError(404, 'No mastery tier found for the given uses');
-        return fallback;
+        const { minUses, multiplier } = skillRanks.find(entry => entry.rank === rank);
+        return { tier: rank, usesRequired: minUses, multiplier, isActive: true, ...DEFAULT_TIER_TEXT[rank] };
     }
 
     async createMasteryTier(tierData) {
@@ -66,7 +79,9 @@ export class MasteryTierService {
             isActive: tierData.isActive !== undefined ? tierData.isActive : true
         });
 
-        return await this.masteryTierRepository.save(tier);
+        const savedTier = await this.masteryTierRepository.save(tier);
+        staticDataCache.clearEntity('MasteryTier');
+        return savedTier;
     }
 
     async updateMasteryTier(id, updateData) {
@@ -95,7 +110,9 @@ export class MasteryTierService {
         if (updateData.description !== undefined) tier.description = updateData.description;
         if (updateData.isActive !== undefined) tier.isActive = updateData.isActive;
 
-        return await this.masteryTierRepository.save(tier);
+        const savedTier = await this.masteryTierRepository.save(tier);
+        staticDataCache.clearEntity('MasteryTier');
+        return savedTier;
     }
 
     async deleteMasteryTier(id) {
@@ -104,21 +121,17 @@ export class MasteryTierService {
             throw new HttpError(404, 'Mastery tier not found');
         }
         await this.masteryTierRepository.remove(tier);
+        staticDataCache.clearEntity('MasteryTier');
     }
 
     async initializeDefaultTiers() {
-        const defaultTiers = [
-            { tier: 1, tierName: 'Tier I', usesRequired: 0, multiplier: 1.00, description: 'Novice - Base proficiency' },
-            { tier: 2, tierName: 'Tier II', usesRequired: 20, multiplier: 1.08, description: 'Apprentice - Growing skill' },
-            { tier: 3, tierName: 'Tier III', usesRequired: 40, multiplier: 1.16, description: 'Journeyman - Competent practitioner' },
-            { tier: 4, tierName: 'Tier IV', usesRequired: 60, multiplier: 1.24, description: 'Adept - Skilled performer' },
-            { tier: 5, tierName: 'Tier V', usesRequired: 80, multiplier: 1.32, description: 'Expert - Highly proficient' },
-            { tier: 6, tierName: 'Tier VI', usesRequired: 100, multiplier: 1.40, description: 'Master - Superior expertise' },
-            { tier: 7, tierName: 'Tier VII', usesRequired: 120, multiplier: 1.48, description: 'Grandmaster - Elite mastery' },
-            { tier: 8, tierName: 'Tier VIII', usesRequired: 150, multiplier: 1.55, description: 'Legend - Exceptional mastery' },
-            { tier: 9, tierName: 'Tier IX', usesRequired: 180, multiplier: 1.60, description: 'Mythic - Near-perfect skill' },
-            { tier: 10, tierName: 'Tier X', usesRequired: 200, multiplier: 1.65, description: 'Ultimate - Absolute mastery (Cap)' }
-        ];
+        // The active tiers are the skill rank ladder read by the engine (src/domain/skills/rules.js)
+        const defaultTiers = DEFAULT_SKILL_RANKS.map(({ rank, minUses, multiplier }) => ({
+            tier: rank,
+            usesRequired: minUses,
+            multiplier,
+            ...DEFAULT_TIER_TEXT[rank]
+        }));
 
         const createdTiers = [];
         for (const tierData of defaultTiers) {

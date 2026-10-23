@@ -11,7 +11,9 @@
     "migration:revert": "node --experimental-specifier-resolution=node ./node_modules/typeorm/cli.js migration:revert -d src/data-source.js",
     "migration:generate": "node --experimental-specifier-resolution=node ./node_modules/typeorm/cli.js migration:generate -d src/data-source.js -o --esm",
     "test": "vitest run",
-    "test:unit": "vitest run tests/unit",
+    "test:unit": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.js",
+    "test:all": "npm run test:unit && npm run test:integration",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
   },

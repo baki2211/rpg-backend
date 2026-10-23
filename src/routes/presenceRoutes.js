@@ -9,12 +9,9 @@ const presenceEmitter = new EventEmitter();
 const onlineUsers = new Map(); // userId => { username, characterName, location, lastSeen }
 const characterService = new CharacterService();
 
-// SSE endpoint for presence updates
-router.get('/events', async (req, res) => {
-  const userId = req.query.userId;
-  if (!userId) {
-    return res.status(400).json({ error: 'Missing userId' });
-  }
+// SSE endpoint for presence updates. The user comes from the auth cookie, never the query string.
+router.get('/events', authenticateToken, async (req, res) => {
+  const userId = String(req.user.id);
 
   // Set headers for SSE
   res.writeHead(200, {
@@ -28,7 +25,7 @@ router.get('/events', async (req, res) => {
     try {
       const activeCharacter = await characterService.getActiveCharacter(userId);
       onlineUsers.set(userId, {
-        username: req.query.username || userId,
+        username: req.user.username || userId,
         characterName: activeCharacter?.name || null,
         location: 'Dashboard',
         lastSeen: new Date()
@@ -130,11 +127,8 @@ router.post('/location', authenticateToken, async (req, res) => {
 });
 
 // Heartbeat endpoint
-router.post('/heartbeat', (req, res) => {
-  const { userId } = req.body;
-  if (!userId) {
-    return res.status(400).json({ error: 'Missing userId' });
-  }
+router.post('/heartbeat', authenticateToken, (req, res) => {
+  const userId = String(req.user.id);
 
   const user = onlineUsers.get(userId);
   if (user) {
@@ -145,23 +139,25 @@ router.post('/heartbeat', (req, res) => {
   }
 });
 
-// Cleanup stale users every 30 seconds
-setInterval(() => {
-  const now = new Date();
-  let updated = false;
+// Cleanup stale users every 30 seconds; started by the entry point, not at import
+export function startPresenceCleanup() {
+  return setInterval(() => {
+    const now = new Date();
+    let updated = false;
 
-  for (const [userId, user] of onlineUsers.entries()) {
-    if (now - user.lastSeen > 60000) { // 1 minute
-      onlineUsers.delete(userId);
-      updated = true;
-      logger.debug(`Removed stale user ${userId} from presence system`);
+    for (const [userId, user] of onlineUsers.entries()) {
+      if (now - user.lastSeen > 60000) { // 1 minute
+        onlineUsers.delete(userId);
+        updated = true;
+        logger.debug(`Removed stale user ${userId} from presence system`);
+      }
     }
-  }
 
-  if (updated) {
-    broadcastUsers();
-  }
-}, 30000);
+    if (updated) {
+      broadcastUsers();
+    }
+  }, 30000);
+}
 
 function broadcastUsers() {
   const users = Array.from(onlineUsers.entries()).map(([id, user]) => ({

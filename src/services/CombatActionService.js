@@ -1,4 +1,3 @@
-import { AppDataSource } from '../data-source.js';
 import { CombatRound } from '../models/combatRoundModel.js';
 import { CombatAction } from '../models/combatActionModel.js';
 import { Character } from '../models/characterModel.js';
@@ -6,12 +5,10 @@ import { SkillUsageService } from './SkillUsageService.js';
 import { TargetResolutionService } from './TargetResolutionService.js';
 import { SkillExecutionService } from './SkillExecutionService.js';
 import { HttpError } from '../utils/HttpError.js';
+import { rollD20 } from '../utils/dice.js';
 
 export class CombatActionService {
     constructor() {
-        this.roundRepository = AppDataSource.getRepository(CombatRound);
-        this.actionRepository = AppDataSource.getRepository(CombatAction);
-        this.characterRepository = AppDataSource.getRepository(Character);
         this.targetResolutionService = new TargetResolutionService();
         this.skillExecutionService = new SkillExecutionService();
     }
@@ -23,10 +20,14 @@ export class CombatActionService {
      * @param {number} skillId - The skill being used
      * @param {number} targetId - The target character (null for self/area skills)
      * @param {Object|null} preCalculatedValues - Pre-calculated skill values from ChatService
+     * @param {EntityManager} manager - The caller's transaction: the action and its usage commit together
      * @returns {Promise<Object>} The created combat action
      */
-    async submitAction(roundId, characterId, skillId, targetId = null, preCalculatedValues = null) {
-        const round = await this.roundRepository.findOne({
+    async submitAction(roundId, characterId, skillId, targetId, preCalculatedValues, manager) {
+        const roundRepository = manager.getRepository(CombatRound);
+        const actionRepository = manager.getRepository(CombatAction);
+
+        const round = await roundRepository.findOne({
             where: { id: roundId, status: 'active' }
         });
 
@@ -34,7 +35,7 @@ export class CombatActionService {
             throw new HttpError(404, 'Combat round not found or not active');
         }
 
-        const existingAction = await this.actionRepository.findOne({
+        const existingAction = await actionRepository.findOne({
             where: { roundId, characterId }
         });
 
@@ -43,7 +44,7 @@ export class CombatActionService {
         }
 
         const [character, skill] = await Promise.all([
-            this.characterRepository.findOne({
+            manager.getRepository(Character).findOne({
                 where: { id: characterId },
                 relations: { race: true }
             }),
@@ -70,7 +71,7 @@ export class CombatActionService {
         const calculationResult = await this.skillExecutionService.calculateSkillOutput(
             character,
             skill,
-            { preCalculated: preCalculatedValues, useCache: true }
+            { roll: rollD20(), preCalculated: preCalculatedValues }
         );
 
         if (!calculationResult.success) {
@@ -79,7 +80,7 @@ export class CombatActionService {
 
         const { finalOutput, outcomeMultiplier, rollQuality } = calculationResult;
 
-        const action = this.actionRepository.create({
+        const action = actionRepository.create({
             roundId,
             characterId,
             skillId,
@@ -106,9 +107,9 @@ export class CombatActionService {
             } : null
         });
 
-        const savedAction = await this.actionRepository.save(action);
+        const savedAction = await actionRepository.save(action);
 
-        await SkillUsageService.incrementSkillUsage(characterId, skillId, skill.branchId);
+        await SkillUsageService.incrementSkillUsage(characterId, skillId, skill.branchId, manager);
 
         return savedAction;
     }

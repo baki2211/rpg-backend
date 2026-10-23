@@ -5,6 +5,7 @@ import { CharacterStatsService } from './CharacterStatsService.js';
 import { HttpError } from '../utils/HttpError.js';
 import { logger } from '../utils/logger.js';
 import { Not } from 'typeorm';
+import { lockCharacter, lockUser } from '../utils/rowLocks.js';
 
 export class NPCService {
   characterRepository = AppDataSource.getRepository(Character);
@@ -71,28 +72,33 @@ export class NPCService {
   }
 
   async updateNPC(npcId, updateData) {
-    const npc = await this.characterRepository.findOne({
-      where: { id: npcId, isNPC: true },
-      relations: { race: true }
+    await AppDataSource.transaction(async (manager) => {
+      // Stats are merged into the current row: locked and re-read so a concurrent write isn't lost
+      const npc = await manager.getRepository(Character).findOne({
+        where: { id: npcId, isNPC: true },
+        relations: { race: true }
+      });
+
+      if (!npc) {
+        throw new HttpError(404, 'NPC not found');
+      }
+      const { stats, rank } = await lockCharacter(manager, npcId);
+
+      if (updateData.stats) {
+        const updatedStats = { ...stats, ...updateData.stats };
+        const derived = await this.statsService.computeDerivedStats(updatedStats, npc.race, updateData.rank || rank);
+        Object.assign(updatedStats, derived);
+        updateData.stats = updatedStats;
+      }
+
+      if (updateData.rank && updateData.rank !== rank) {
+        const derived = await this.statsService.computeDerivedStats(updateData.stats || stats, npc.race, updateData.rank);
+        updateData.stats = { ...(updateData.stats || stats), ...derived };
+      }
+
+      await manager.update(Character, npcId, updateData);
     });
 
-    if (!npc) {
-      throw new HttpError(404, 'NPC not found');
-    }
-
-    if (updateData.stats) {
-      const updatedStats = { ...npc.stats, ...updateData.stats };
-      const derived = await this.statsService.computeDerivedStats(updatedStats, npc.race, updateData.rank || npc.rank);
-      Object.assign(updatedStats, derived);
-      updateData.stats = updatedStats;
-    }
-
-    if (updateData.rank && updateData.rank !== npc.rank) {
-      const derived = await this.statsService.computeDerivedStats(updateData.stats || npc.stats, npc.race, updateData.rank);
-      updateData.stats = { ...(updateData.stats || npc.stats), ...derived };
-    }
-
-    await this.characterRepository.update(npcId, updateData);
     return this.characterRepository.findOne({
       where: { id: npcId },
       relations: { race: true, creator: true }
@@ -145,31 +151,28 @@ export class NPCService {
     });
   }
 
+  /**
+   * Put the user in control of an NPC. The user's own characters are deactivated and any other
+   * NPC they control is released, in the same transaction as the activation.
+   */
   async activateNPC(npcId, userId) {
-    const npc = await this.characterRepository.findOne({
-      where: { id: npcId, isNPC: true },
-      relations: { race: true, characterSkills: { skill: true } }
+    const npc = await AppDataSource.transaction(async (manager) => {
+      // Serializes concurrent activations by the same user
+      await lockUser(manager, userId);
+
+      const npc = await manager.getRepository(Character).findOne({
+        where: { id: npcId, isNPC: true }
+      });
+
+      if (!npc) {
+        throw new HttpError(404, 'NPC not found');
+      }
+
+      await manager.update(Character, { user: { id: userId } }, { isActive: false });
+      await manager.update(Character, { userId, isNPC: true, id: Not(npcId) }, { isActive: false, userId: null });
+      await manager.update(Character, { id: npcId }, { isActive: true, userId });
+      return npc;
     });
-
-    if (!npc) {
-      throw new HttpError(404, 'NPC not found');
-    }
-
-    await Promise.all([
-      this.characterRepository.update(
-        { user: { id: userId } },
-        { isActive: false }
-      ),
-      this.characterRepository.update(
-        { userId, isNPC: true, id: Not(npcId) },
-        { isActive: false, userId: null }
-      )
-    ]);
-
-    await this.characterRepository.update(
-      { id: npcId },
-      { isActive: true, userId }
-    );
 
     logger.character(`User ${userId} activated NPC ${npc.name} (ID: ${npcId})`);
 
