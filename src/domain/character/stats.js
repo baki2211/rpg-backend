@@ -45,6 +45,21 @@ export function validateCharacterStats(stats, statDefinitions) {
     return { isValid: errors.length === 0, errors, warnings };
 }
 
+// Keys computeDerivedStats writes into character.stats. reactions and speed have no stat definition.
+const DERIVED_STAT_NAMES = ['reactions', 'speed', 'hp', 'aether'];
+
+/**
+ * Keys of a stat update that no active stat definition and no derived stat knows, in request order.
+ * Derived keys are accepted because they are recomputed on every update anyway.
+ * @param {Object} statUpdates - the stats sent by the player
+ * @param {Array<{ internalName: string }>} statDefinitions - the active stat definitions, every category
+ * @returns {string[]}
+ */
+export function unknownStatKeys(statUpdates, statDefinitions) {
+    const knownKeys = new Set([...statDefinitions.map(def => def.internalName), ...DERIVED_STAT_NAMES]);
+    return Object.keys(statUpdates).filter(statName => !knownKeys.has(statName));
+}
+
 /**
  * Stats derived from the primary stats, the race and the character rank.
  * Race primary-stat bonuses are read from `race[<internalName>Bonus]`.

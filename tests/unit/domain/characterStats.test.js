@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateCharacterStats, computeDerivedStats, levelUp } from '../../../src/domain/character/stats.js';
+import { validateCharacterStats, unknownStatKeys, computeDerivedStats, levelUp } from '../../../src/domain/character/stats.js';
 
 const FORTITUDE = { internalName: 'for', displayName: 'Fortitude', category: 'primary_stat', minValue: 1, maxValue: 15, defaultValue: 5 };
 const FOCUS = { internalName: 'foc', displayName: 'Focus', category: 'primary_stat', minValue: 0, maxValue: 15, defaultValue: 5 };
@@ -51,6 +51,29 @@ describe('stat validation', () => {
         const result = validateCharacterStats({ for: 5, luck: 3 }, [FORTITUDE]);
 
         expect(result).toEqual({ isValid: true, errors: [], warnings: ['Unknown stat: luck'] });
+    });
+});
+
+describe('unknown keys in a stat update', () => {
+    it.each([
+        ['a primary stat', { for: 6 }],
+        ['a resource stat', { hp: 40 }],
+        ['every derived stat, even without a definition', { reactions: 5, speed: 5, hp: 25, aether: 27 }],
+        ['an empty update', {}],
+    ])('%s is known', (_name, statUpdates) => {
+        const result = unknownStatKeys(statUpdates, [FORTITUDE, FOCUS, HEALTH]);
+
+        expect(result).toEqual([]);
+    });
+
+    it.each([
+        ['a stat no definition knows', { for: 6, luck: 3 }, ['luck']],
+        ['several unknown stats, in request order', { zeal: 1, for: 4, luck: 3 }, ['zeal', 'luck']],
+        ['a stat whose definition is not passed in', { foc: 4 }, ['foc']],
+    ])('%s is reported', (_name, statUpdates, expected) => {
+        const result = unknownStatKeys(statUpdates, [FORTITUDE, HEALTH]);
+
+        expect(result).toEqual(expected);
     });
 });
 

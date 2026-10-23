@@ -92,7 +92,11 @@ export function installShutdownHandlers({ server, chatWS, presenceWS, intervals 
 
       MemoryCleanupJob.stopJob();
 
-      AppDataSource.destroy()
+      RateLimitMiddleware.stopCleanup()
+        .catch((error) => {
+          logger.error('Error stopping rate-limit store:', { error: error.message });
+        })
+        .then(() => AppDataSource.destroy())
         .then(() => {
           logger.info('Database connection closed');
           process.exit(0);

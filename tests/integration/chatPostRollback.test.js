@@ -32,7 +32,7 @@ describe('POST /api/chat/skills/:skillId when a later step of the post fails', (
     const response = await client.post(`/api/chat/skills/${barrier.id}`, { locationId: location.id, message: 'b'.repeat(801) });
 
     expect(response.status).toBe(500);
-    expect(response.body).toEqual({ message: 'Internal Server Error', error: 'value "2147483648" is out of range for type integer' });
+    expect(response.body).toEqual({ message: 'Internal Server Error' });
     expect(await query(`SELECT id FROM combat_actions WHERE "roundId" = $1`, [round.id])).toEqual([]);
     expect(await query(`SELECT id FROM chat_messages`)).toEqual([]);
     expect(await query(`SELECT uses FROM character_skills WHERE "characterId" = $1`, [character.id])).toEqual([{ uses: 0 }]);

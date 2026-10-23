@@ -1,5 +1,4 @@
-// Roles that may resolve combat they don't take part in (same roles as the combat round resolve route).
-const COMBAT_STAFF_ROLES = ['admin', 'master'];
+import { MASTER_OR_ADMIN_ROLES } from '../roles.js';
 
 /**
  * Decide whether a user may resolve a PvP encounter.
@@ -13,7 +12,7 @@ const COMBAT_STAFF_ROLES = ['admin', 'master'];
  * @returns {boolean}
  */
 export function canResolvePvPEncounter({ userId, role, attackerOwnerId, defenderOwnerId }) {
-    if (COMBAT_STAFF_ROLES.includes(role)) {
+    if (MASTER_OR_ADMIN_ROLES.includes(role)) {
         return true;
     }
     if (userId == null) {

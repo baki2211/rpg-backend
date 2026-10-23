@@ -1,9 +1,10 @@
 import express from 'express';
 import { authenticateToken, requireRole } from '../middleware/authMiddleware.js';
+import { MASTER_OR_ADMIN_ROLES } from '../domain/roles.js';
 import { WikiController } from '../controllers/WikiController.js';
 
 const router = express.Router();
-const masterOrAdmin = requireRole(['admin', 'master']);
+const masterOrAdmin = requireRole(MASTER_OR_ADMIN_ROLES);
 
 // ============ ADMIN ROUTES (Require admin/master role) ============
 

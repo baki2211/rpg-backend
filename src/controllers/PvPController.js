@@ -3,6 +3,7 @@ import { PvPService } from '../services/PvPService.js';
 import { AppDataSource } from '../data-source.js';
 import { Character } from '../models/characterModel.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { InputValidator } from '../utils/inputValidator.js';
 import { HttpError } from '../utils/HttpError.js';
 import { canResolvePvPEncounter } from '../domain/combat/pvpAuthorization.js';
 
@@ -44,10 +45,7 @@ export class PvPController {
     });
 
     static getCharacterPvPSkills = asyncHandler(async (req, res) => {
-        const characterId = parseId(req.params.characterId);
-        if (!characterId) {
-            throw new HttpError(400, 'Invalid character ID provided');
-        }
+        const characterId = InputValidator.validateCharacterId(req.params.characterId);
         res.json(await pvpService.getCharacterPvPSkills(characterId, req.user.id));
     });
 

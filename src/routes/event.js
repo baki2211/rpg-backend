@@ -1,9 +1,10 @@
 import express from 'express';
 import { EventController } from '../controllers/EventController.js';
 import { requireAuth, requireRole } from '../middleware/authMiddleware.js';
+import { MASTER_OR_ADMIN_ROLES } from '../domain/roles.js';
 
 const router = express.Router();
-const masterOrAdmin = requireRole(['master', 'admin']);
+const masterOrAdmin = requireRole(MASTER_OR_ADMIN_ROLES);
 
 router.use(requireAuth);
 

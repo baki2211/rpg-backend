@@ -1,6 +1,7 @@
 import { MapService } from '../services/MapService.js';
 import { LocationService } from '../services/LocationService.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { InputValidator } from '../utils/inputValidator.js';
 import { HttpError } from '../utils/HttpError.js';
 import fs from 'fs';
 import path from 'path';
@@ -23,10 +24,10 @@ export class MapController {
   });
 
   static updateMap = asyncHandler(async (req, res) => {
-    const { id } = req.params;
+    const id = InputValidator.validateId(req.params.id);
     const { name } = req.body;
 
-    const existingMap = await mapService.getMapById(Number(id));
+    const existingMap = await mapService.getMapById(id);
 
     const updatedFields = { name };
     if (req.file) {
@@ -39,29 +40,23 @@ export class MapController {
       updatedFields.imageUrl = `/uploads/${req.file.filename}`;
     }
 
-    res.status(200).json(await mapService.updateMap(Number(id), updatedFields));
+    res.status(200).json(await mapService.updateMap(id, updatedFields));
   });
 
   static deleteMap = asyncHandler(async (req, res) => {
-    const { id } = req.params;
-    await mapService.deleteMap(Number(id));
+    const id = InputValidator.validateId(req.params.id);
+    await mapService.deleteMap(id);
     res.status(204).end();
   });
 
   static getMapById = asyncHandler(async (req, res) => {
-    const { id } = req.params;
-    if (!id || isNaN(Number(id))) {
-      throw new HttpError(400, 'Invalid map ID');
-    }
-    res.status(200).json(await mapService.getMapById(Number(id)));
+    const id = InputValidator.validateId(req.params.id);
+    res.status(200).json(await mapService.getMapById(id));
   });
 
   static getLocationsByMapId = asyncHandler(async (req, res) => {
-    const { id } = req.params;
-    if (!id || isNaN(Number(id))) {
-      throw new HttpError(400, 'Invalid map ID');
-    }
-    res.status(200).json(await locationService.getLocationsByMapId(Number(id)));
+    const id = InputValidator.validateId(req.params.id);
+    res.status(200).json(await locationService.getLocationsByMapId(id));
   });
 
   static getMainMap = asyncHandler(async (req, res) => {
@@ -74,8 +69,8 @@ export class MapController {
   });
 
   static setMainMap = asyncHandler(async (req, res) => {
-    const { id } = req.params;
-    await mapService.setMainMap(Number(id));
+    const id = InputValidator.validateId(req.params.id);
+    await mapService.setMainMap(id);
     res.status(200).json({ message: 'Main map updated successfully' });
   });
 }

@@ -6,6 +6,7 @@ import { SkillEngine } from './SkillEngine.js';
 import { SkillUsageService } from './SkillUsageService.js';
 import { HttpError } from '../utils/HttpError.js';
 import { rollD20 } from '../utils/dice.js';
+import { lockCharacters } from '../utils/rowLocks.js';
 
 export class PvPService {
     characterService = new CharacterService();
@@ -39,8 +40,12 @@ export class PvPService {
 
         // An encounter is one use of each skill, recorded in a single transaction
         await AppDataSource.transaction(async (manager) => {
-            await SkillUsageService.incrementSkillUsage(attacker.id, attackerSkill.id, attackerSkill.branchId, manager);
-            await SkillUsageService.incrementSkillUsage(defender.id, defenderSkill.id, defenderSkill.branchId, manager);
+            // App lock order: characters (by id) before their usage rows, the same as the clash in SkillController
+            await lockCharacters(manager, [attacker.id, defender.id]);
+            await SkillUsageService.incrementSkillUsages([
+                { characterId: attacker.id, skillId: attackerSkill.id, branchId: attackerSkill.branchId },
+                { characterId: defender.id, skillId: defenderSkill.id, branchId: defenderSkill.branchId },
+            ], manager);
         });
 
         return result;

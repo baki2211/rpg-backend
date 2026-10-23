@@ -1,6 +1,7 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { CharacterService } from '../services/CharacterService.js';
 import { logger } from '../utils/logger.js';
+import { withTimeout } from '../utils/withTimeout.js';
 
 export const setupPresenceWebSocketServer = (server) => {
   const wss = new WebSocketServer({ 
@@ -133,14 +134,11 @@ export const setupPresenceWebSocketServer = (server) => {
     connectionCount++;
     logger.debug(`New presence connection for user ${userId}. Total connections: ${connectionCount}`);
 
-    // Get user's active character (with timeout to prevent hanging)
+    // Get user's active character (with timeout to prevent hanging). Read-only display name, so abandoning it is harmless
     let activeCharacter = null;
     try {
       const characterPromise = characterService.getActiveCharacter(userId);
-      activeCharacter = await Promise.race([
-        characterPromise,
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000))
-      ]);
+      activeCharacter = await withTimeout(characterPromise, 5000, 'Timeout');
     } catch (error) {
       logger.debug(`No active character found for user ${userId}: ${error.message}`);
     }
@@ -191,13 +189,10 @@ export const setupPresenceWebSocketServer = (server) => {
         if (user.location !== msg.location) {
           user.location = msg.location;
           
-          // Only update character info if location actually changed
+          // Only update character info if location actually changed. Read-only display name: a timeout keeps the old one
           try {
             const characterPromise = characterService.getActiveCharacter(userId);
-            const activeCharacter = await Promise.race([
-              characterPromise,
-              new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000))
-            ]);
+            const activeCharacter = await withTimeout(characterPromise, 3000, 'Timeout');
             
             if (activeCharacter?.name !== user.characterName) {
               logger.debug(`User ${userId} character changed from ${user.characterName} to ${activeCharacter?.name}`);
@@ -218,12 +213,10 @@ export const setupPresenceWebSocketServer = (server) => {
           ws.send('{"type":"pong"}');
         }
       } else if (msg.type === 'refreshCharacter') {
+        // Read-only display name: abandoning the lookup on timeout is harmless
         try {
           const characterPromise = characterService.getActiveCharacter(userId);
-          const activeCharacter = await Promise.race([
-            characterPromise,
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000))
-          ]);
+          const activeCharacter = await withTimeout(characterPromise, 3000, 'Timeout');
           
           user.characterName = activeCharacter?.name || null;
           debouncedBroadcast();

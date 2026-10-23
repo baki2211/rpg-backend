@@ -1,5 +1,6 @@
 import { MasteryTierService } from '../services/MasteryTierService.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { InputValidator } from '../utils/inputValidator.js';
 
 const masteryTierService = new MasteryTierService();
 
@@ -13,12 +14,12 @@ export class MasteryTierController {
     });
 
     static getMasteryTierById = asyncHandler(async (req, res) => {
-        const tier = await masteryTierService.getMasteryTierById(parseInt(req.params.id));
+        const tier = await masteryTierService.getMasteryTierById(InputValidator.validateId(req.params.id));
         res.json(formatTier(tier));
     });
 
     static getMasteryTierForUses = asyncHandler(async (req, res) => {
-        const tier = await masteryTierService.getMasteryTierForUses(parseInt(req.params.uses));
+        const tier = await masteryTierService.getMasteryTierForUses(InputValidator.validateInteger(req.params.uses, { min: 0 }));
         res.json(formatTier(tier));
     });
 
@@ -28,12 +29,12 @@ export class MasteryTierController {
     });
 
     static updateMasteryTier = asyncHandler(async (req, res) => {
-        const tier = await masteryTierService.updateMasteryTier(parseInt(req.params.id), req.body);
+        const tier = await masteryTierService.updateMasteryTier(InputValidator.validateId(req.params.id), req.body);
         res.json(formatTier(tier));
     });
 
     static deleteMasteryTier = asyncHandler(async (req, res) => {
-        await masteryTierService.deleteMasteryTier(parseInt(req.params.id));
+        await masteryTierService.deleteMasteryTier(InputValidator.validateId(req.params.id));
         res.json({ message: 'Mastery tier deleted successfully' });
     });
 

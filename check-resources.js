@@ -58,28 +58,26 @@ async function checkResources() {
     console.log(`Last Check: ${new Date(health.timestamp).toLocaleString()}`);
     
     if (health.memory) {
-      const memUsed = health.memory.used; // Already in MB
-      const memTotal = health.memory.total; // Already in MB
-      const memRSS = health.memory.rss; // Already in MB
-      const memExternal = health.memory.external; // Already in MB
-      
-      const starterLimit = 512; // MB
-      const usagePercent = ((memRSS / starterLimit) * 100).toFixed(1);
+      const memUsed = health.memory.heap_used_mb;
+      const memTotal = health.memory.heap_total_mb;
+      const memRSS = health.memory.rss_mb;
+      const limit = health.memory.limit_mb; // the server's RSS budget (RSS_BUDGET_BYTES)
+      const usagePercent = health.memory.usage_percent;
       
       console.log('\nMEMORY ANALYSIS:');
-      console.log(`   RSS (Real Memory): ${memRSS}MB / ${starterLimit}MB (${usagePercent}%)`);
+      console.log(`   RSS (Real Memory): ${memRSS}MB / ${limit}MB (${usagePercent}%)`);
       console.log(`   Heap Used: ${memUsed}MB`);
       console.log(`   Heap Total: ${memTotal}MB`);
-      console.log(`   External: ${memExternal}MB`);
+      console.log(`   Server memory status: ${health.memory.status} (manager: ${health.memory.manager_status})`);
       
       // Memory status assessment
-      if (memRSS > 450) {
+      if (usagePercent > 87.5) {
         console.log('   CRITICAL: Memory usage very high! (>87.5%)');
         console.log('   Consider upgrading to Standard plan (2GB RAM)');
-      } else if (memRSS > 400) {
+      } else if (usagePercent > 78) {
         console.log('    WARNING: Memory usage high! (>78%)');
         console.log('   Monitor closely, consider optimizations');
-      } else if (memRSS > 300) {
+      } else if (usagePercent > 58) {
         console.log('    CAUTION: Memory usage moderate (>58%)');
         console.log('   Room for growth but watch trends');
       } else {

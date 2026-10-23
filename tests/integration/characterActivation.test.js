@@ -11,7 +11,8 @@ describe('PUT /api/characters/:id/activate', () => {
   // so a failure in between left the user with no active character.
   it('activating a character leaves it as the only active one and releases the NPC the user controlled', async () => {
     const player = await makeUser();
-    const current = await makeCharacter({ user: player, isActive: true });
+    // The player is controlling an NPC, so it is their one active row (the DB allows one per user)
+    const current = await makeCharacter({ user: player, isActive: false });
     const chosen = await makeCharacter({ user: player, isActive: false });
     const npc = await makeCharacter({ user: player, isActive: true, isNPC: true });
     const other = await makeCharacter({ user: await makeUser(), isActive: true });
@@ -26,29 +27,6 @@ describe('PUT /api/characters/:id/activate', () => {
       { id: chosen.id, userId: player.id, isActive: true },
       { id: npc.id, userId: null, isActive: false },
       { id: other.id, userId: other.userId, isActive: true },
-    ]);
-  });
-});
-
-describe('reading the active character', () => {
-  // Regression for F14: every read of the active character "fixed" duplicate active rows with
-  // updates, outside any transaction. Reads must not write; activation keeps a single active row.
-  it('looking up a user with two active characters (older data) changes no rows', async () => {
-    const player = await makeUser();
-    const older = await makeCharacter({ user: player, isActive: true });
-    const newer = await makeCharacter({ user: player, isActive: true });
-    const before = await query(`SELECT id, "userId", "isActive", "updatedAt" FROM characters ORDER BY id`);
-    const client = await logIn(app, player);
-
-    // The presence location update looks up the user's active character
-    const response = await client.post('/api/presence/location', { location: 'Dashboard' });
-
-    expect(response.status).toBe(200);
-    const after = await query(`SELECT id, "userId", "isActive", "updatedAt" FROM characters ORDER BY id`);
-    expect(after).toEqual(before);
-    expect(after.map(({ id, isActive }) => ({ id, isActive }))).toEqual([
-      { id: older.id, isActive: true },
-      { id: newer.id, isActive: true },
     ]);
   });
 });

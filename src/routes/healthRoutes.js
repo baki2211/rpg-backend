@@ -7,6 +7,7 @@ import { MemoryCleanupJob } from '../jobs/memoryCleanup.js';
 import { RateLimitMiddleware } from '../middleware/rateLimitMiddleware.js';
 import { authenticateToken } from '../middleware/authMiddleware.js';
 import { isAdmin } from '../middleware/adminMiddleware.js';
+import { assessHealth } from '../utils/healthStatus.js';
 
 // Track compression statistics
 let compressionStats = {
@@ -35,6 +36,10 @@ export const updateCompressionStats = (originalSize, compressedSize, wasCompress
 };
 
 const router = express.Router();
+
+// Everything except the public GET / check exposes internals or triggers cleanups: admins only
+// Errors in these handlers reach errorHandler (Express 5 forwards throws and rejections): logged, generic 500.
+const adminOnly = [authenticateToken, isAdmin];
 
 let presenceWebSocketServer = null;
 let chatWebSocketServer = null;
@@ -88,19 +93,18 @@ const rateLimitHealthChecks = (req, res, next) => {
 // Health check endpoint with rate limiting
 router.get('/', rateLimitHealthChecks, async (req, res) => {
   try {
-    // Get memory usage with timeout
-    const memoryPromise = memoryManager.getMemoryUsage();
-    const memoryTimeout = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Memory check timeout')), 2000)
-    );
-    
-    const memory = await Promise.race([memoryPromise, memoryTimeout])
-      .catch(error => {
-        logger.warn('Memory check failed:', error.message);
-        return { usage_percent: 0, status: 'unknown' };
-      });
+    // RSS against the same budget memoryManager uses for its own pressure decisions
+    const { rss, heap, limit, status: memoryManagerStatus } = memoryManager.getMemoryStats();
+    const memory = {
+      usage_percent: rss.percent,
+      rss_mb: rss.mb,
+      heap_used_mb: heap.used,
+      heap_total_mb: heap.total,
+      limit_mb: limit,
+      manager_status: memoryManagerStatus
+    };
 
-    // Get connection counts with timeout
+    // Get connection counts
     const getConnectionCounts = () => {
       try {
         return {
@@ -120,19 +124,19 @@ router.get('/', rateLimitHealthChecks, async (req, res) => {
     // Get database health information
     const dbHealth = dbHealthMonitor.getHealthReport();
 
-    // Determine overall health status with updated connection limits
-    const isHealthy = memory.usage_percent < 90 && 
-                     connections.total < 40 && // Increased from 20 to 40 
-                     dbHealth.database.status === 'connected';
+    const assessment = assessHealth({
+      memoryPercent: memory.usage_percent,
+      totalConnections: connections.total,
+      databaseStatus: dbHealth.database.status
+    });
 
     const healthData = {
-      status: isHealthy ? 'healthy' : 'degraded',
+      status: assessment.status,
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
       memory: {
         ...memory,
-        limit_mb: process.env.MEMORY_LIMIT_MB || 512,
-        status: memory.usage_percent < 90 ? 'healthy' : 'warning'
+        status: assessment.memoryStatus
       },
       connections,
       database: {
@@ -159,7 +163,7 @@ router.get('/', rateLimitHealthChecks, async (req, res) => {
     }
 
     // If server is under heavy load, return 503
-    if (memory.usage_percent > 95 || connections.total >= 50) { // Increased threshold
+    if (assessment.overloaded) {
       res.status(503).json({
         ...healthData,
         status: 'overloaded',
@@ -185,7 +189,7 @@ router.get('/', rateLimitHealthChecks, async (req, res) => {
 });
 
 // Detailed status for monitoring
-router.get('/status', (req, res) => {
+router.get('/status', adminOnly, (req, res) => {
   const memoryUsage = process.memoryUsage();
   const cpuUsage = process.cpuUsage();
   
@@ -224,7 +228,7 @@ router.get('/status', (req, res) => {
 });
 
 // Force memory cleanup (works without --expose-gc)
-router.post('/gc', (req, res) => {
+router.post('/gc', adminOnly, (req, res) => {
   const beforeStats = memoryManager.getMemoryStats();
   const success = memoryManager.performGarbageCollection(true);
   
@@ -248,308 +252,190 @@ router.post('/gc', (req, res) => {
 });
 
 // Add cleanup endpoint
-router.post('/cleanup', (req, res) => {
-  try {
-    if (presenceWebSocketServer?.cleanup) {
-      logger.info('Manual cleanup requested via API');
-      presenceWebSocketServer.cleanup();
-      res.json({ 
-        success: true, 
-        message: 'WebSocket connections cleaned up',
-        presenceConnections: presenceWebSocketServer.getConnectionCount?.() || 0,
-        chatConnections: chatWebSocketServer?.getConnectionCount?.() || 0
-      });
-    } else {
-      res.status(503).json({ 
-        success: false, 
-        message: 'WebSocket servers not available' 
-      });
-    }
-  } catch (error) {
-    logger.error('Error during manual cleanup:', error);
-    res.status(500).json({ 
+router.post('/cleanup', adminOnly, (req, res) => {
+  if (presenceWebSocketServer?.cleanup) {
+    logger.info('Manual cleanup requested via API');
+    presenceWebSocketServer.cleanup();
+    res.json({ 
+      success: true, 
+      message: 'WebSocket connections cleaned up',
+      presenceConnections: presenceWebSocketServer.getConnectionCount?.() || 0,
+      chatConnections: chatWebSocketServer?.getConnectionCount?.() || 0
+    });
+  } else {
+    res.status(503).json({ 
       success: false, 
-      message: 'Error during cleanup',
-      error: error.message 
+      message: 'WebSocket servers not available' 
     });
   }
 });
 
 // Database health endpoint
-router.get('/database', (req, res) => {
-  try {
-    const healthReport = dbHealthMonitor.getHealthReport();
-    res.json(healthReport);
-  } catch (error) {
-    logger.error('Database health check error:', error);
-    res.status(500).json({
-      status: 'error',
-      message: 'Database health check failed',
-      error: error.message,
-      timestamp: new Date().toISOString()
-    });
-  }
+router.get('/database', adminOnly, (req, res) => {
+  const healthReport = dbHealthMonitor.getHealthReport();
+  res.json(healthReport);
 });
 
 // Database connection cleanup endpoint
-router.post('/database/cleanup', async (req, res) => {
-  try {
-    logger.info('Manual database cleanup requested via API');
-    const success = await dbHealthMonitor.releaseIdleConnections();
-    const healthReport = dbHealthMonitor.getHealthReport();
-    
-    res.json({
-      success,
-      message: success ? 'Database connections cleaned up' : 'Cleanup failed or not needed',
-      poolStats: healthReport.database.pool
-    });
-  } catch (error) {
-    logger.error('Error during database cleanup:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error during database cleanup',
-      error: error.message
-    });
-  }
+router.post('/database/cleanup', adminOnly, async (req, res) => {
+  logger.info('Manual database cleanup requested via API');
+  const success = await dbHealthMonitor.releaseIdleConnections();
+  const healthReport = dbHealthMonitor.getHealthReport();
+  
+  res.json({
+    success,
+    message: success ? 'Database connections cleaned up' : 'Cleanup failed or not needed',
+    poolStats: healthReport.database.pool
+  });
 });
 
 // Cache management endpoints
-router.get('/cache', (req, res) => {
-  try {
-    const cacheStats = staticDataCache.getStats();
-    res.json({
-      status: 'success',
-      cache: cacheStats,
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    logger.error('Cache stats error:', error);
-    res.status(500).json({
-      status: 'error',
-      message: 'Cache stats check failed',
-      error: error.message
-    });
-  }
+router.get('/cache', adminOnly, (req, res) => {
+  const cacheStats = staticDataCache.getStats();
+  res.json({
+    status: 'success',
+    cache: cacheStats,
+    timestamp: new Date().toISOString()
+  });
 });
 
-router.post('/cache/clear', (req, res) => {
-  try {
-    const entity = req.body.entity;
-    
-    if (entity) {
-      staticDataCache.clearEntity(entity);
-      logger.info(`Cache cleared for entity: ${entity}`);
-      res.json({
-        success: true,
-        message: `Cache cleared for entity: ${entity}`,
-        stats: staticDataCache.getStats()
-      });
-    } else {
-      staticDataCache.clear();
-      logger.info('All cache cleared via API');
-      res.json({
-        success: true,
-        message: 'All cache cleared',
-        stats: staticDataCache.getStats()
-      });
-    }
-  } catch (error) {
-    logger.error('Cache clear error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Cache clear failed',
-      error: error.message
-    });
-  }
-});
-
-router.post('/cache/cleanup', (req, res) => {
-  try {
-    const removedCount = staticDataCache.cleanup();
+router.post('/cache/clear', adminOnly, (req, res) => {
+  const entity = req.body.entity;
+  
+  if (entity) {
+    staticDataCache.clearEntity(entity);
+    logger.info(`Cache cleared for entity: ${entity}`);
     res.json({
       success: true,
-      message: `Cleaned up ${removedCount} expired cache entries`,
+      message: `Cache cleared for entity: ${entity}`,
       stats: staticDataCache.getStats()
     });
-  } catch (error) {
-    logger.error('Cache cleanup error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Cache cleanup failed',
-      error: error.message
+  } else {
+    staticDataCache.clear();
+    logger.info('All cache cleared via API');
+    res.json({
+      success: true,
+      message: 'All cache cleared',
+      stats: staticDataCache.getStats()
     });
   }
+});
+
+router.post('/cache/cleanup', adminOnly, (req, res) => {
+  const removedCount = staticDataCache.cleanup();
+  res.json({
+    success: true,
+    message: `Cleaned up ${removedCount} expired cache entries`,
+    stats: staticDataCache.getStats()
+  });
 });
 
 // Compression statistics endpoint
-router.get('/compression', (req, res) => {
-  try {
-    const stats = {
-      ...compressionStats,
-      compressionRate: compressionStats.totalRequests > 0 
-        ? ((compressionStats.compressedRequests / compressionStats.totalRequests) * 100).toFixed(1) + '%'
-        : '0%',
-      totalSavingsMB: (compressionStats.totalSavings / (1024 * 1024)).toFixed(2) + 'MB',
-      averageRatio: compressionStats.averageRatio.toFixed(1) + '%'
-    };
-    
-    res.json({
-      status: 'success',
-      compression: stats,
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    logger.error('Compression stats error:', error);
-    res.status(500).json({
-      status: 'error',
-      message: 'Compression stats check failed',
-      error: error.message
-    });
-  }
+router.get('/compression', adminOnly, (req, res) => {
+  const stats = {
+    ...compressionStats,
+    compressionRate: compressionStats.totalRequests > 0 
+      ? ((compressionStats.compressedRequests / compressionStats.totalRequests) * 100).toFixed(1) + '%'
+      : '0%',
+    totalSavingsMB: (compressionStats.totalSavings / (1024 * 1024)).toFixed(2) + 'MB',
+    averageRatio: compressionStats.averageRatio.toFixed(1) + '%'
+  };
+  
+  res.json({
+    status: 'success',
+    compression: stats,
+    timestamp: new Date().toISOString()
+  });
 });
 
 // Reset compression statistics
-router.post('/compression/reset', (req, res) => {
-  try {
-    compressionStats = {
-      totalRequests: 0,
-      compressedRequests: 0,
-      totalSavings: 0,
-      averageRatio: 0,
-      lastReset: new Date()
-    };
-    
-    res.json({
-      success: true,
-      message: 'Compression statistics reset',
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    logger.error('Compression stats reset error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Compression stats reset failed',
-      error: error.message
-    });
-  }
+router.post('/compression/reset', adminOnly, (req, res) => {
+  compressionStats = {
+    totalRequests: 0,
+    compressedRequests: 0,
+    totalSavings: 0,
+    averageRatio: 0,
+    lastReset: new Date()
+  };
+  
+  res.json({
+    success: true,
+    message: 'Compression statistics reset',
+    timestamp: new Date().toISOString()
+  });
 });
 
 // Manual memory cleanup endpoint
-router.post('/memory/cleanup', async (req, res) => {
-  try {
-    logger.info('Manual memory cleanup requested via API');
-    
-    // Run cleanup in background to avoid timeout
-    MemoryCleanupJob.runCleanup().catch(error => {
-      logger.error('Manual memory cleanup failed:', { error: error.message });
-    });
-    
-    res.json({
-      success: true,
-      message: 'Memory cleanup initiated',
-      status: MemoryCleanupJob.getStatus(),
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    logger.error('Memory cleanup request failed:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Memory cleanup request failed',
-      error: error.message
-    });
-  }
+router.post('/memory/cleanup', adminOnly, async (req, res) => {
+  logger.info('Manual memory cleanup requested via API');
+  
+  // Run cleanup in background to avoid timeout
+  MemoryCleanupJob.runCleanup().catch(error => {
+    logger.error('Manual memory cleanup failed:', { error: error.message });
+  });
+  
+  res.json({
+    success: true,
+    message: 'Memory cleanup initiated',
+    status: MemoryCleanupJob.getStatus(),
+    timestamp: new Date().toISOString()
+  });
 });
 
 // Memory optimization status endpoint
-router.get('/memory/status', (req, res) => {
-  try {
-    const memoryStats = memoryManager.getMemoryStats();
-    
-    res.json({
-      status: 'success',
-      memory: memoryStats,
-      cleanup: MemoryCleanupJob.getStatus(),
-      cache: staticDataCache.getStats(),
-      compression: compressionStats,
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    logger.error('Memory status check failed:', error);
-    res.status(500).json({
-      status: 'error',
-      message: 'Memory status check failed',
-      error: error.message
-    });
-  }
+router.get('/memory/status', adminOnly, (req, res) => {
+  const memoryStats = memoryManager.getMemoryStats();
+  
+  res.json({
+    status: 'success',
+    memory: memoryStats,
+    cleanup: MemoryCleanupJob.getStatus(),
+    cache: staticDataCache.getStats(),
+    compression: compressionStats,
+    timestamp: new Date().toISOString()
+  });
 });
 
-// Rate limiting status endpoint (admin only)
-router.get('/rate-limits', authenticateToken, isAdmin, async (req, res) => {
-  try {
-    const activeLimits = await RateLimitMiddleware.getActiveRateLimits();
+// Rate limiting status endpoint
+router.get('/rate-limits', adminOnly, async (req, res) => {
+  const activeLimits = await RateLimitMiddleware.getActiveRateLimits();
 
-    res.json({
-      status: 'success',
-      rateLimits: {
-        active: activeLimits.length,
-        entries: activeLimits,
-        stats: {
-          totalActiveKeys: activeLimits.length,
-          byType: activeLimits.reduce((acc, limit) => {
-            const type = limit.key.split('_')[0];
-            acc[type] = (acc[type] || 0) + 1;
-            return acc;
-          }, {})
-        }
-      },
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    logger.error('Rate limit status check failed:', error);
-    res.status(500).json({
-      status: 'error',
-      message: 'Rate limit status check failed',
-      error: error.message
-    });
-  }
+  res.json({
+    status: 'success',
+    rateLimits: {
+      active: activeLimits.length,
+      entries: activeLimits,
+      stats: {
+        totalActiveKeys: activeLimits.length,
+        byType: activeLimits.reduce((acc, limit) => {
+          const type = limit.key.split('_')[0];
+          acc[type] = (acc[type] || 0) + 1;
+          return acc;
+        }, {})
+      }
+    },
+    timestamp: new Date().toISOString()
+  });
 });
 
-// Clear specific rate limit (admin only)
-router.post('/rate-limits/clear', authenticateToken, isAdmin, async (req, res) => {
-  try {
-    const { key } = req.body;
+// Clear specific rate limit
+router.post('/rate-limits/clear', adminOnly, async (req, res) => {
+  const { key } = req.body;
 
-    if (!key) {
-      return res.status(400).json({
-        success: false,
-        message: 'Rate limit key is required'
-      });
-    }
-
-    const cleared = await RateLimitMiddleware.clearRateLimit(key);
-
-    res.json({
-      success: cleared,
-      message: cleared ? `Rate limit cleared for key: ${key}` : 'Rate limit key not found',
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    logger.error('Rate limit clear failed:', error);
-    res.status(500).json({
+  if (!key) {
+    return res.status(400).json({
       success: false,
-      message: 'Rate limit clear failed',
-      error: error.message
+      message: 'Rate limit key is required'
     });
   }
-});
 
-// Graceful shutdown cleanup for rate limiting
-process.on('SIGTERM', () => {
-  RateLimitMiddleware.stopCleanup().catch(() => {});
-});
+  const cleared = await RateLimitMiddleware.clearRateLimit(key);
 
-process.on('SIGINT', () => {
-  RateLimitMiddleware.stopCleanup().catch(() => {});
+  res.json({
+    success: cleared,
+    message: cleared ? `Rate limit cleared for key: ${key}` : 'Rate limit key not found',
+    timestamp: new Date().toISOString()
+  });
 });
 
 export default router; 

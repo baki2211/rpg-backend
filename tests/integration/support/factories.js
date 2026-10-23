@@ -14,6 +14,7 @@ import { Event } from '../../../src/models/eventModel.js';
 import { CombatRound } from '../../../src/models/combatRoundModel.js';
 import { MasteryTier } from '../../../src/models/masteryTierModel.js';
 import { CombatConstant } from '../../../src/models/combatConstantModel.js';
+import { StatDefinition } from '../../../src/models/statDefinitionModel.js';
 
 // Arrange helpers. Each one inserts a row through a repository (its own autocommit write,
 // separate from the request under test) and returns the saved entity.
@@ -87,6 +88,11 @@ export async function makeSkill({ type, branch, ...fields } = {}) {
     isPassive: false,
     ...fields,
   });
+}
+
+/** A stat definition: the stats a character may have (`internalName` is the key in the `stats` jsonb). */
+export function makeStatDefinition(fields) {
+  return save(StatDefinition, { minValue: 1, maxValue: 20, defaultValue: 1, isActive: true, ...fields });
 }
 
 /** The character has learned the skill (character_skills row). */

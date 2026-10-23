@@ -40,3 +40,14 @@ export async function lockCharacters(manager, ids) {
 export function lockUser(manager, id) {
   return manager.getRepository(User).findOne({ where: { id }, lock: { mode: 'pessimistic_write' } });
 }
+
+/**
+ * Items sorted by `characterId` ascending (stable; the input is not changed): the order in which per-character
+ * rows must be locked when one transaction touches several characters.
+ * @template {{ characterId: number }} T
+ * @param {T[]} items
+ * @returns {T[]}
+ */
+export function inCharacterLockOrder(items) {
+  return [...items].sort((a, b) => a.characterId - b.characterId);
+}

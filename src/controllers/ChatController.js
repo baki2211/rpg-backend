@@ -1,6 +1,7 @@
 import { ChatService } from '../services/ChatService.js';
 import { AppDataSource } from '../data-source.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { InputValidator } from '../utils/inputValidator.js';
 import { HttpError } from '../utils/HttpError.js';
 
 const chatService = new ChatService();
@@ -13,16 +14,13 @@ const parseId = (raw) => {
 
 export class ChatController {
   static getMessages = asyncHandler(async (req, res) => {
-    const { locationId } = req.params;
-    res.status(200).json(await chatService.getMessagesByLocation(Number(locationId)));
+    const locationId = InputValidator.validateLocationId(req.params.locationId);
+    res.status(200).json(await chatService.getMessagesByLocation(locationId));
   });
 
   static addMessage = asyncHandler(async (req, res) => {
-    const locationId = parseId(req.params.locationId);
+    const locationId = InputValidator.validateLocationId(req.params.locationId);
     const { message } = req.body;
-    if (!locationId) {
-      throw new HttpError(400, 'Location ID is required');
-    }
     if (typeof message !== 'string' || message.length === 0) {
       throw new HttpError(400, 'Message is required');
     }
@@ -32,15 +30,12 @@ export class ChatController {
 
   static launchSkill = asyncHandler(async (req, res) => {
     const userId = req.user.id;
-    const skillId = parseId(req.params.skillId);
+    const skillId = InputValidator.validateSkillId(req.params.skillId);
     const locationId = parseId(req.body.locationId);
     const { message } = req.body;
 
     if (!locationId) {
       throw new HttpError(400, 'Location ID is required');
-    }
-    if (!skillId) {
-      throw new HttpError(400, 'Invalid skill ID provided');
     }
 
     const skill = await AppDataSource.getRepository('Skill').findOne({

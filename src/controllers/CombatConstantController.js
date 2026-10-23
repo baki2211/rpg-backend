@@ -1,5 +1,6 @@
 import { CombatConstantService } from '../services/CombatConstantService.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { InputValidator } from '../utils/inputValidator.js';
 
 const combatConstantService = new CombatConstantService();
 
@@ -18,7 +19,7 @@ export class CombatConstantController {
     });
 
     static getCombatConstantById = asyncHandler(async (req, res) => {
-        res.json(await combatConstantService.getCombatConstantById(parseInt(req.params.id)));
+        res.json(await combatConstantService.getCombatConstantById(InputValidator.validateId(req.params.id)));
     });
 
     static createCombatConstant = asyncHandler(async (req, res) => {
@@ -26,11 +27,11 @@ export class CombatConstantController {
     });
 
     static updateCombatConstant = asyncHandler(async (req, res) => {
-        res.json(await combatConstantService.updateCombatConstant(parseInt(req.params.id), req.body));
+        res.json(await combatConstantService.updateCombatConstant(InputValidator.validateId(req.params.id), req.body));
     });
 
     static deleteCombatConstant = asyncHandler(async (req, res) => {
-        await combatConstantService.deleteCombatConstant(parseInt(req.params.id));
+        await combatConstantService.deleteCombatConstant(InputValidator.validateId(req.params.id));
         res.json({ message: 'Combat constant deleted successfully' });
     });
 

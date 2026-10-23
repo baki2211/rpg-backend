@@ -116,4 +116,13 @@ export const Character = new EntitySchema({
       nullable: true,
     }
   },
+  indices: [
+    {
+      // A user plays one character at a time: their own or the NPC they control (both carry userId)
+      name: 'IDX_CHARACTER_ONE_ACTIVE_PER_USER',
+      columns: ['userId'],
+      unique: true,
+      where: '"isActive" = true'
+    }
+  ],
 });

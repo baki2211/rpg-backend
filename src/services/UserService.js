@@ -2,6 +2,7 @@ import { AppDataSource } from '../data-source.js';
 import { User } from '../models/userModel.js';
 import { HttpError } from '../utils/HttpError.js';
 import bcrypt from 'bcrypt';
+import { ALL_ROLES } from '../domain/roles.js';
 
 const PUBLIC_USER_FIELDS = { id: true, username: true, role: true, createdAt: true, updatedAt: true };
 
@@ -84,9 +85,8 @@ export class UserService {
 
     // Update user role
     async updateUserRole(userId, newRole) {
-        const validRoles = ['user', 'staffer', 'master', 'admin'];
-        if (!validRoles.includes(newRole.toLowerCase())) {
-            throw new HttpError(400, 'Invalid role. Must be one of: user, staffer, master, admin');
+        if (!ALL_ROLES.includes(newRole.toLowerCase())) {
+            throw new HttpError(400, `Invalid role. Must be one of: ${ALL_ROLES.join(', ')}`);
         }
 
         const user = await this.findById(userId);

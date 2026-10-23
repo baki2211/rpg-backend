@@ -54,7 +54,8 @@ export const AppDataSource = new DataSource({
     
     // Memory optimization settings
     statement_timeout: parseInt(process.env.DB_STATEMENT_TIMEOUT) || 30000, // 30 seconds
-    query_timeout: parseInt(process.env.DB_QUERY_TIMEOUT) || 30000, // 30 seconds
+    // Must stay above statement_timeout so the database decides, not the client (a client timeout on COMMIT would misreport)
+    query_timeout: parseInt(process.env.DB_QUERY_TIMEOUT) || 35000, // 35 seconds
     
     // No SSL needed — db is only reachable on the private docker network
     ssl: false,

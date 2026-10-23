@@ -1,4 +1,5 @@
 import validator from 'validator';
+import { HttpError } from './HttpError.js';
 
 /**
  * Input validation and sanitization utilities
@@ -14,7 +15,7 @@ export class InputValidator {
      */
     static sanitizeString(input, options = {}) {
         if (typeof input !== 'string') {
-            throw new Error('Input must be a string');
+            throw new HttpError(400, 'Input must be a string');
         }
 
         const defaults = {
@@ -34,7 +35,7 @@ export class InputValidator {
         
         // Check length
         if (sanitized.length > opts.maxLength) {
-            throw new Error(`Input exceeds maximum length of ${opts.maxLength} characters`);
+            throw new HttpError(400, `Input exceeds maximum length of ${opts.maxLength} characters`);
         }
         
         // HTML sanitization and XSS protection
@@ -68,29 +69,42 @@ export class InputValidator {
         // Handle null/undefined
         if (input == null) {
             if (opts.required) {
-                throw new Error('Integer value is required');
+                throw new HttpError(400, 'Integer value is required');
             }
             return null;
         }
         
-        // Convert to number
-        const num = Number(input);
-        
-        // Validate it's an integer
-        if (!Number.isInteger(num)) {
-            throw new Error('Value must be a valid integer');
+        // Only integer numbers or plain decimal digit strings: Number() alone would
+        // also accept '0x1', '1e3', ' 7 ', true and [7]
+        const isIntegerString = typeof input === 'string' && /^-?\d+$/.test(input);
+        if (!Number.isInteger(input) && !isIntegerString) {
+            throw new HttpError(400, 'Value must be a valid integer');
         }
+        const num = Number(input);
         
         // Check bounds
         if (num < opts.min) {
-            throw new Error(`Value must be at least ${opts.min}`);
+            throw new HttpError(400, `Value must be at least ${opts.min}`);
         }
         
         if (num > opts.max) {
-            throw new Error(`Value must be at most ${opts.max}`);
+            throw new HttpError(400, `Value must be at most ${opts.max}`);
         }
         
         return num;
+    }
+
+    /**
+     * Validate a row id (path parameter or body field): a positive PostgreSQL INTEGER
+     * @param {any} id - Id to validate
+     * @returns {number} Validated id
+     */
+    static validateId(id) {
+        return this.validateInteger(id, {
+            min: 1,
+            max: 2147483647, // PostgreSQL INTEGER max
+            required: true
+        });
     }
 
     /**
@@ -100,7 +114,7 @@ export class InputValidator {
      */
     static validateCharacterName(name) {
         if (!name || typeof name !== 'string') {
-            throw new Error('Character name is required');
+            throw new HttpError(400, 'Character name is required');
         }
         
         const sanitized = this.sanitizeString(name, { 
@@ -110,12 +124,12 @@ export class InputValidator {
         
         // Additional character name rules
         if (sanitized.length < 2) {
-            throw new Error('Character name must be at least 2 characters long');
+            throw new HttpError(400, 'Character name must be at least 2 characters long');
         }
         
         // Only allow letters, numbers, spaces, apostrophes, and hyphens
         if (!/^[a-zA-Z0-9\s'\-]+$/.test(sanitized)) {
-            throw new Error('Character name contains invalid characters');
+            throw new HttpError(400, 'Character name contains invalid characters');
         }
         
         return sanitized;
@@ -127,11 +141,7 @@ export class InputValidator {
      * @returns {number} Validated user ID
      */
     static validateUserId(userId) {
-        return this.validateInteger(userId, {
-            min: 1,
-            max: 2147483647, // PostgreSQL INTEGER max
-            required: true
-        });
+        return this.validateId(userId);
     }
 
     /**
@@ -140,11 +150,7 @@ export class InputValidator {
      * @returns {number} Validated character ID
      */
     static validateCharacterId(characterId) {
-        return this.validateInteger(characterId, {
-            min: 1,
-            max: 2147483647,
-            required: true
-        });
+        return this.validateId(characterId);
     }
 
     /**
@@ -153,11 +159,7 @@ export class InputValidator {
      * @returns {number} Validated skill ID
      */
     static validateSkillId(skillId) {
-        return this.validateInteger(skillId, {
-            min: 1,
-            max: 2147483647,
-            required: true
-        });
+        return this.validateId(skillId);
     }
 
     /**
@@ -166,11 +168,7 @@ export class InputValidator {
      * @returns {number} Validated round ID
      */
     static validateRoundId(roundId) {
-        return this.validateInteger(roundId, {
-            min: 1,
-            max: 2147483647,
-            required: true
-        });
+        return this.validateId(roundId);
     }
 
     /**
@@ -179,11 +177,7 @@ export class InputValidator {
      * @returns {number} Validated location ID
      */
     static validateLocationId(locationId) {
-        return this.validateInteger(locationId, {
-            min: 1,
-            max: 2147483647,
-            required: true
-        });
+        return this.validateId(locationId);
     }
 
     /**
@@ -193,7 +187,7 @@ export class InputValidator {
      */
     static validateChatMessage(message) {
         if (!message || typeof message !== 'string') {
-            throw new Error('Message content is required');
+            throw new HttpError(400, 'Message content is required');
         }
         
         const sanitized = this.sanitizeString(message, {
@@ -202,7 +196,7 @@ export class InputValidator {
         });
         
         if (sanitized.length === 0) {
-            throw new Error('Message cannot be empty');
+            throw new HttpError(400, 'Message cannot be empty');
         }
         
         return sanitized;
@@ -215,7 +209,7 @@ export class InputValidator {
      */
     static validateEmail(email) {
         if (!email || typeof email !== 'string') {
-            throw new Error('Email is required');
+            throw new HttpError(400, 'Email is required');
         }
         
         const sanitized = this.sanitizeString(email, {
@@ -224,7 +218,7 @@ export class InputValidator {
         });
         
         if (!validator.isEmail(sanitized)) {
-            throw new Error('Invalid email format');
+            throw new HttpError(400, 'Invalid email format');
         }
         
         return sanitized.toLowerCase();
@@ -238,7 +232,7 @@ export class InputValidator {
      */
     static validateObject(obj, schema) {
         if (!obj || typeof obj !== 'object') {
-            throw new Error('Input must be an object');
+            throw new HttpError(400, 'Input must be an object');
         }
         
         const validated = {};
@@ -248,7 +242,7 @@ export class InputValidator {
             
             try {
                 if (rules.required && (value === undefined || value === null)) {
-                    throw new Error(`${field} is required`);
+                    throw new HttpError(400, `${field} is required`);
                 }
                 
                 if (value !== undefined && value !== null) {
@@ -267,7 +261,7 @@ export class InputValidator {
                     }
                 }
             } catch (error) {
-                throw new Error(`Validation error for field '${field}': ${error.message}`);
+                throw new HttpError(400, `Validation error for field '${field}': ${error.message}`);
             }
         }
         
@@ -307,7 +301,7 @@ export class InputValidator {
             try {
                 processedData.stats = JSON.parse(characterData.stats);
             } catch (error) {
-                throw new Error('Invalid stats format');
+                throw new HttpError(400, 'Invalid stats format');
             }
         }
         
@@ -320,10 +314,10 @@ export class InputValidator {
             race: { 
                 validator: (value) => {
                     if (!value || typeof value !== 'object') {
-                        throw new Error('Race is required');
+                        throw new HttpError(400, 'Race is required');
                     }
                     if (!value.id || !Number.isInteger(Number(value.id))) {
-                        throw new Error('Race ID is required');
+                        throw new HttpError(400, 'Race ID is required');
                     }
                     return { id: this.validateInteger(value.id, { min: 1 }) };
                 },
@@ -339,7 +333,7 @@ export class InputValidator {
                     for (const [stat, statValue] of Object.entries(value)) {
                         // Only allow known stat names (basic protection)
                         if (!/^[a-z]{2,10}$/.test(stat)) {
-                            throw new Error(`Invalid stat name: ${stat}`);
+                            throw new HttpError(400, `Invalid stat name: ${stat}`);
                         }
                         validatedStats[stat] = this.validateInteger(statValue, { 
                             min: 0, 

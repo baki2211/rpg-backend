@@ -11,7 +11,7 @@ import { CharacterStatsService } from './CharacterStatsService.js';
 import { EventService } from './EventService.js';
 import { TargetResolutionService } from './TargetResolutionService.js';
 import { SkillExecutionService } from './SkillExecutionService.js';
-import { HttpError } from '../utils/HttpError.js';
+import { HttpError, httpResponseForError } from '../utils/HttpError.js';
 import { rollD20 } from '../utils/dice.js';
 import staticDataCache from '../utils/staticDataCache.js';
 import { evaluatePost, chatRulesFromConstants } from '../domain/chat/messageRewards.js';
@@ -77,18 +77,13 @@ export class ChatService {
   }
 
   async addMessage(locationId, userId, username, message, skill = null) {
-    // Memory optimization: Use minimal query and timeout
-    const character = await Promise.race([
-      this.characterRepository.findOne({ 
-        where: { userId, isActive: true },
-        relations: { race: true }, // Need race for skill engine calculations
-        // Experience and level-up use the row re-read under lock inside the post's transaction
-        select: { id: true, name: true, userId: true, stats: true, raceId: true }
-      }),
-      new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Character lookup timeout')), 3000)
-      )
-    ]);
+    // No client-side timeout: a stuck query is bounded by the pool's statement_timeout
+    const character = await this.characterRepository.findOne({
+      where: { userId, isActive: true },
+      relations: { race: true }, // Need race for skill engine calculations
+      // Experience and level-up use the row re-read under lock inside the post's transaction
+      select: { id: true, name: true, userId: true, stats: true, raceId: true }
+    });
     
     if (!character) {
       throw new HttpError(404, 'No active character found for this user.');
@@ -252,7 +247,11 @@ export class ChatService {
       );
     } catch (error) {
       logger.error('Failed to submit action to combat:', { error: error.message });
-      throw new HttpError(error.statusCode ?? 500, `Failed to submit ${fullSkill.name} to combat: ${error.message}`);
+      // Known errors (HttpError, unique violation) keep their status and safe message; anything
+      // else propagates unchanged so the error handler answers a generic 500
+      const known = httpResponseForError(error);
+      if (!known) throw error;
+      throw new HttpError(known.status, `Failed to submit ${fullSkill.name} to combat: ${known.message}`);
     }
   }
 

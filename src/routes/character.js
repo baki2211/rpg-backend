@@ -1,11 +1,12 @@
 import express from 'express';
 import { CharacterController } from '../controllers/CharacterController.js';
 import { authenticateToken, requireRole } from '../middleware/authMiddleware.js';
+import { MASTER_OR_ADMIN_ROLES } from '../domain/roles.js';
 import { RateLimitMiddleware } from '../middleware/rateLimitMiddleware.js';
 import upload from '../middleware/uploadMiddleware.js';
 
 const router = express.Router();
-const masterOrAdmin = requireRole(['admin', 'master']);
+const masterOrAdmin = requireRole(MASTER_OR_ADMIN_ROLES);
 
 // Apply authentication to all routes
 router.use(authenticateToken);
@@ -27,7 +28,7 @@ router.post('/npcs/:id/deactivate', CharacterController.deactivateNPC);
 router.post('/', RateLimitMiddleware.characterOperationLimit, upload.single('image'), CharacterController.createCharacter);
 
 // Regular character routes (specific routes first)
-router.get('/all', CharacterController.getAllCharacters);
+router.get('/all', masterOrAdmin, CharacterController.getAllCharacters);
 router.get('/', CharacterController.getCharacters);
 router.put('/:id/activate', RateLimitMiddleware.characterOperationLimit, CharacterController.activateCharacter);
 router.delete('/:id', RateLimitMiddleware.characterOperationLimit, CharacterController.deleteCharacter);
@@ -40,7 +41,6 @@ router.delete('/:characterId/image', CharacterController.deleteCharacterImage);
 router.get('/:id', CharacterController.getCharacterById);
 router.get('/:id/skills/available', CharacterController.getAvailableSkills);
 router.get('/:id/skills/acquired', CharacterController.getAcquiredSkills);
-router.post('/:id/skills/:skillId/acquire', RateLimitMiddleware.skillUsageLimit, CharacterController.acquireSkill);
 router.put('/:id/stats', RateLimitMiddleware.characterOperationLimit, CharacterController.updateCharacterStats);
 router.get('/:id/stats/definitions', CharacterController.getCharacterStatsWithDefinitions);
 

@@ -32,6 +32,8 @@ export class InMemoryRateLimitStore {
         if (now > data.resetTime) this.map.delete(key);
       }
     }, 5 * 60 * 1000);
+    // Housekeeping only: the HTTP server is what keeps the process alive, not this sweep.
+    this.cleanupInterval.unref();
   }
 
   async hit(key, windowMs) {

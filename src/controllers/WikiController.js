@@ -2,6 +2,7 @@ import { WikiSectionService } from '../services/WikiSectionService.js';
 import { WikiEntryService } from '../services/WikiEntryService.js';
 import { WikiSearchService } from '../services/WikiSearchService.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { InputValidator } from '../utils/inputValidator.js';
 import { HttpError } from '../utils/HttpError.js';
 
 const sectionService = new WikiSectionService();
@@ -34,12 +35,12 @@ export class WikiController {
   });
 
   static adminUpdateSection = asyncHandler(async (req, res) => {
-    const section = await sectionService.updateSection(parseInt(req.params.id), req.body);
+    const section = await sectionService.updateSection(InputValidator.validateId(req.params.id), req.body);
     res.json(section);
   });
 
   static adminDeleteSection = asyncHandler(async (req, res) => {
-    await sectionService.deleteSection(parseInt(req.params.id));
+    await sectionService.deleteSection(InputValidator.validateId(req.params.id));
     res.status(204).end();
   });
 
@@ -56,13 +57,13 @@ export class WikiController {
 
   static adminGetEntries = asyncHandler(async (req, res) => {
     const includeUnpublished = req.query.includeUnpublished === 'true';
-    const entries = await entryService.getEntriesBySection(parseInt(req.params.sectionId), includeUnpublished);
+    const entries = await entryService.getEntriesBySection(InputValidator.validateId(req.params.sectionId), includeUnpublished);
     res.json(entries);
   });
 
   static adminGetEntriesHierarchical = asyncHandler(async (req, res) => {
     const includeUnpublished = req.query.includeUnpublished === 'true';
-    const entries = await entryService.getEntriesHierarchical(parseInt(req.params.sectionId), includeUnpublished);
+    const entries = await entryService.getEntriesHierarchical(InputValidator.validateId(req.params.sectionId), includeUnpublished);
     res.json(entries);
   });
 
@@ -73,7 +74,7 @@ export class WikiController {
   });
 
   static adminGetEntry = asyncHandler(async (req, res) => {
-    const entry = await entryService.getEntryById(parseInt(req.params.id));
+    const entry = await entryService.getEntryById(InputValidator.validateId(req.params.id));
     if (!entry) throw new HttpError(404, 'Entry not found');
     res.json(entry);
   });
@@ -113,12 +114,12 @@ export class WikiController {
       updateData.parentEntryId = parseInt(updateData.parentEntryId);
     }
 
-    const entry = await entryService.updateEntry(parseInt(req.params.id), updateData);
+    const entry = await entryService.updateEntry(InputValidator.validateId(req.params.id), updateData);
     res.json(entry);
   });
 
   static adminDeleteEntry = asyncHandler(async (req, res) => {
-    await entryService.deleteEntry(parseInt(req.params.id));
+    await entryService.deleteEntry(InputValidator.validateId(req.params.id));
     res.status(204).end();
   });
 
@@ -127,7 +128,7 @@ export class WikiController {
     if (!Array.isArray(entryOrder)) {
       throw new HttpError(400, 'Entry order must be an array');
     }
-    const entries = await entryService.reorderEntries(parseInt(req.params.sectionId), entryOrder);
+    const entries = await entryService.reorderEntries(InputValidator.validateId(req.params.sectionId), entryOrder);
     res.json(entries);
   });
 

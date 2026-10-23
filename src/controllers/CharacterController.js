@@ -2,33 +2,38 @@ import { CharacterService } from '../services/CharacterService.js';
 import { CharacterStatsService } from '../services/CharacterStatsService.js';
 import { CharacterSkillsService } from '../services/CharacterSkillsService.js';
 import { NPCService } from '../services/NPCService.js';
-import { StatDefinitionService } from '../services/StatDefinitionService.js';
 import { InputValidator } from '../utils/inputValidator.js';
 import { AuditLogger } from '../utils/auditLogger.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { HttpError } from '../utils/HttpError.js';
-import fs from 'fs';
-import path from 'path';
+import { deleteUploadedFile } from '../utils/uploadedFiles.js';
+import { logger } from '../utils/logger.js';
+import {
+  CHARACTER_PLACEHOLDER_IMAGE_URL,
+  characterImageUrlFor
+} from '../domain/character/characterImage.js';
 
 const characterService = new CharacterService();
 const characterStatsService = new CharacterStatsService();
 const characterSkillsService = new CharacterSkillsService();
 const npcService = new NPCService();
-const statDefinitionService = new StatDefinitionService();
 
-const parseCharacterId = (raw) => {
-  const id = Number(raw);
-  if (!raw || Number.isNaN(id)) {
-    throw new HttpError(400, 'Invalid character ID provided');
+// Runs after the image change committed: a failed delete leaves an orphan file, never a dangling URL,
+// and never fails the request for a change that is already saved.
+const deleteFileAfterCommit = async (fileName) => {
+  if (!fileName) return;
+  try {
+    await deleteUploadedFile(fileName);
+  } catch (error) {
+    logger.warn('Orphan image file left behind', { fileName, error: error.message });
   }
-  return id;
 };
 
 export class CharacterController {
   static createCharacter = asyncHandler(async (req, res) => {
     const validatedData = InputValidator.validateCharacterCreation(req.body);
     const userId = InputValidator.validateUserId(req.user.id);
-    const imageUrl = req.file ? `/uploads/${req.file.filename}` : '/uploads/placeholder.jpg';
+    const imageUrl = req.file ? characterImageUrlFor(req.file.filename) : CHARACTER_PLACEHOLDER_IMAGE_URL;
 
     const character = await characterService.createCharacter(validatedData, userId, imageUrl);
 
@@ -76,7 +81,7 @@ export class CharacterController {
 
   static deleteCharacter = asyncHandler(async (req, res) => {
     const userId = req.user.id;
-    const characterId = parseCharacterId(req.params.id);
+    const characterId = InputValidator.validateCharacterId(req.params.id);
 
     await characterService.deleteCharacter(characterId, userId);
 
@@ -92,75 +97,46 @@ export class CharacterController {
   });
 
   static uploadCharacterImage = asyncHandler(async (req, res) => {
-    const userId = req.user.id;
-    const characterId = Number(req.params.characterId);
-    const character = await characterService.getCharacterById(characterId, userId);
-    if (!character) throw new HttpError(404, 'Character not found');
+    if (!req.file) throw new HttpError(400, 'An image file is required');
 
-    if (character.imageUrl && !character.imageUrl.includes('placeholder.png')) {
-      fs.unlinkSync(path.resolve('uploads', character.imageUrl));
+    let result;
+    try {
+      const userId = InputValidator.validateUserId(req.user.id);
+      const characterId = InputValidator.validateCharacterId(req.params.characterId);
+      result = await characterService.updateCharacterImage(characterId, userId, characterImageUrlFor(req.file.filename));
+    } catch (error) {
+      // The upload middleware already wrote the new file; nothing points at it now.
+      await deleteUploadedFile(req.file.filename).catch(() => {});
+      throw error;
     }
+    await deleteFileAfterCommit(result.fileToDelete);
 
-    const filename = req.file.filename;
-    const updated = await characterService.updateCharacterImage(characterId, userId, filename);
-    res.status(200).json(updated);
+    res.status(200).json(result.character);
   });
 
   static deleteCharacterImage = asyncHandler(async (req, res) => {
-    const userId = req.user.id;
-    const characterId = Number(req.params.characterId);
-    const character = await characterService.getCharacterById(characterId, userId);
+    const userId = InputValidator.validateUserId(req.user.id);
+    const characterId = InputValidator.validateCharacterId(req.params.characterId);
 
-    if (!character || !character.imageUrl) {
-      throw new HttpError(404, 'Character or image not found');
-    }
+    const { fileToDelete } = await characterService.updateCharacterImage(
+      characterId,
+      userId,
+      CHARACTER_PLACEHOLDER_IMAGE_URL
+    );
+    await deleteFileAfterCommit(fileToDelete);
 
-    if (!character.imageUrl.includes('placeholder.png')) {
-      fs.unlinkSync(path.resolve('uploads', character.imageUrl));
-    }
-
-    await characterService.updateCharacterImage(characterId, userId, 'placeholder.png');
     res.status(204).end();
   });
 
-  static acquireSkill = asyncHandler(async (req, res) => {
-    const userId = req.user.id;
-    const skillId = Number(req.params.skillId);
-    const character = await characterSkillsService.acquireSkill(skillId, userId);
-
-    AuditLogger.logEvent(
-      AuditLogger.EventTypes.SKILL_ACQUIRE,
-      {
-        userId,
-        characterId: character.id,
-        req,
-        riskLevel: AuditLogger.RiskLevels.LOW,
-        details: { skill_id: skillId }
-      }
-    );
-
-    res.status(200).json(character);
-  });
-
   static getAvailableSkills = asyncHandler(async (req, res) => {
-    const availableSkills = await characterSkillsService.getAvailableSkills(
-      Number(req.params.characterId),
-      req.user.id
-    );
+    const characterId = InputValidator.validateCharacterId(req.params.id);
+    const availableSkills = await characterSkillsService.getAvailableSkills(characterId, req.user.id);
     res.status(200).json(availableSkills);
-  });
-
-  static getCharacterStats = asyncHandler(async (req, res) => {
-    const characterStats = await characterStatsService.getCharacterStatsWithDefinitions(
-      Number(req.params.characterId),
-      req.user.id
-    );
-    res.status(200).json(characterStats);
   });
 
   static updateCharacterStats = asyncHandler(async (req, res) => {
     const userId = req.user.id;
-    const characterId = Number(req.params.characterId);
+    const characterId = InputValidator.validateCharacterId(req.params.id);
     const statUpdates = req.body;
 
     if (!statUpdates || typeof statUpdates !== 'object') {
@@ -187,28 +163,6 @@ export class CharacterController {
     res.status(200).json(updatedCharacter);
   });
 
-  static resetCharacterStats = asyncHandler(async (req, res) => {
-    const userId = req.user.id;
-    const characterId = Number(req.params.characterId);
-
-    const character = await characterService.getCharacterById(characterId, userId);
-    if (!character) throw new HttpError(404, 'Character not found');
-
-    const raceDefaults = character.race.statBonuses || {};
-    const statDefinitions = await statDefinitionService.getAllStatDefinitions(null, true);
-    const resetStats = {};
-    for (const statDef of statDefinitions) {
-      resetStats[statDef.internalName] = raceDefaults[statDef.internalName] || statDef.defaultValue || 0;
-    }
-
-    const updatedCharacter = await characterStatsService.updateCharacterStats(
-      characterId,
-      userId,
-      resetStats
-    );
-    res.status(200).json(updatedCharacter);
-  });
-
   // NPC Management Methods
   static createNPC = asyncHandler(async (req, res) => {
     const npc = await npcService.createNPC(req.body, req.user.id);
@@ -221,12 +175,14 @@ export class CharacterController {
   });
 
   static updateNPC = asyncHandler(async (req, res) => {
-    const updatedNPC = await npcService.updateNPC(Number(req.params.id), req.body);
+    const npcId = InputValidator.validateCharacterId(req.params.id);
+    const updatedNPC = await npcService.updateNPC(npcId, req.body);
     res.status(200).json(updatedNPC);
   });
 
   static deleteNPC = asyncHandler(async (req, res) => {
-    await npcService.deleteNPC(Number(req.params.id));
+    const npcId = InputValidator.validateCharacterId(req.params.id);
+    await npcService.deleteNPC(npcId);
     res.status(204).end();
   });
 
@@ -241,30 +197,32 @@ export class CharacterController {
   });
 
   static activateNPC = asyncHandler(async (req, res) => {
-    const activatedNPC = await npcService.activateNPC(Number(req.params.id), req.user.id);
+    const npcId = InputValidator.validateCharacterId(req.params.id);
+    const activatedNPC = await npcService.activateNPC(npcId, req.user.id);
     res.status(200).json(activatedNPC);
   });
 
   static deactivateNPC = asyncHandler(async (req, res) => {
-    await npcService.deactivateNPC(Number(req.params.id), req.user.id);
+    const npcId = InputValidator.validateCharacterId(req.params.id);
+    await npcService.deactivateNPC(npcId, req.user.id);
     res.status(204).end();
   });
 
   static getCharacterById = asyncHandler(async (req, res) => {
-    const characterId = parseCharacterId(req.params.id);
+    const characterId = InputValidator.validateCharacterId(req.params.id);
     const character = await characterService.getCharacterById(characterId, req.user.id);
     if (!character) throw new HttpError(404, 'Character not found');
     res.status(200).json(character);
   });
 
   static getAcquiredSkills = asyncHandler(async (req, res) => {
-    const characterId = parseCharacterId(req.params.id);
+    const characterId = InputValidator.validateCharacterId(req.params.id);
     const skills = await characterSkillsService.getAcquiredSkills(characterId, req.user.id);
     res.status(200).json(skills);
   });
 
   static getCharacterStatsWithDefinitions = asyncHandler(async (req, res) => {
-    const characterId = parseCharacterId(req.params.id);
+    const characterId = InputValidator.validateCharacterId(req.params.id);
     const characterStats = await characterStatsService.getCharacterStatsWithDefinitions(
       characterId,
       req.user.id

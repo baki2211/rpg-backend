@@ -17,20 +17,16 @@ router.get('/dashboard', authenticateToken, isAdmin, (req, res) => {
 // Reload the entire static-data cache (races, skills, stat defs, etc).
 // Use after direct SQL edits to those tables so the change is visible
 // without a process restart.
+// A failure reaches errorHandler (Express 5 forwards the rejection): logged, generic 500.
 router.post('/cache/reload', authenticateToken, isAdmin, async (req, res) => {
-    try {
-        staticDataCache.clear();
-        staticDataCache.isInitialized = false;
-        await staticDataCache.preloadCache();
-        logger.info('Static data cache reloaded by admin', { userId: req.user?.id });
-        res.status(200).json({
-            success: true,
-            stats: staticDataCache.getStats()
-        });
-    } catch (error) {
-        logger.error('Cache reload failed', { error: error.message });
-        res.status(500).json({ success: false, error: error.message });
-    }
+    staticDataCache.clear();
+    staticDataCache.isInitialized = false;
+    await staticDataCache.preloadCache();
+    logger.info('Static data cache reloaded by admin', { userId: req.user?.id });
+    res.status(200).json({
+        success: true,
+        stats: staticDataCache.getStats()
+    });
 });
 
 // Reload a single entity. Entity name must match the cache key prefix
@@ -55,18 +51,13 @@ router.post('/cache/reload/:entity', authenticateToken, isAdmin, async (req, res
         });
     }
 
-    try {
-        staticDataCache.clearEntity(entity);
-        await reloaders[entity]();
-        logger.info('Static data cache entity reloaded by admin', {
-            userId: req.user?.id,
-            entity
-        });
-        res.status(200).json({ success: true, entity, stats: staticDataCache.getStats() });
-    } catch (error) {
-        logger.error('Entity cache reload failed', { entity, error: error.message });
-        res.status(500).json({ success: false, error: error.message });
-    }
+    staticDataCache.clearEntity(entity);
+    await reloaders[entity]();
+    logger.info('Static data cache entity reloaded by admin', {
+        userId: req.user?.id,
+        entity
+    });
+    res.status(200).json({ success: true, entity, stats: staticDataCache.getStats() });
 });
 
 // Nested race management routes

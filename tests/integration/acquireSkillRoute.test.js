@@ -6,16 +6,16 @@ import { makeUser, makeCharacter, makeSkill } from './support/factories.js';
 
 const app = createApp();
 
-describe('POST /api/characters/:id/skills/:skillId/acquire', () => {
+describe('POST /api/character-skills/:skillId', () => {
   // Regression for F9: the character_skills row and the skill point deduction were two separate
   // commits, and the deduction used a value read before the insert.
-  it('spends the skill point cost and adds the skill to the character in one transaction', async () => {
+  it('the active character spends the skill point cost and learns the skill in one transaction', async () => {
     const player = await makeUser();
     const character = await makeCharacter({ user: player, skillPoints: 5 });
     const fireball = await makeSkill({ skillPointCost: 3 });
     const client = await logIn(app, player);
 
-    const response = await client.post(`/api/characters/${character.id}/skills/${fireball.id}/acquire`);
+    const response = await client.post(`/api/character-skills/${fireball.id}`);
 
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({ id: character.id, skillPoints: 2 });
@@ -32,7 +32,7 @@ describe('POST /api/characters/:id/skills/:skillId/acquire', () => {
     const fireball = await makeSkill({ skillPointCost: 3 });
     const client = await logIn(app, player);
 
-    const response = await client.post(`/api/characters/${character.id}/skills/${fireball.id}/acquire`);
+    const response = await client.post(`/api/character-skills/${fireball.id}`);
 
     expect(response.status).toBe(400);
     expect(response.body).toEqual({ message: 'Not enough skill points' });
@@ -50,8 +50,8 @@ describe('POST /api/characters/:id/skills/:skillId/acquire', () => {
     const client = await logIn(app, player);
 
     const responses = await Promise.all([
-      client.post(`/api/characters/${character.id}/skills/${fireball.id}/acquire`),
-      client.post(`/api/characters/${character.id}/skills/${frostbolt.id}/acquire`),
+      client.post(`/api/character-skills/${fireball.id}`),
+      client.post(`/api/character-skills/${frostbolt.id}`),
     ]);
 
     expect(responses.map(response => response.status).sort()).toEqual([200, 400]);
@@ -60,5 +60,20 @@ describe('POST /api/characters/:id/skills/:skillId/acquire', () => {
     expect(skillPoints).toBe(0);
     const learned = await query(`SELECT "characterId", "skillId" FROM character_skills`);
     expect(learned).toEqual([{ characterId: character.id, skillId: winner.id }]);
+  });
+
+  // L7: the second acquire route under /api/characters was removed; only this one remains
+  it('the old per-character acquire route no longer exists and learns nothing', async () => {
+    const player = await makeUser();
+    const character = await makeCharacter({ user: player, skillPoints: 5 });
+    const fireball = await makeSkill({ skillPointCost: 3 });
+    const client = await logIn(app, player);
+
+    const response = await client.post(`/api/characters/${character.id}/skills/${fireball.id}/acquire`);
+
+    expect(response.status).toBe(404);
+    const [{ skillPoints }] = await query(`SELECT "skillPoints" FROM characters WHERE id = $1`, [character.id]);
+    expect(skillPoints).toBe(5);
+    expect(await query(`SELECT * FROM character_skills`)).toEqual([]);
   });
 });

@@ -37,6 +37,8 @@ import { compressionMiddleware, compressionStatsMiddleware } from './middleware/
 import { queryMonitoringMiddleware, queryStatsHandler, resetQueryStatsHandler } from './middleware/queryMonitoringMiddleware.js';
 import { RateLimitMiddleware } from './middleware/rateLimitMiddleware.js';
 import { verifyCsrfToken } from './middleware/csrfMiddleware.js';
+import { authenticateToken } from './middleware/authMiddleware.js';
+import { isAdmin } from './middleware/adminMiddleware.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -80,10 +82,10 @@ export function createApp() {
   // Bootstrap routes (login/register) are exempt — see csrfMiddleware.js.
   app.use('/api', verifyCsrfToken);
 
-  app.use('/api', healthRoutes);
+  app.use('/api/health', healthRoutes);
 
-  app.get('/api/admin/query-stats', queryStatsHandler);
-  app.post('/api/admin/query-stats/reset', resetQueryStatsHandler);
+  app.get('/api/admin/query-stats', authenticateToken, isAdmin, queryStatsHandler);
+  app.post('/api/admin/query-stats/reset', authenticateToken, isAdmin, resetQueryStatsHandler);
   app.use('/api/auth', authRoutes);
   app.use('/api/user', userRoutes);
   app.use('/api/admin', adminRoutes);

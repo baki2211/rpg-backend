@@ -2,12 +2,14 @@ import { AppDataSource } from '../data-source.js';
 import { Character } from '../models/characterModel.js';
 import { User } from '../models/userModel.js';
 import { Race } from '../models/raceModel.js';
+import { Map as GameMap } from '../models/mapModel.js';
 import { CharacterStatsService } from './CharacterStatsService.js';
 import { HttpError } from '../utils/HttpError.js';
 import { PRIMARY_STAT_POINT_POOL, exceedsPrimaryStatPool } from '../domain/character/statPoints.js';
+import { imageFileToDelete } from '../domain/character/characterImage.js';
 import { logger } from '../utils/logger.js';
 import { Not } from 'typeorm';
-import { lockUser } from '../utils/rowLocks.js';
+import { lockUser, lockCharacter } from '../utils/rowLocks.js';
 
 // Fields a player may set when creating a character. Progression (rank, experience, skillPoints,
 // statPoints), ownership (userId, createdBy) and isNPC are server-controlled.
@@ -121,12 +123,33 @@ export class CharacterService {
     return character;
   }
 
-  async updateCharacterImage(characterId, userId, imagePath) {
-    await this.characterRepository.update(
-      { id: characterId, user: { id: userId } },
-      { imagePath }
-    );
-    return this.getCharacterById(characterId, userId);
+  /**
+   * Point the user's character at a new image URL, in one transaction with the character row locked.
+   * The old file is not touched here: the caller deletes `fileToDelete` only after this commits,
+   * so the database never points at a file that was already removed. It is null when the old URL
+   * owns no file or another character or a map still points at it.
+   * @returns {Promise<{ character: Object, fileToDelete: string|null }>}
+   */
+  async updateCharacterImage(characterId, userId, imageUrl) {
+    const fileToDelete = await AppDataSource.transaction(async (manager) => {
+      const character = await lockCharacter(manager, characterId);
+      if (!character || character.userId !== userId) {
+        throw new HttpError(404, 'Character not found');
+      }
+
+      await manager.update(Character, { id: characterId }, { imageUrl });
+
+      // Runs after the update, so this character's own row no longer matches the old URL.
+      // A null URL is skipped: TypeORM would not match it as IS NULL.
+      const previousUrl = character.imageUrl;
+      const stillReferenced = previousUrl != null && (
+        await manager.existsBy(Character, { imageUrl: previousUrl }) ||
+        await manager.existsBy(GameMap, { imageUrl: previousUrl })
+      );
+      return imageFileToDelete(previousUrl, stillReferenced);
+    });
+
+    return { character: await this.getCharacterById(characterId, userId), fileToDelete };
   }
 
   /**

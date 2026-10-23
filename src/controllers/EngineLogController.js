@@ -1,38 +1,35 @@
 import { EngineLogService } from '../services/EngineLogService.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
-import { HttpError } from '../utils/HttpError.js';
+import { InputValidator } from '../utils/inputValidator.js';
 
 const engineLogService = new EngineLogService();
 
 export class EngineLogController {
   static getLogsByLocation = asyncHandler(async (req, res) => {
-    const { locationId } = req.params;
+    const locationId = InputValidator.validateLocationId(req.params.locationId);
     const { limit = 50 } = req.query;
-    const logs = await engineLogService.getLogsByLocation(parseInt(locationId), parseInt(limit));
+    const logs = await engineLogService.getLogsByLocation(locationId, parseInt(limit));
     res.json({ success: true, logs, count: logs.length });
   });
 
   static getLogsBySession = asyncHandler(async (req, res) => {
-    const { sessionId } = req.params;
+    const sessionId = InputValidator.validateId(req.params.sessionId);
     const { limit = 50, type } = req.query;
     const logs = type
-      ? await engineLogService.getLogsBySessionAndType(parseInt(sessionId), type, parseInt(limit))
-      : await engineLogService.getLogsBySession(parseInt(sessionId), parseInt(limit));
+      ? await engineLogService.getLogsBySessionAndType(sessionId, type, parseInt(limit))
+      : await engineLogService.getLogsBySession(sessionId, parseInt(limit));
     res.json({ success: true, logs, count: logs.length });
   });
 
   static getLogsByEvent = asyncHandler(async (req, res) => {
-    const { eventId } = req.params;
-    const logs = await engineLogService.getLogsByEvent(parseInt(eventId));
+    const eventId = InputValidator.validateId(req.params.eventId);
+    const logs = await engineLogService.getLogsByEvent(eventId);
     res.json({ success: true, logs, count: logs.length });
   });
 
   static clearOldLogs = asyncHandler(async (req, res) => {
-    const { daysOld } = req.params;
-    if (!daysOld || parseInt(daysOld) < 1) {
-      throw new HttpError(400, 'Valid days parameter is required (minimum 1)');
-    }
-    const deletedCount = await engineLogService.clearOldLogs(parseInt(daysOld));
+    const daysOld = InputValidator.validateInteger(req.params.daysOld, { min: 1 });
+    const deletedCount = await engineLogService.clearOldLogs(daysOld);
     res.json({ success: true, message: `Deleted ${deletedCount} old engine logs`, deletedCount });
   });
 }

@@ -5,9 +5,10 @@ import { ChatService } from '../services/ChatService.js';
 import { logger } from '../utils/logger.js';
 import staticDataCache from '../utils/staticDataCache.js';
 import { HttpError } from '../utils/HttpError.js';
+import { withTimeout } from '../utils/withTimeout.js';
+import { MASTER_OR_ADMIN_ROLES } from '../domain/roles.js';
 
 const chatErrorReply = (error) => {
-  if (error.message === 'Database timeout') return 'Message could not be saved due to server load';
   if (error instanceof HttpError && error.statusCode < 500) return error.message;
   return 'Message could not be sent';
 };
@@ -98,14 +99,11 @@ export const setupWebSocketServer = () => {
       if (totalConnections > 0) totalConnections--;
     }
 
-    // Verify location exists (with timeout)
+    // Verify location exists. Read-only, so abandoning it on timeout is harmless (the socket is closed)
     try {
       const locationRepository = AppDataSource.getRepository(Location);
       const locationPromise = locationRepository.findOne({ where: { id: parseInt(locationId) } });
-      const location = await Promise.race([
-        locationPromise,
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000))
-      ]);
+      const location = await withTimeout(locationPromise, 3000, 'Timeout');
       
       if (!location) {
         ws.close(1008, 'Invalid location');
@@ -184,19 +182,15 @@ export const setupWebSocketServer = () => {
 
         const chatService = new ChatService();
 
-        // Save message to database with skill data (with timeout)
-        const savePromise = chatService.addMessage(
+        // Not raced against a timer: a timeout can't cancel the transaction, so it could report a failure
+        // for a post that then commits (and a retry double-posts). The DB's statement_timeout bounds it.
+        const savedMessage = await chatService.addMessage(
           locationId,
           ws.userId,
           ws.username,
           parsedMessage.message,
           parsedMessage.skill
         );
-        
-        const savedMessage = await Promise.race([
-          savePromise,
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Database timeout')), 5000))
-        ]);
 
         // Format message for broadcasting with skill data
         const messageToBroadcast = JSON.stringify({
@@ -385,7 +379,6 @@ export const setupWebSocketServer = () => {
   };
 
   // Function to broadcast skill engine logs to masters
-  const SKILL_LOG_RECIPIENT_ROLES = ['master', 'admin'];
   const broadcastSkillEngineLogToMasters = (skillEngineLog) => {
     try {
       const skillLogMessage = JSON.stringify({
@@ -400,7 +393,7 @@ export const setupWebSocketServer = () => {
       // Engine logs carry rolls and outputs, so only master/admin sockets receive them
       for (const connections of locationConnections.values()) {
         for (const ws of connections) {
-          if (ws.readyState === WebSocket.OPEN && SKILL_LOG_RECIPIENT_ROLES.includes(ws.role)) {
+          if (ws.readyState === WebSocket.OPEN && MASTER_OR_ADMIN_ROLES.includes(ws.role)) {
             try {
               ws.send(skillLogMessage);
               masterCount++;

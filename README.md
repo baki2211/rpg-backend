@@ -246,5 +246,6 @@ The API provides endpoints for:
 - Session and event management
 - Chat and skill systems
 - Combat and master tools
+- Health: `GET /api/health` is the public liveness/readiness check; every `/api/health/*` sub-route (status, database, cache, memory, compression, rate limits and the cleanup/GC actions) is admin-only
 
 For detailed API documentation, see the individual controller files in `/src/controllers/`.

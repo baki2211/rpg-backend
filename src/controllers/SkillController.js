@@ -7,6 +7,7 @@ import { Character } from '../models/characterModel.js';
 import { Skill } from '../models/skillModel.js';
 import { CharacterSkill } from '../models/characterSkillModel.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { InputValidator } from '../utils/inputValidator.js';
 import { HttpError } from '../utils/HttpError.js';
 import { applyClashDamage } from '../domain/combat/clashDamage.js';
 import { rollD20 } from '../utils/dice.js';
@@ -30,7 +31,7 @@ export const SkillController = {
   }),
 
   getSkillById: asyncHandler(async (req, res) => {
-    res.json(await SkillService.getSkillById(req.params.id));
+    res.json(await SkillService.getSkillById(InputValidator.validateId(req.params.id)));
   }),
 
   createSkill: asyncHandler(async (req, res) => {
@@ -38,11 +39,11 @@ export const SkillController = {
   }),
 
   updateSkill: asyncHandler(async (req, res) => {
-    res.json(await SkillService.updateSkill(req.params.id, req.body));
+    res.json(await SkillService.updateSkill(InputValidator.validateId(req.params.id), req.body));
   }),
 
   deleteSkill: asyncHandler(async (req, res) => {
-    await SkillService.deleteSkill(req.params.id);
+    await SkillService.deleteSkill(InputValidator.validateId(req.params.id));
     res.status(204).end();
   }),
 
@@ -94,8 +95,10 @@ export const SkillController = {
         await manager.update(Character, character.id, { stats: attackerStats });
         await manager.update(Character, target.id, { stats: defenderStats });
         // A clash is one use of each skill; counted here because the resolver no longer writes
-        await SkillUsageService.incrementSkillUsage(character.id, skill.id, skill.branchId, manager);
-        await SkillUsageService.incrementSkillUsage(target.id, targetSkill.id, targetSkill.branchId, manager);
+        await SkillUsageService.incrementSkillUsages([
+          { characterId: character.id, skillId: skill.id, branchId: skill.branchId },
+          { characterId: target.id, skillId: targetSkill.id, branchId: targetSkill.branchId },
+        ], manager);
       });
 
       return res.json({

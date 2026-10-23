@@ -1,5 +1,6 @@
 import { StatDefinitionService } from '../services/StatDefinitionService.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { InputValidator } from '../utils/inputValidator.js';
 
 const statDefinitionService = new StatDefinitionService();
 
@@ -18,7 +19,7 @@ export class StatDefinitionController {
     });
 
     static getStatDefinitionById = asyncHandler(async (req, res) => {
-        res.json(await statDefinitionService.getStatDefinitionById(parseInt(req.params.id)));
+        res.json(await statDefinitionService.getStatDefinitionById(InputValidator.validateId(req.params.id)));
     });
 
     static createStatDefinition = asyncHandler(async (req, res) => {
@@ -26,11 +27,11 @@ export class StatDefinitionController {
     });
 
     static updateStatDefinition = asyncHandler(async (req, res) => {
-        res.json(await statDefinitionService.updateStatDefinition(parseInt(req.params.id), req.body));
+        res.json(await statDefinitionService.updateStatDefinition(InputValidator.validateId(req.params.id), req.body));
     });
 
     static deleteStatDefinition = asyncHandler(async (req, res) => {
-        await statDefinitionService.deleteStatDefinition(parseInt(req.params.id));
+        await statDefinitionService.deleteStatDefinition(InputValidator.validateId(req.params.id));
         res.json({ message: 'Stat definition deleted successfully' });
     });
 

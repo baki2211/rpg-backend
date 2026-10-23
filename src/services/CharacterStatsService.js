@@ -6,7 +6,7 @@ import { Rank } from '../models/rankModel.js';
 import { lockCharacter } from '../utils/rowLocks.js';
 import { HttpError } from '../utils/HttpError.js';
 import { PRIMARY_STAT_POINT_POOL, primaryStatPointsUsed, exceedsPrimaryStatPool } from '../domain/character/statPoints.js';
-import { DEFAULT_STAT_MAX, validateCharacterStats, computeDerivedStats, levelUp } from '../domain/character/stats.js';
+import { DEFAULT_STAT_MAX, validateCharacterStats, unknownStatKeys, computeDerivedStats, levelUp } from '../domain/character/stats.js';
 
 export class CharacterStatsService {
   characterRepository = AppDataSource.getRepository(Character);
@@ -51,6 +51,12 @@ export class CharacterStatsService {
   }
 
   async updateCharacterStats(characterId, userId, statUpdates) {
+    const statDefinitions = await this.statDefinitionService.getAllStatDefinitions(null, true);
+    const unknownKeys = unknownStatKeys(statUpdates, statDefinitions);
+    if (unknownKeys.length > 0) {
+      throw new HttpError(400, `Unknown stats: ${unknownKeys.join(', ')}`);
+    }
+
     await AppDataSource.transaction(async (manager) => {
       // Re-read the stats under a row lock so a concurrent skill use or level-up isn't overwritten
       const character = await manager.getRepository(Character).findOne({

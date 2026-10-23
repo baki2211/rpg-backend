@@ -1,5 +1,6 @@
 import { SkillValidationRuleService } from '../services/SkillValidationRuleService.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { InputValidator } from '../utils/inputValidator.js';
 import { HttpError } from '../utils/HttpError.js';
 
 const ruleService = new SkillValidationRuleService();
@@ -16,7 +17,7 @@ export class SkillValidationRuleController {
     });
 
     static getRuleById = asyncHandler(async (req, res) => {
-        res.json(await ruleService.getRuleById(parseInt(req.params.id)));
+        res.json(await ruleService.getRuleById(InputValidator.validateId(req.params.id)));
     });
 
     static getRuleByTypeAndSubtype = asyncHandler(async (req, res) => {
@@ -31,11 +32,11 @@ export class SkillValidationRuleController {
     });
 
     static updateRule = asyncHandler(async (req, res) => {
-        res.json(await ruleService.updateRule(parseInt(req.params.id), req.body));
+        res.json(await ruleService.updateRule(InputValidator.validateId(req.params.id), req.body));
     });
 
     static deleteRule = asyncHandler(async (req, res) => {
-        await ruleService.deleteRule(parseInt(req.params.id));
+        await ruleService.deleteRule(InputValidator.validateId(req.params.id));
         res.json({ message: 'Skill validation rule deleted successfully' });
     });
 

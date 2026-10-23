@@ -1,10 +1,11 @@
 import express from 'express';
 import { CombatController } from '../controllers/CombatController.js';
 import { authenticateToken, requireRole } from '../middleware/authMiddleware.js';
+import { MASTER_OR_ADMIN_ROLES } from '../domain/roles.js';
 import { RateLimitMiddleware } from '../middleware/rateLimitMiddleware.js';
 
 const router = express.Router();
-const masterOrAdmin = requireRole(['admin', 'master']);
+const masterOrAdmin = requireRole(MASTER_OR_ADMIN_ROLES);
 
 // All combat routes require authentication
 router.use(authenticateToken);

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { CharacterSkillsController } from '../controllers/CharacterSkillsController.js';
 import { authenticateToken } from '../middleware/authMiddleware.js';
+import { RateLimitMiddleware } from '../middleware/rateLimitMiddleware.js';
 
 const router = Router();
 
@@ -11,6 +12,6 @@ router.get('/:characterId/available-skills', authenticateToken, CharacterSkillsC
 router.get('/:characterId/acquired-skills', authenticateToken, CharacterSkillsController.getAcquiredSkills);
 
 // Acquire a skill for a character
-router.post('/:skillId', authenticateToken, CharacterSkillsController.acquireSkill);
+router.post('/:skillId', authenticateToken, RateLimitMiddleware.skillUsageLimit, CharacterSkillsController.acquireSkill);
 
 export default router; 

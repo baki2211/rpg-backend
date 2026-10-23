@@ -6,29 +6,34 @@ import { InMemoryRateLimitStore, createRateLimitStore } from './rateLimitStores.
  * Rate limiting middleware for skill usage and combat actions.
  *
  * The store backend is pluggable: in-memory by default, Redis when REDIS_URL
- * is set. The store is initialized synchronously to an in-memory instance so
- * the static middleware factories below work at import time; if Redis is
- * configured, `initRateLimitStore()` swaps it in after the connection opens.
- * That call happens during app startup in src/index.js.
+ * is set. Nothing is built at import time: the first request (or admin call)
+ * that needs a store gets an in-memory one, and `initStore()` swaps in the
+ * env-selected store during startup (`startServer()` in src/lifecycle.js).
  */
 export class RateLimitMiddleware {
 
-    static store = new InMemoryRateLimitStore();
+    static #store = null;
+
+    static get store() {
+        this.#store ??= new InMemoryRateLimitStore();
+        return this.#store;
+    }
 
     /**
      * Swap the active store. Called once during startup so REDIS_URL takes
-     * effect; if Redis init fails, the in-memory store stays.
+     * effect; if Redis init fails, an in-memory store is used.
      */
     static async initStore() {
         const newStore = await createRateLimitStore();
-        if (newStore !== this.store) {
-            await this.store.stop?.();
-            this.store = newStore;
+        if (newStore !== this.#store) {
+            await this.#store?.stop?.();
+            this.#store = newStore;
         }
     }
 
+    /** Release the store's timer or Redis connection. Called from graceful shutdown. */
     static async stopCleanup() {
-        await this.store.stop?.();
+        await this.#store?.stop?.();
     }
 
     /**

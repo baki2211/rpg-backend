@@ -120,7 +120,7 @@ export class CombatController {
      * GET /api/combat/rounds/active/:locationId
      */
     static getActiveRound = asyncHandler(async (req, res) => {
-        const round = await combatService.getActiveRound(parseInt(req.params.locationId));
+        const round = await combatService.getActiveRound(InputValidator.validateLocationId(req.params.locationId));
         res.json({ round });
     });
 
@@ -129,7 +129,7 @@ export class CombatController {
      * GET /api/combat/rounds/:roundId/actions
      */
     static getRoundActions = asyncHandler(async (req, res) => {
-        const actions = await combatService.getRoundActions(parseInt(req.params.roundId));
+        const actions = await combatService.getRoundActions(InputValidator.validateRoundId(req.params.roundId));
         res.json({ actions });
     });
 
@@ -138,10 +138,7 @@ export class CombatController {
      * POST /api/combat/rounds/:roundId/resolve
      */
     static resolveRound = asyncHandler(async (req, res) => {
-        const roundId = parseInt(req.params.roundId);
-        if (!roundId || roundId <= 0) {
-            throw new HttpError(400, 'Invalid round ID');
-        }
+        const roundId = InputValidator.validateRoundId(req.params.roundId);
 
         const userId = req.user.id;
         const result = await combatResolutionService.resolveRound(roundId, userId);
@@ -170,7 +167,7 @@ export class CombatController {
      */
     static cancelRound = asyncHandler(async (req, res) => {
         const round = await combatService.cancelRound(
-            parseInt(req.params.roundId),
+            InputValidator.validateRoundId(req.params.roundId),
             req.user.id
         );
         res.json({
@@ -186,7 +183,7 @@ export class CombatController {
     static getResolvedRounds = asyncHandler(async (req, res) => {
         const limit = parseInt(req.query.limit) || 10;
         const rounds = await combatService.getResolvedRounds(
-            parseInt(req.params.locationId),
+            InputValidator.validateLocationId(req.params.locationId),
             limit
         );
         res.json({ rounds });

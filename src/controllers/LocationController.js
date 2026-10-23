@@ -1,37 +1,34 @@
 import { LocationService } from '../services/LocationService.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
-import { HttpError } from '../utils/HttpError.js';
+import { InputValidator } from '../utils/inputValidator.js';
 
 const locationService = new LocationService();
 
 export class LocationController {
   static getLocations = asyncHandler(async (req, res) => {
-    const { mapId } = req.params;
-    res.status(200).json(await locationService.getLocationsByMapId(Number(mapId)));
+    const mapId = InputValidator.validateId(req.params.mapId);
+    res.status(200).json(await locationService.getLocationsByMapId(mapId));
   });
 
   static createLocation = asyncHandler(async (req, res) => {
-    const { mapId } = req.params;
-    if (!mapId || isNaN(Number(mapId))) {
-      throw new HttpError(400, 'Invalid map ID');
-    }
-    res.status(201).json(await locationService.createLocation(Number(mapId), req.body));
+    const mapId = InputValidator.validateId(req.params.mapId);
+    res.status(201).json(await locationService.createLocation(mapId, req.body));
   });
 
   static deleteLocation = asyncHandler(async (req, res) => {
-    const { locationId } = req.params;
-    await locationService.deleteLocation(Number(locationId));
+    const locationId = InputValidator.validateLocationId(req.params.locationId);
+    await locationService.deleteLocation(locationId);
     res.status(200).json({ message: 'Location deleted successfully' });
   });
 
   static updateLocation = asyncHandler(async (req, res) => {
-    const { locationId } = req.params;
-    res.status(200).json(await locationService.updateLocation(Number(locationId), req.body));
+    const locationId = InputValidator.validateLocationId(req.params.locationId);
+    res.status(200).json(await locationService.updateLocation(locationId, req.body));
   });
 
   static getLocationById = asyncHandler(async (req, res) => {
-    const { locationId } = req.params;
-    res.status(200).json(await locationService.getLocationById(Number(locationId)));
+    const locationId = InputValidator.validateLocationId(req.params.locationId);
+    res.status(200).json(await locationService.getLocationById(locationId));
   });
 
   static getLocationByName = asyncHandler(async (req, res) => {

@@ -17,6 +17,8 @@ function readDotEnv() {
  * Connection settings come from the shell (CI), then `.env` (the docker-compose Postgres),
  * then the compose defaults. The database name never comes from DB_NAME: it is TEST_DB_NAME
  * or `rpg_test`, and must end with `_test`.
+ * RSS_BUDGET_BYTES is fixed at 8 GiB so the health status doesn't depend on the worker's real RSS
+ * (memoryManager reads it once, when its module is first imported inside the test worker).
  */
 export function integrationEnv() {
   const dotEnv = readDotEnv();
@@ -34,6 +36,7 @@ export function integrationEnv() {
     DB_NAME: dbName,
     DB_SYNC: 'false',
     JWT_SECRET: 'integration-test-jwt-secret',
+    RSS_BUDGET_BYTES: '8589934592',
   };
 }
 

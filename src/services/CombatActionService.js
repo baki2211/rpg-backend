@@ -1,6 +1,7 @@
 import { CombatRound } from '../models/combatRoundModel.js';
 import { CombatAction } from '../models/combatActionModel.js';
 import { Character } from '../models/characterModel.js';
+import { CharacterSkill } from '../models/characterSkillModel.js';
 import { SkillUsageService } from './SkillUsageService.js';
 import { TargetResolutionService } from './TargetResolutionService.js';
 import { SkillExecutionService } from './SkillExecutionService.js';
@@ -56,6 +57,12 @@ export class CombatActionService {
 
         if (!character) throw new HttpError(404, 'Character not found');
         if (!skill) throw new HttpError(404, 'Skill not found');
+
+        // Same check and response as the chat path (ChatService.prepareSkillUse)
+        const ownsSkill = await manager.getRepository(CharacterSkill).existsBy({ characterId, skillId });
+        if (!ownsSkill) {
+            throw new HttpError(403, 'Character does not have this skill');
+        }
 
         const targetResolution = await this.targetResolutionService.resolveSkillTarget(
             skill,

@@ -1,5 +1,6 @@
 import { UserService } from '../services/UserService.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { InputValidator } from '../utils/inputValidator.js';
 import { HttpError } from '../utils/HttpError.js';
 
 const userService = new UserService();
@@ -14,7 +15,7 @@ export class UserController {
         if (!newPassword) throw new HttpError(400, 'New password is required');
         if (!oldPassword) throw new HttpError(400, 'Old password is required');
 
-        const userId = parseInt(req.params.userId);
+        const userId = InputValidator.validateUserId(req.params.userId);
         // Self-service only — admins resetting another user's password must use
         // the admin reset endpoint.
         if (req.user.id !== userId) {
@@ -27,13 +28,13 @@ export class UserController {
     static adminResetPassword = asyncHandler(async (req, res) => {
         const { newPassword } = req.body;
         if (!newPassword) throw new HttpError(400, 'New password is required');
-        res.json(await userService.adminResetPassword(parseInt(req.params.userId), newPassword));
+        res.json(await userService.adminResetPassword(InputValidator.validateUserId(req.params.userId), newPassword));
     });
 
     static updateUserRole = asyncHandler(async (req, res) => {
         const { role } = req.body;
         if (!role) throw new HttpError(400, 'Role is required');
-        res.json(await userService.updateUserRole(parseInt(req.params.userId), role));
+        res.json(await userService.updateUserRole(InputValidator.validateUserId(req.params.userId), role));
     });
 
     static getUsersByRole = asyncHandler(async (req, res) => {

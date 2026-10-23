@@ -23,3 +23,20 @@ export async function resetDatabase() {
 export function query(sql, params = []) {
   return AppDataSource.query(sql, params);
 }
+
+/**
+ * Resolves once some backend of this database waits on a lock (a row lock, or a transaction a
+ * conflicting insert waits on). Use it to hold a request at a known point: open a transaction that
+ * holds the conflicting row, fire the request, await this, then commit.
+ */
+export async function untilABackendWaitsOnALock() {
+  for (let attempt = 0; attempt < 200; attempt++) {
+    const [{ waiting }] = await query(
+      `SELECT count(*)::int AS waiting FROM pg_stat_activity
+       WHERE datname = current_database() AND wait_event_type = 'Lock'`
+    );
+    if (waiting > 0) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error('No backend ended up waiting on a lock');
+}

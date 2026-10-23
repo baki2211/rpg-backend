@@ -6,6 +6,7 @@ import { HttpError } from '../utils/HttpError.js';
 import { logger } from '../utils/logger.js';
 import { Not } from 'typeorm';
 import { lockCharacter, lockUser } from '../utils/rowLocks.js';
+import { pickNpcUpdatableFields } from '../domain/character/npcUpdate.js';
 
 export class NPCService {
   characterRepository = AppDataSource.getRepository(Character);
@@ -71,7 +72,9 @@ export class NPCService {
     });
   }
 
-  async updateNPC(npcId, updateData) {
+  async updateNPC(npcId, data) {
+    const updateData = pickNpcUpdatableFields(data);
+
     await AppDataSource.transaction(async (manager) => {
       // Stats are merged into the current row: locked and re-read so a concurrent write isn't lost
       const npc = await manager.getRepository(Character).findOne({
@@ -96,7 +99,10 @@ export class NPCService {
         updateData.stats = { ...(updateData.stats || stats), ...derived };
       }
 
-      await manager.update(Character, npcId, updateData);
+      // TypeORM refuses an UPDATE with no columns; a body with only dropped fields leaves the row as is
+      if (Object.keys(updateData).length > 0) {
+        await manager.update(Character, npcId, updateData);
+      }
     });
 
     return this.characterRepository.findOne({

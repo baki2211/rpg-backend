@@ -1,9 +1,10 @@
 import express from 'express';
 import { SessionController } from '../controllers/SessionController.js';
 import { authenticateToken, requireRole } from '../middleware/authMiddleware.js';
+import { MASTER_OR_ADMIN_ROLES } from '../domain/roles.js';
 
 const router = express.Router();
-const masterOrAdmin = requireRole(['admin', 'master']);
+const masterOrAdmin = requireRole(MASTER_OR_ADMIN_ROLES);
 
 // Apply authentication to all routes
 router.use(authenticateToken);
