@@ -9,9 +9,10 @@ export class SkillUsageService {
      * @param {number} characterId - The character ID
      * @param {number} skillId - The skill ID
      * @param {number} branchId - The branch ID
+     * @param {EntityManager|null} manager - Caller's transaction manager; a new transaction is opened when null
      */
-    static async incrementSkillUsage(characterId, skillId, branchId) {
-        return await AppDataSource.transaction(async (transactionalEntityManager) => {
+    static async incrementSkillUsage(characterId, skillId, branchId, manager = null) {
+        const increment = async (transactionalEntityManager) => {
             const characterSkillRepo = transactionalEntityManager.getRepository(CharacterSkill);
             const characterSkillBranchRepo = transactionalEntityManager.getRepository(CharacterSkillBranch);
 
@@ -49,7 +50,9 @@ export class SkillUsageService {
             }
 
             return { skillUses: characterSkill?.uses || 0, branchUses: characterSkillBranch.uses };
-        });
+        };
+
+        return manager ? await increment(manager) : await AppDataSource.transaction(increment);
     }
 
     /**

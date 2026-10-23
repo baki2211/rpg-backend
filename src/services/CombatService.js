@@ -1,3 +1,4 @@
+import { IsNull } from 'typeorm';
 import { AppDataSource } from '../data-source.js';
 import { CombatRound } from '../models/combatRoundModel.js';
 import { CombatAction } from '../models/combatActionModel.js';
@@ -44,7 +45,7 @@ export class CombatService {
             roundNumber = lastEventRound ? lastEventRound.roundNumber + 1 : 1;
         } else {
             const lastLocationRound = await this.roundRepository.findOne({
-                where: { locationId, eventId: null },
+                where: { locationId, eventId: IsNull() },
                 order: { roundNumber: 'DESC' }
             });
             roundNumber = lastLocationRound ? lastLocationRound.roundNumber + 1 : 1;

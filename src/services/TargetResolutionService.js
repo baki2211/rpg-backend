@@ -2,6 +2,17 @@ import { AppDataSource } from '../data-source.js';
 import { Character } from '../models/characterModel.js';
 import { logger } from '../utils/logger.js';
 
+// Which Character column a target identifier refers to. Callers must say which one they send.
+const LOOKUP_FIELDS = { characterId: 'id', userId: 'userId', name: 'name' };
+
+function lookupField(lookupBy) {
+    const field = LOOKUP_FIELDS[lookupBy];
+    if (!field) {
+        throw new Error(`Unknown target lookup kind: ${lookupBy}`);
+    }
+    return field;
+}
+
 /**
  * Centralized service for resolving character targets across the application
  * Standardizes ID vs name vs userId resolution with proper validation
@@ -12,9 +23,10 @@ export class TargetResolutionService {
     }
 
     /**
-     * Find character by multiple lookup strategies in a single optimized query
-     * @param {string|number} targetIdentifier - Target identifier (ID, userID, or name)
+     * Find a character by one explicit lookup kind
+     * @param {string|number} targetIdentifier - Target identifier (character ID, user ID or name, per lookupBy)
      * @param {Object} options - Lookup options
+     * @param {'characterId'|'userId'|'name'} options.lookupBy - Which column targetIdentifier refers to
      * @param {boolean} options.includeRelations - Include character relations
      * @param {boolean} options.activeOnly - Only return active characters
      * @returns {Promise<Character|null>} Found character or null
@@ -22,29 +34,20 @@ export class TargetResolutionService {
     async findCharacter(targetIdentifier, options = {}) {
         if (!targetIdentifier) return null;
 
-        const { includeRelations = false, activeOnly = true } = options;
-        
-        // Build where conditions for multiple lookup strategies
-        const whereConditions = [
-            { id: targetIdentifier },                    // Character ID lookup
-            { userId: targetIdentifier },                // User ID lookup  
-            { name: targetIdentifier }                   // Name lookup
-        ];
+        const { lookupBy, includeRelations = false, activeOnly = true } = options;
+
+        const where = { [lookupField(lookupBy)]: targetIdentifier };
 
         // Add active filter if requested
         if (activeOnly) {
-            whereConditions.forEach(condition => {
-                condition.isActive = true;
-            });
+            where.isActive = true;
         }
 
-        const queryOptions = {
-            where: whereConditions
-        };
+        const queryOptions = { where };
 
         // Add relations if requested
         if (includeRelations) {
-            queryOptions.relations = { race: true, skills: true };
+            queryOptions.relations = { race: true, characterSkills: { skill: true } };
         }
 
         const character = await this.characterRepository.findOne(queryOptions);
@@ -61,7 +64,7 @@ export class TargetResolutionService {
      * @param {Object} skill - The skill being used
      * @param {Character} caster - Character using the skill
      * @param {string|number} targetIdentifier - Target identifier (optional)
-     * @param {Object} options - Resolution options
+     * @param {Object} options - Resolution options (see findCharacter; options.lookupBy is required when a target is given)
      * @returns {Promise<Object>} Resolved target data
      */
     async resolveSkillTarget(skill, caster, targetIdentifier = null, options = {}) {
@@ -73,6 +76,8 @@ export class TargetResolutionService {
         };
 
         try {
+            const targetsCaster = () => caster[lookupField(options.lookupBy)] === targetIdentifier;
+
             switch (skill.target) {
                 case 'self':
                     result.target = caster;
@@ -81,7 +86,7 @@ export class TargetResolutionService {
                     break;
 
                 case 'other':
-                    if (!targetIdentifier || targetIdentifier === caster.id) {
+                    if (!targetIdentifier || targetsCaster()) {
                         result.error = 'This skill requires a target other than yourself';
                         return result;
                     }
@@ -101,7 +106,7 @@ export class TargetResolutionService {
                         // Default to self if no target specified
                         result.target = caster;
                         result.targetId = caster.id;
-                    } else if (targetIdentifier === caster.id) {
+                    } else if (targetsCaster()) {
                         // Self-targeting
                         result.target = caster;
                         result.targetId = caster.id;

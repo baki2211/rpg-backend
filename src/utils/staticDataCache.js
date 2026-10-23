@@ -5,6 +5,7 @@ import { SkillBranch } from '../models/skillBranchModel.js';
 import { SkillType } from '../models/skillTypeModel.js';
 import { StatDefinition } from '../models/statDefinitionModel.js';
 import { Rank } from '../models/rankModel.js';
+import { CombatConstant } from '../models/combatConstantModel.js';
 import { logger } from './logger.js';
 
 class StaticDataCache {
@@ -220,6 +221,23 @@ class StaticDataCache {
   }
 
   /**
+   * Get active combat constants (game tunables) with caching
+   */
+  async getCombatConstants() {
+    const key = this.getCacheKey('CombatConstant', { isActive: true });
+    let constants = this.get(key);
+
+    if (!constants) {
+      const constantRepo = AppDataSource.getRepository(CombatConstant);
+      constants = await constantRepo.find({ where: { isActive: true } });
+      this.set(key, constants, 15 * 60 * 1000); // 15 minutes for combat constants
+      logger.debug('Combat constants loaded from database and cached');
+    }
+
+    return constants;
+  }
+
+  /**
    * Preload all static data into cache
    */
   async preloadCache() {
@@ -237,7 +255,8 @@ class StaticDataCache {
         this.getSkillBranches(),
         this.getSkillTypes(),
         this.getStatDefinitions(),
-        this.getRanks()
+        this.getRanks(),
+        this.getCombatConstants()
       ]);
       
       const loadTime = Date.now() - startTime;
@@ -245,7 +264,7 @@ class StaticDataCache {
       
       logger.info(`Static data cache preloaded in ${loadTime}ms`, {
         cacheSize: this.cache.size,
-        entities: ['Race', 'Skill', 'SkillBranch', 'SkillType', 'StatDefinition', 'Rank']
+        entities: ['Race', 'Skill', 'SkillBranch', 'SkillType', 'StatDefinition', 'Rank', 'CombatConstant']
       });
     } catch (error) {
       logger.error('Failed to preload static data cache:', { error: error.message });

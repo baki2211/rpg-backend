@@ -4,15 +4,16 @@ import { MoreThan } from 'typeorm';
 import { Character } from '../models/characterModel.js';
 import { SkillUsageService } from './SkillUsageService.js';
 import { EngineLogService } from './EngineLogService.js';
-import { SkillEngine } from './SkillEngine.js';
 import { SessionParticipantService } from './SessionParticipantService.js';
 import { logger } from '../utils/logger.js';
 import { CharacterStatsService } from './CharacterStatsService.js';
 import { EventService } from './EventService.js';
-import { PvPResolutionService } from './PvPResolutionService.js';
 import { TargetResolutionService } from './TargetResolutionService.js';
 import { SkillExecutionService } from './SkillExecutionService.js';
 import { HttpError } from '../utils/HttpError.js';
+import staticDataCache from '../utils/staticDataCache.js';
+import { evaluatePost, chatRulesFromConstants } from '../domain/chat/messageRewards.js';
+import { planChatSkillUse } from '../domain/chat/skillUse.js';
 
 export class ChatService {
   chatRepository = AppDataSource.getRepository(ChatMessage);
@@ -78,7 +79,10 @@ export class ChatService {
       this.characterRepository.findOne({ 
         where: { userId, isActive: true },
         relations: { race: true }, // Need race for skill engine calculations
-        select: { id: true, name: true, userId: true, stats: true, raceId: true } // Only select needed fields
+        select: {
+          id: true, name: true, userId: true, stats: true, raceId: true,
+          experience: true, rank: true, statPoints: true, skillPoints: true // read by checkLevelUp
+        }
       }),
       new Promise((_, reject) => 
         setTimeout(() => reject(new Error('Character lookup timeout')), 3000)
@@ -89,129 +93,28 @@ export class ChatService {
       throw new HttpError(404, 'No active character found for this user.');
     }
 
-    // If skill is provided, validate and process it
-    if (skill && skill.id) {
-      try {
-        // Get the full skill data if we only have basic info
-        const fullSkill = await AppDataSource.getRepository('Skill').findOne({
-          where: { id: skill.id },
-          relations: { branch: true, type: true }
-        });
+    // Only the skill id is taken from the client; name, branch, output and roll come from the server
+    const [fullSkill, lastMessage, constants] = await Promise.all([
+      skill?.id
+        ? AppDataSource.getRepository('Skill').findOne({ where: { id: skill.id }, relations: { branch: true, type: true } })
+        : null,
+      this.chatRepository.findOne({ where: { userId }, order: { createdAt: 'DESC' } }),
+      staticDataCache.getCombatConstants()
+    ]);
 
-        if (fullSkill) {
-          // Check context for skill validation
-          const { CombatService } = await import('./CombatService.js');
-          const { CombatActionService } = await import('./CombatActionService.js');
-          const { EventService } = await import('./EventService.js');
+    const post = evaluatePost({
+      length: message.length,
+      lastPostAt: lastMessage ? new Date(lastMessage.createdAt).getTime() : null,
+      now: Date.now(),
+      ...chatRulesFromConstants(constants)
+    });
 
-          const combatService = new CombatService();
-          const combatActionService = new CombatActionService();
-          const eventService = new EventService();
-          
-          const [activeRound, activeEvent] = await Promise.all([
-            combatService.getActiveRound(locationId).catch(() => null),
-            eventService.getActiveEvent(locationId).catch(() => null)
-          ]);
-
-          // Check for attack/debuff skills that target others in combat scenarios
-          const skillTypeCategory = PvPResolutionService.getSkillTypeCategory(fullSkill.type?.name);
-          const isAttackOrDebuff = skillTypeCategory === 'Attack' || skillTypeCategory === 'Debuff';
-          const hasOtherTarget = fullSkill.target === 'other' && skill.selectedTarget;
-
-          // Skills with 'other' target require at least an active event (unless it's self/none/any target)
-          if (hasOtherTarget && !activeEvent && !activeRound) {
-            throw new Error('Skills targeting other players can only be used during active events or combat rounds');
-          }
-
-          const { SkillEngine } = await import('./SkillEngine.js');
-          const skillEngine = new SkillEngine(character, fullSkill);
-          const finalOutput = await skillEngine.computeFinalOutput();
-          const outcomeMultiplier = skillEngine.rollOutcome();
-
-          // Determine roll quality
-          let rollQuality = 'Standard';
-          if (outcomeMultiplier <= 0.6) rollQuality = 'Poor';
-          else if (outcomeMultiplier >= 1.4) rollQuality = 'Critical';
-          
-          // Add the results to the skill data for chat display
-          skill = {
-            ...skill,
-            output: finalOutput,
-            roll: `${rollQuality} Success`
-          };
-
-          // If there's an active combat round and this skill should participate in combat, submit to combat
-          // Submit if: targeting others OR if it's a self-targeting skill that can interact in combat (like self-defense)
-          const shouldSubmitToCombat = hasOtherTarget || 
-            (activeRound && (fullSkill.target === 'self' || fullSkill.target === 'any' || fullSkill.target === 'none'));
-          
-          if (shouldSubmitToCombat) {
-            try {
-              // Use TargetResolutionService for standardized target resolution
-              const targetIdentifier = skill.selectedTarget?.userId || skill.selectedTarget?.characterName || skill.selectedTarget;
-              
-              const targetResolution = await this.targetResolutionService.resolveSkillTarget(
-                fullSkill,
-                character,
-                targetIdentifier,
-                { includeRelations: false, activeOnly: true }
-              );
-
-              if (!targetResolution.isValid) {
-                throw new Error(targetResolution.error);
-              }
-
-              const combatTargetId = targetResolution.targetId;
-              
-              // Submit action to combat with pre-calculated values
-              const submissionResult = await combatActionService.submitAction(
-                activeRound.id,
-                character.id,
-                fullSkill.id,
-                combatTargetId,
-                {
-                  finalOutput,
-                  rollQuality
-                }
-              );
-            } catch (error) {
-              logger.error('Failed to submit action to combat:', { error: error.message });
-              
-              // Re-throw the error so the user knows something went wrong
-              throw new Error(`Failed to submit ${fullSkill.name} to combat: ${error.message}`);
-            }
-          }
-        }
-      } catch (error) {
-        console.error('Error processing skill:', error);
-        // Re-throw validation errors to prevent invalid skills from being sent
-        if (error.message.includes('can only be used during')) {
-          throw error;
-        }
-      }
-    }
-
-    // Determine if this is a "valid message" (more than 800 characters)
-    const isValidMessage = message.length > 800;
-    let shouldProcessSkill = false;
-    let shouldGainExperience = false;
-
-    if (isValidMessage) {
-      // Check if 5 minutes have passed since the last message for experience
-      const lastMessage = await this.chatRepository.findOne({
-        where: { userId },
-        order: { createdAt: 'DESC' }
-      });
-
-      const fiveMinutesAgo = new Date(Date.now() - 0.5 * 60 * 1000);
-      if (!lastMessage || new Date(lastMessage.createdAt) < fiveMinutesAgo) {
-        shouldGainExperience = true;
-        shouldProcessSkill = skill && skill.id && skill.branchId;
-      }
-    }
+    const skillUse = fullSkill
+      ? await this.useSkill(locationId, character, fullSkill, skill.selectedTarget, post.grantsExperience)
+      : null;
 
     // Auto-create/manage session when user sends a valid message
-    if (isValidMessage) {
+    if (post.isValidPost) {
       try {
         await this.sessionParticipantService.ensureActiveSessionForLocation(locationId, userId, character.name);
         logger.session(`User ${userId} (${character.name}) participated in location ${locationId} with valid message`);
@@ -226,26 +129,9 @@ export class ChatService {
       }
     }
 
-    if (shouldGainExperience) {
-      // Initialize experience points to 0 if not set
-      if (character.experience === undefined || character.experience === null) {
-        character.experience = 0;
-      }
-
-      // Increment character's experience points by 0.5
-      character.experience += 0.5;
-
-      // Check level up
+    if (post.grantsExperience) {
+      character.experience = (character.experience ?? 0) + post.experienceDelta;
       await this.characterStatsService.checkLevelUp(character);
-      
-      // If a skill is used, process it through the skill engine and create logs
-      if (shouldProcessSkill) {
-        try {
-          await this.processSkillUsage(character, skill, locationId);
-        } catch (error) {
-          logger.error('Error processing skill usage:', { error: error.message });
-        }
-      }
     }
 
     const chatMessage = this.chatRepository.create({
@@ -257,78 +143,118 @@ export class ChatService {
       username: character.name || 'Unknown',
       createdAt: new Date(),
       updatedAt: new Date(),
-      // Add skill data if present
-      ...(skill && {
-        skillId: skill.id,
-        skillName: skill.name,
-        skillBranch: skill.branch?.name || skill.branch,
-        skillType: skill.type?.name || skill.type,
-        skillOutput: skill.output,
-        skillRoll: skill.roll,
-      }),
+      ...(skillUse && toChatSkillFields(fullSkill, skillUse.calculation)),
     });
 
     // Use a transaction to ensure atomicity
-    return await AppDataSource.transaction(async (transactionalEntityManager) => {
+    const savedMessage = await AppDataSource.transaction(async (transactionalEntityManager) => {
       const characterRepository = transactionalEntityManager.getRepository(Character);
       const chatRepository = transactionalEntityManager.getRepository(ChatMessage);
       
       // Save the character (if experience was gained)
-      if (shouldGainExperience) {
+      if (post.grantsExperience) {
         await characterRepository.save(character);
+      }
+
+      // Count the use here unless the combat submission already counted it
+      if (skillUse?.plan.incrementUsageInChat) {
+        await SkillUsageService.incrementSkillUsage(character.id, fullSkill.id, fullSkill.branchId, transactionalEntityManager);
       }
       
       // Save the chat message
-      const savedMessage = await chatRepository.save(chatMessage);
-      return savedMessage;
+      return await chatRepository.save(chatMessage);
     });
+
+    if (skillUse?.plan.writeEngineLog) {
+      try {
+        await this.logChatSkillUse(locationId, character, fullSkill, skill.selectedTarget, skillUse.calculation);
+      } catch (error) {
+        logger.error('Error writing chat skill engine log:', { error: error.message });
+      }
+    }
+
+    return savedMessage;
   }
 
   /**
-   * Process skill usage through the skill engine and create appropriate logs
-   * @param {Object} character - The character using the skill
-   * @param {Object} skill - The skill being used
-   * @param {number} locationId - The location where the skill is used
+   * Check that a skill may be used with this post, roll it once and submit it to combat when required.
+   * The single calculation is reused for the chat message, the combat action and the engine log.
+   * @returns {Promise<{ plan: Object, calculation: Object }>}
    */
-  async processSkillUsage(character, skill, locationId) {
-    // Import the actual skill model to get full skill data
-    const { Skill } = await import('../models/skillModel.js');
-    const skillRepository = AppDataSource.getRepository(Skill);
-    
-    const fullSkill = await skillRepository.findOne({
-      where: { id: skill.id },
-      relations: { branch: true, type: true }
+  async useSkill(locationId, character, fullSkill, selectedTarget, grantsExperience) {
+    const { CombatService } = await import('./CombatService.js');
+    const { CombatActionService } = await import('./CombatActionService.js');
+
+    const [activeRound, activeEvent] = await Promise.all([
+      new CombatService().getActiveRound(locationId),
+      new EventService().getActiveEvent(locationId)
+    ]);
+
+    const plan = planChatSkillUse({
+      skillTarget: fullSkill.target,
+      hasSelectedTarget: Boolean(selectedTarget),
+      hasActiveEvent: Boolean(activeEvent),
+      hasActiveRound: Boolean(activeRound),
+      grantsExperience
     });
 
-    if (!fullSkill) {
-      throw new Error('Skill not found');
+    if (!plan.allowed) {
+      throw new HttpError(400, plan.error);
     }
 
-    // Only increment skill usage counters for experience-gaining messages
-    // Combat/event skill usage is handled by CombatService and EventService
-    const usageResult = await SkillUsageService.incrementSkillUsage(
-      character.id, 
-      skill.id, 
-      skill.branchId
+    const calculation = await this.skillExecutionService.calculateSkillOutput(character, fullSkill);
+    if (!calculation.success) {
+      throw new HttpError(500, `Skill calculation failed: ${calculation.error}`);
+    }
+
+    if (plan.submitToCombat) {
+      await this.submitToCombat(new CombatActionService(), activeRound.id, character, fullSkill, selectedTarget, calculation);
+    }
+
+    return { plan, calculation };
+  }
+
+  /**
+   * Submit the chat skill to the active combat round. Failures reach the sender.
+   */
+  async submitToCombat(combatActionService, roundId, character, fullSkill, selectedTarget, calculation) {
+    // The client sends the selected chat user, so the target is looked up by userId
+    const targetResolution = await this.targetResolutionService.resolveSkillTarget(
+      fullSkill,
+      character,
+      selectedTarget?.userId,
+      { lookupBy: 'userId', includeRelations: false, activeOnly: true }
     );
-    
-    logger.skill(`Updated skill usage for ${fullSkill.name}: ${usageResult.skillUses} uses`);
-    logger.skill(`Updated branch usage for branch ${skill.branchId}: ${usageResult.branchUses} uses`);
 
-    // Create skill engine instance and calculate output for the chat message
-    const skillEngine = new SkillEngine(character, fullSkill);
-    const finalOutput = await skillEngine.computeFinalOutput();
-    const outcomeMultiplier = skillEngine.rollOutcome();
+    if (!targetResolution.isValid) {
+      throw new HttpError(400, `Failed to submit ${fullSkill.name} to combat: ${targetResolution.error}`);
+    }
 
-    // Determine roll quality
-    let rollQuality = 'Standard';
-    if (outcomeMultiplier <= 0.6) rollQuality = 'Poor';
-    else if (outcomeMultiplier >= 1.4) rollQuality = 'Critical';
+    try {
+      await combatActionService.submitAction(
+        roundId,
+        character.id,
+        fullSkill.id,
+        targetResolution.targetId,
+        { finalOutput: calculation.finalOutput, rollQuality: calculation.rollQuality }
+      );
+    } catch (error) {
+      logger.error('Failed to submit action to combat:', { error: error.message });
+      throw new HttpError(error.statusCode ?? 500, `Failed to submit ${fullSkill.name} to combat: ${error.message}`);
+    }
+  }
 
-    // Get usage data in a single batched operation to avoid N+1 queries
-    const { skillUses, branchUses } = await skillEngine.getUsageData();
+  /**
+   * Write the engine log for a skill used in chat, with the same output shown in the message
+   * @param {number} locationId - The location where the skill is used
+   * @param {Object} character - The character using the skill
+   * @param {Object} fullSkill - The skill being used (with branch and type)
+   * @param {Object|undefined} selectedTarget - Target picked in chat, if any
+   * @param {Object} calculation - Result of SkillExecutionService.calculateSkillOutput
+   */
+  async logChatSkillUse(locationId, character, fullSkill, selectedTarget, calculation) {
+    const { finalOutput, outcomeMultiplier, rollQuality, skillUses, branchUses } = calculation;
 
-    // Create engine log for skill usage in chat (outside combat/events)
     const engineData = {
       basePower: fullSkill.basePower,
       finalOutput,
@@ -348,13 +274,12 @@ export class ChatService {
 
     // Determine target for logging
     let targetName = null;
-    if (skill.selectedTarget) {
-      targetName = skill.selectedTarget.characterName || skill.selectedTarget.username;
+    if (selectedTarget) {
+      targetName = selectedTarget.characterName || selectedTarget.username;
     } else if (fullSkill.target === 'self') {
       targetName = character.name;
     }
 
-    // Create the engine log for chat-based skill usage
     await this.engineLogService.logSkillUsage(
       locationId,
       character.name,
@@ -364,4 +289,16 @@ export class ChatService {
       engineData
     );
   }
+}
+
+// Chat message skill columns, built only from server-side data
+function toChatSkillFields(fullSkill, calculation) {
+  return {
+    skillId: fullSkill.id,
+    skillName: fullSkill.name,
+    skillBranch: fullSkill.branch?.name,
+    skillType: fullSkill.type?.name,
+    skillOutput: calculation.finalOutput,
+    skillRoll: `${calculation.rollQuality} Success`,
+  };
 }

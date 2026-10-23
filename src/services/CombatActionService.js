@@ -60,7 +60,7 @@ export class CombatActionService {
             skill,
             character,
             targetId,
-            { includeRelations: true, activeOnly: true }
+            { lookupBy: 'characterId', includeRelations: true, activeOnly: true }
         );
 
         if (!targetResolution.isValid) {

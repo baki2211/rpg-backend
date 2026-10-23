@@ -17,7 +17,7 @@ export class SkillExecutionService {
      * @param {Object} params - Execution parameters
      * @param {Character} params.caster - Character using the skill
      * @param {Object} params.skill - Skill being used
-     * @param {string|number} params.targetIdentifier - Target identifier (optional)
+     * @param {number} params.targetIdentifier - Target character ID (optional)
      * @param {Object} params.context - Execution context (location, event, etc.)
      * @param {Object} params.options - Execution options
      * @returns {Promise<Object>} Execution result
@@ -40,7 +40,7 @@ export class SkillExecutionService {
                 skill, 
                 caster, 
                 targetIdentifier,
-                { includeRelations: true, activeOnly: true }
+                { lookupBy: 'characterId', includeRelations: true, activeOnly: true }
             );
 
             if (!targetResolution.isValid) {

@@ -3,6 +3,13 @@ import { AppDataSource } from '../data-source.js';
 import { Location } from '../models/locationModel.js';
 import { ChatService } from '../services/ChatService.js';
 import { logger } from '../utils/logger.js';
+import { HttpError } from '../utils/HttpError.js';
+
+const chatErrorReply = (error) => {
+  if (error.message === 'Database timeout') return 'Message could not be saved due to server load';
+  if (error instanceof HttpError && error.statusCode < 500) return error.message;
+  return 'Message could not be sent';
+};
 
 export const setupWebSocketServer = () => {
   const wss = new WebSocketServer({ 
@@ -239,8 +246,9 @@ export const setupWebSocketServer = () => {
 
       } catch (error) {
         logger.error('Error processing chat message:', { error: error.message, userId, locationId });
-        if (error.message === 'Database timeout') {
-          ws.send(JSON.stringify({ error: 'Message could not be saved due to server load' }));
+        // Tell the sender why the message was rejected; only client errors (4xx) expose their text
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ error: chatErrorReply(error) }));
         }
       }
     });

@@ -1,3 +1,4 @@
+import { IsNull } from 'typeorm';
 import { AppDataSource } from '../data-source.js';
 import { WikiSection } from '../models/wikiSectionModel.js';
 import { WikiEntry } from '../models/wikiEntryModel.js';
@@ -222,7 +223,7 @@ export class WikiEntryService {
       if (entryData.parentEntryId) {
         whereCondition.parentEntryId = entryData.parentEntryId;
       } else {
-        whereCondition.parentEntryId = null;
+        whereCondition.parentEntryId = IsNull();
       }
 
       const lastEntry = await this.entryRepository.findOne({

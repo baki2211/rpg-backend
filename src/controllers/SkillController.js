@@ -5,6 +5,7 @@ import { Character } from '../models/characterModel.js';
 import { Skill } from '../models/skillModel.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { HttpError } from '../utils/HttpError.js';
+import { applyClashDamage } from '../domain/combat/clashDamage.js';
 
 const characterRepository = AppDataSource.getRepository(Character);
 const skillRepository = AppDataSource.getRepository(Skill);
@@ -35,7 +36,7 @@ export const SkillController = {
     const { characterId, skillId, targetId, targetSkillId } = req.body;
 
     const character = await characterRepository.findOne({ where: { id: characterId } });
-    const skill = await skillRepository.findOne({ where: { id: skillId } });
+    const skill = await skillRepository.findOne({ where: { id: skillId }, relations: { type: true } });
 
     if (!character || !skill) {
       throw new HttpError(404, 'Character or skill not found');
@@ -45,25 +46,19 @@ export const SkillController = {
 
     if (targetId && targetSkillId) {
       const target = await characterRepository.findOne({ where: { id: targetId } });
-      const targetSkill = await skillRepository.findOne({ where: { id: targetSkillId } });
+      const targetSkill = await skillRepository.findOne({ where: { id: targetSkillId }, relations: { type: true } });
 
       if (!target || !targetSkill) {
         throw new HttpError(404, 'Target character or skill not found');
       }
 
-      const clashResult = skillEngine.resolveClash(target, targetSkill);
+      const clashResult = await skillEngine.resolveClash(target, targetSkill);
+      const { attackerStats, defenderStats } = applyClashDamage(character.stats, target.stats, clashResult.damage);
 
-      if (clashResult.winner === 'attacker') {
-        target.health -= clashResult.damage;
-        await target.save();
-      } else if (clashResult.winner === 'defender') {
-        character.health -= clashResult.damage;
-        await character.save();
-      } else {
-        character.health -= clashResult.damage;
-        target.health -= clashResult.damage;
-        await Promise.all([character.save(), target.save()]);
-      }
+      await AppDataSource.transaction(async (manager) => {
+        await manager.update(Character, character.id, { stats: attackerStats });
+        await manager.update(Character, target.id, { stats: defenderStats });
+      });
 
       return res.json({
         message: 'Clash resolved',
@@ -72,12 +67,12 @@ export const SkillController = {
     }
 
     await skillEngine.applyCost(skill);
-    const output = skillEngine.computeFinalOutput();
+    const output = await skillEngine.computeFinalOutput();
 
     res.json({
       message: 'Skill used successfully',
       output: output,
-      remainingAether: character.aether
+      remainingAether: character.stats.aether
     });
   })
 };

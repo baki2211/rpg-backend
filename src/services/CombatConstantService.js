@@ -3,7 +3,7 @@ import { CombatConstant } from '../models/combatConstantModel.js';
 import staticDataCache from '../utils/staticDataCache.js';
 import { HttpError } from '../utils/HttpError.js';
 
-const VALID_CATEGORIES = ['hp_system', 'aether_system', 'damage_system', 'mastery_system', 'outcome_system'];
+const VALID_CATEGORIES = ['hp_system', 'aether_system', 'damage_system', 'mastery_system', 'outcome_system', 'chat_system'];
 const CONSTANT_KEY_PATTERN = /^[A-Z_0-9]+$/;
 
 export class CombatConstantService {
@@ -36,7 +36,8 @@ export class CombatConstantService {
             aether_system: [],
             damage_system: [],
             mastery_system: [],
-            outcome_system: []
+            outcome_system: [],
+            chat_system: []
         };
 
         constants.forEach(constant => {
@@ -50,7 +51,7 @@ export class CombatConstantService {
 
     async createCombatConstant(constantData) {
         if (!VALID_CATEGORIES.includes(constantData.category)) {
-            throw new HttpError(400, 'Invalid category. Must be one of: hp_system, aether_system, damage_system, mastery_system, outcome_system');
+            throw new HttpError(400, 'Invalid category. Must be one of: ' + VALID_CATEGORIES.join(', '));
         }
 
         if (!CONSTANT_KEY_PATTERN.test(constantData.constantKey)) {
@@ -332,6 +333,28 @@ export class CombatConstantService {
                 category: 'outcome_system',
                 minValue: 1.0,
                 maxValue: 2.0,
+                isPercentage: false
+            },
+
+            // Chat System
+            {
+                constantKey: 'CHAT_POST_MIN_LENGTH',
+                displayName: 'Chat Post Minimum Length',
+                description: 'A chat post must be longer than this many characters to count for sessions and experience',
+                value: 800,
+                category: 'chat_system',
+                minValue: 0,
+                maxValue: 1000,
+                isPercentage: false
+            },
+            {
+                constantKey: 'CHAT_XP_COOLDOWN_MS',
+                displayName: 'Chat Experience Cooldown (ms)',
+                description: 'Minimum time between two experience-granting chat posts by the same user, in milliseconds',
+                value: 30000,
+                category: 'chat_system',
+                minValue: 0,
+                maxValue: 600000, // decimal(10,4) holds at most 999999.9999
                 isPercentage: false
             }
         ];

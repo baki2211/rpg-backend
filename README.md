@@ -1,8 +1,8 @@
 # RPG Backend
 
-This is the backend for the RPG application, built using Node.js, Express.js, TypeScript, PostgreSQL, and TypeORM. The app supports user authentication, role-based access, and a PostgreSQL database for data storage.
+This is the backend for the RPG application, built using Node.js (plain JavaScript ESM, no build step), Express 5, PostgreSQL, and TypeORM 1.0. The app supports user authentication, role-based access, and a PostgreSQL database for data storage.
 
-> **For agents and new contributors:** start at [`docs/PROJECT_CONTEXT.md`](docs/PROJECT_CONTEXT.md), then use [`docs/DOCUMENTATION_INDEX.md`](docs/DOCUMENTATION_INDEX.md) to navigate. Parts of this README are out of date — the `docs/` catalog is the current source of truth.
+> **For agents and new contributors:** start at [`docs/PROJECT_CONTEXT.md`](docs/PROJECT_CONTEXT.md), then use [`docs/DOCUMENTATION_INDEX.md`](docs/DOCUMENTATION_INDEX.md) to navigate. The `docs/` catalog is gitignored (local only) and goes into more depth than this README.
 
 ## Session-Event Lifecycle
 
@@ -53,10 +53,9 @@ This unified approach ensures that events and sessions work together seamlessly,
 
 Before you begin, ensure you have the following installed on your system:
 
-- [Node.js](https://nodejs.org/) (v16 or higher)
+- [Node.js](https://nodejs.org/) (v20 or higher — Docker uses `node:20`, CI uses Node 22)
 - [npm](https://www.npmjs.com/)
-- [PostgreSQL](https://www.postgresql.org/) (v12 or higher)
-- [TypeORM CLI](https://typeorm.io/)
+- [PostgreSQL](https://www.postgresql.org/) (v12 or higher — Docker uses `postgres:12`)
 
 ---
 
@@ -93,6 +92,15 @@ Replace the `DB_*` values with your PostgreSQL credentials. The app does **not**
 
 Optional tuning vars (all have defaults in `src/data-source.js`): `DB_POOL_SIZE`, `DB_POOL_MIN`, `DB_CONNECT_TIMEOUT`, `DB_ACQUIRE_TIMEOUT`, `DB_TIMEOUT`, `DB_IDLE_TIMEOUT`, `DB_STATEMENT_TIMEOUT`, `DB_QUERY_TIMEOUT`, `DB_SLOW_QUERY_THRESHOLD`.
 
+Other optional vars:
+- `DB_SYNC=true|false` — force TypeORM `synchronize` on/off (default: on only when `NODE_ENV=development`).
+- `REDIS_URL` — use Redis for the rate-limit store; in-memory when unset.
+- `CORS_ALLOWED_ORIGINS` — comma-separated origin allowlist (default: `localhost:3000`, `localhost:3001`, `https://arcanerealms.org`).
+- `COOKIE_SECURE=true` — force `Secure` auth cookies outside production (e.g. dev over HTTPS).
+- `RSS_BUDGET_BYTES`, `WS_MEMORY_BUDGET_MB` — memory budgets for cleanup and WebSocket connection caps (default 512MB).
+
+See `.env-example` for the annotated template.
+
 ---
 
 ## Running the Application (2 options):
@@ -112,26 +120,28 @@ This project has a `docker-compose.yml` for a quick start (local dev only — se
 docker compose up
 ```
 
-On first boot, TypeORM's `synchronize` is **on by default** in non-production (`src/data-source.js:38`), so the schema is created automatically from the entity files. No manual toggling is required.
-
-The container will try to populate the db with `src/jobs/seed.js` at first start (an admin user, a normal user, a map, and a location — enough to avoid empty-state fetch errors).
-
-If seeding fails or you prefer to run it manually, comment out the last line in `Dockerfile` and run:
+TypeORM `synchronize` is only on when `NODE_ENV=development` (or `DB_SYNC=true`), and `docker-compose.yml` sets neither, so the schema is **not** created automatically in the container. On first boot, apply the migrations and then seed:
 
 ```bash
-docker compose exec app node src/jobs/seed.js
+docker compose exec app npm run migration:run
+docker compose exec app npm run seed
 ```
+
+The seed creates an admin user, a normal user, a map, and a location — enough to avoid empty-state fetch errors. Read `src/jobs/seed.js` for the credentials. To seed on every container start instead, swap the `CMD` line at the bottom of the `Dockerfile` for the commented-out one.
 
 ## Database Management
 
 This project has **no build step** — TypeORM commands run against the source files in `src/` directly. Use the `npm` scripts wired up in `package.json`; they invoke the TypeORM CLI with the correct data-source path.
 
 ### Update the Schema
-If there are changes to the TypeORM entities, generate a new migration:
+`synchronize` is enabled only when `NODE_ENV=development` (override with `DB_SYNC=true|false`); every other environment changes schema only through `src/migrations/`. After editing an entity in `src/models/`, generate the migration against an **empty** `rpg_baseline` database (diffing against your dev DB comes back empty, because synchronize already applied the change):
+
 ```bash
-npx typeorm-ts-node-esm migration:generate ./src/migrations/<MigrationName> -d src/data-source.js
+DB_SYNC=false DB_NAME=rpg_baseline npm run migration:run
+DB_SYNC=false DB_NAME=rpg_baseline npm run migration:generate -- src/migrations/<DescriptiveName>
 ```
-> Note: `src/migrations/` is empty until the first migration is generated.
+
+Re-running generate afterwards should report "No changes in database schema were found". The full workflow, including VPS sync and rollback, is in `docs/migrations.md`.
 
 ### Run Migrations
 To apply the latest migrations to your database:
@@ -149,7 +159,17 @@ npm run migration:revert
 
 ## Testing
 
-There are **no tests yet**. `npm test` is a placeholder that prints `"No tests yet"` and exits 0 — do not treat it as a CI gate. Wiring up a real test runner is tracked in [`docs/fix_plan.md`](docs/fix_plan.md) §5.1.
+Tests use [Vitest](https://vitest.dev/) (`vitest.config.js`, files under `tests/**/*.test.js`). Only unit tests exist today (`tests/unit/`); there are no integration or route tests yet. CI runs `npm test` on every push and PR (`.github/workflows/pr-tests.yml`).
+
+```bash
+npm test                                   # all tests
+npm run test:unit                          # tests/unit only
+npx vitest run tests/unit/SkillEngine.test.js
+npm run test:watch
+npm run test:coverage
+```
+
+Rules for writing tests and production code are in `docs/dev_rulebook.md`.
 
 ---
 
@@ -178,7 +198,11 @@ Ensure the `.env` file is correctly configured for the production environment. S
 | `npm run seed`                | Seed the database with initial data                    |
 | `npm run migration:run`       | Apply migrations to the database                       |
 | `npm run migration:revert`    | Revert the last migration                              |
-| `npm test`                    | Placeholder — no tests are wired up yet                |
+| `npm run migration:generate -- <path>` | Generate a migration (see Database Management) |
+| `npm test`                    | Run the Vitest suite                                   |
+| `npm run test:unit`           | Run unit tests only                                    |
+| `npm run test:watch`          | Vitest in watch mode                                   |
+| `npm run test:coverage`       | Run tests with v8 coverage                             |
 
 ---
 
@@ -194,11 +218,13 @@ Ensure the `.env` file is correctly configured for the production environment. S
 │   ├── websockets        # WebSocket handlers (chat, etc.)
 │   ├── jobs              # Background jobs and seed script
 │   ├── utils             # Utility functions
+│   ├── migrations        # TypeORM migrations
 │   ├── data-source.js    # TypeORM data source
 │   ├── index.js          # Entry point (env, app, server, WS, startup, shutdown wiring)
 │   ├── app.js            # Express app builder (middleware + /api/* mounts + static + errorHandler)
 │   ├── lifecycle.js      # startServer + installShutdownHandlers
-├── docs                  # Project documentation catalog
+├── docs                  # Project documentation catalog (gitignored, local only)
+├── tests                 # Vitest suites
 ├── uploads               # User uploads (runtime)
 ├── docker-compose.yml    # Local dev stack
 ├── package.json          # NPM configuration

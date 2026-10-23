@@ -33,7 +33,7 @@ export const CombatConstant = new EntitySchema({
     category: {
       type: 'varchar',
       length: 50,
-      nullable: false  // 'hp_system', 'aether_system', 'damage_system', 'mastery_system', 'outcome_system'
+      nullable: false  // 'hp_system', 'aether_system', 'damage_system', 'mastery_system', 'outcome_system', 'chat_system'
     },
     minValue: {
       type: 'decimal',
