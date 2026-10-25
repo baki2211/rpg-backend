@@ -110,3 +110,26 @@ describe('an integer with a negative lower bound', () => {
         expect(() => InputValidator.validateInteger('-6', { min: -5 })).toThrow(failure('Value must be at least -5'));
     });
 });
+
+describe('a text value', () => {
+    it.each([
+        ['an array, as from a repeated query param', ['a', 'b'], {}, 'Value must be a string'],
+        ['a number', 7, {}, 'Value must be a string'],
+        ['a missing required value', undefined, { required: true }, 'Value is required'],
+        ['only spaces when required', '   ', { required: true }, 'Value is required'],
+        ['one character over the maximum length', 'abcd', { maxLength: 3 }, 'Value must be at most 3 characters'],
+    ])('given as %s is a 400', (_name, input, options, message) => {
+        expect(() => InputValidator.validateText(input, options)).toThrow(failure(message));
+    });
+
+    it.each([
+        ['exactly the maximum length', 'abc', { maxLength: 3 }, 'abc'],
+        ['surrounded by spaces', '  closed  ', {}, 'closed'],
+        ['missing and optional', undefined, {}, null],
+        ['empty and optional', '', {}, null],
+    ])('given as %s is accepted', (_name, input, options, expected) => {
+        const result = InputValidator.validateText(input, options);
+
+        expect(result).toBe(expected);
+    });
+});

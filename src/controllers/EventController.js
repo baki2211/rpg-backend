@@ -37,7 +37,7 @@ export class EventController {
         res.json(await eventService.getEventsByLocation(
             InputValidator.validateLocationId(req.params.locationId),
             limit,
-            req.query.status
+            InputValidator.validateText(req.query.status, { maxLength: 20 })
         ));
     });
 

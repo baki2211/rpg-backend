@@ -95,6 +95,35 @@ export class InputValidator {
     }
 
     /**
+     * Validate a plain text value (query param or body field). The text is trimmed but not escaped.
+     * A repeated query param arrives as an array and is refused here instead of reaching a `where`.
+     * @param {any} input - Input to validate
+     * @param {object} options - `maxLength` (the column length) and `required`
+     * @returns {string|null} The trimmed text, or null when it is absent or empty and not required
+     */
+    static validateText(input, options = {}) {
+        const opts = { maxLength: 1000, required: false, ...options };
+
+        if (input != null && typeof input !== 'string') {
+            throw new HttpError(400, 'Value must be a string');
+        }
+
+        const text = input?.trim() ?? '';
+        if (text === '') {
+            if (opts.required) {
+                throw new HttpError(400, 'Value is required');
+            }
+            return null;
+        }
+
+        if (text.length > opts.maxLength) {
+            throw new HttpError(400, `Value must be at most ${opts.maxLength} characters`);
+        }
+
+        return text;
+    }
+
+    /**
      * Validate a row id (path parameter or body field): a positive PostgreSQL INTEGER
      * @param {any} id - Id to validate
      * @returns {number} Validated id

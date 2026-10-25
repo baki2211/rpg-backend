@@ -13,7 +13,7 @@ const queryService = new SessionQueryService();
 
 export class SessionController {
   static createSession = asyncHandler(async (req, res) => {
-    const { name } = req.body;
+    const name = InputValidator.validateText(req.body.name, { maxLength: 100, required: true });
     res.json(await sessionService.createSession(name, InputValidator.validateLocationId(req.body.locationId)));
   });
 

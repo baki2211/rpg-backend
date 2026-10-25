@@ -15,7 +15,7 @@ export class EngineLogController {
   static getLogsBySession = asyncHandler(async (req, res) => {
     const sessionId = InputValidator.validateId(req.params.sessionId);
     const limit = InputValidator.validateInteger(req.query.limit ?? 50, { min: 1, max: 2147483647 });
-    const { type } = req.query;
+    const type = InputValidator.validateText(req.query.type, { maxLength: 20 });
     const logs = type
       ? await engineLogService.getLogsBySessionAndType(sessionId, type, limit)
       : await engineLogService.getLogsBySession(sessionId, limit);
