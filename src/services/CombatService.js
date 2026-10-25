@@ -3,6 +3,8 @@ import { AppDataSource } from '../data-source.js';
 import { CombatRound } from '../models/combatRoundModel.js';
 import { CombatAction } from '../models/combatActionModel.js';
 import { HttpError } from '../utils/HttpError.js';
+import { SessionService } from './SessionService.js';
+import { EventService } from './EventService.js';
 
 export class CombatService {
     constructor() {
@@ -11,28 +13,27 @@ export class CombatService {
     }
 
     /**
-     * Create a new combat round
+     * Create a new combat round in the location's active session (created if there is none).
+     * Without an explicit event, the round joins the location's active event, if any.
      * @param {number} locationId - The location where combat is taking place
      * @param {number} createdBy - User ID of the master creating the round
-     * @param {number} sessionId - Optional session ID
-     * @param {number} eventId - Optional event ID
+     * @param {number|null} eventId - Optional event ID
      * @returns {Promise<Object>} The created combat round
      */
-    async createRound(locationId, createdBy, sessionId = null, eventId = null) {
-        if (!sessionId) {
-            const { SessionService } = await import('./SessionService.js');
-            const sessionService = new SessionService();
+    async createRound(locationId, createdBy, eventId = null) {
+        const sessionService = new SessionService();
+        let activeSession = await sessionService.getActiveSessionByLocation(locationId);
+        if (!activeSession) {
+            activeSession = await sessionService.createSession(
+                `Auto-created for Location ${locationId}`,
+                locationId
+            );
+        }
+        const sessionId = activeSession.id;
 
-            let activeSession = await sessionService.getActiveSessionByLocation(locationId);
-
-            if (!activeSession) {
-                activeSession = await sessionService.createSession(
-                    `Auto-created for Location ${locationId}`,
-                    locationId
-                );
-            }
-
-            sessionId = activeSession.id;
+        if (!eventId) {
+            const activeEvent = await new EventService().getActiveEvent(locationId);
+            eventId = activeEvent?.id || null;
         }
 
         let roundNumber = 1;

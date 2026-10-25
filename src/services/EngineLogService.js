@@ -127,13 +127,11 @@ export class EngineLogService {
      * @returns {Promise<number>} Number of deleted logs
      */
     async clearOldLogs(daysOld = 30) {
-        const cutoffDate = new Date();
-        cutoffDate.setDate(cutoffDate.getDate() - daysOld);
-
+        // The cutoff uses the database clock, the same one that stamps createdAt
         const result = await this.engineLogRepository
             .createQueryBuilder()
             .delete()
-            .where('"createdAt" < :cutoffDate', { cutoffDate })
+            .where('"createdAt" < now() - make_interval(days => :daysOld)', { daysOld })
             .execute();
 
         return result.affected || 0;

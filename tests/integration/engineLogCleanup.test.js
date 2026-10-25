@@ -1,24 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import request from 'supertest';
 import { createApp } from '../../src/app.js';
+import { logIn } from './support/auth.js';
 import { query } from './support/database.js';
 import { makeUser, makeLocation, makeSession } from './support/factories.js';
 
 const app = createApp();
-
-/**
- * A real login (cookie + CSRF), like support/auth.js, but able to send DELETE requests,
- * which the shared client doesn't offer yet.
- */
-async function logInForDelete({ username, password }) {
-  const agent = request.agent(app);
-  const login = await agent.post('/api/auth/login').send({ username, password });
-  expect(login.status).toBe(200);
-  const csrfCookie = login.headers['set-cookie'].find((line) => line.startsWith('csrfToken='));
-  const csrfToken = decodeURIComponent(csrfCookie.split(';')[0].slice('csrfToken='.length));
-
-  return { delete: (url) => agent.delete(url).set('X-CSRF-Token', csrfToken) };
-}
 
 async function makeEngineLogAgedDays(session, details, ageInDays) {
   await query(
@@ -34,7 +20,7 @@ describe('admin cleanup of old engine logs', () => {
     const session = await makeSession({ location: await makeLocation() });
     await makeEngineLogAgedDays(session, 'ancient', 400);
     await makeEngineLogAgedDays(session, 'recent', 10);
-    const client = await logInForDelete(admin);
+    const client = await logIn(app, admin);
 
     const response = await client.delete('/api/engine-logs/cleanup/365');
 
@@ -52,7 +38,7 @@ describe('admin cleanup of old engine logs', () => {
     const admin = await makeUser({ role: 'admin' });
     const session = await makeSession({ location: await makeLocation() });
     await makeEngineLogAgedDays(session, 'ancient', 400);
-    const client = await logInForDelete(admin);
+    const client = await logIn(app, admin);
 
     const response = await client.delete(`/api/engine-logs/cleanup/${daysOld}`);
 

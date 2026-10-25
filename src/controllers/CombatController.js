@@ -1,9 +1,7 @@
 import { CombatService } from '../services/CombatService.js';
 import { CombatActionService } from '../services/CombatActionService.js';
 import { CombatResolutionService } from '../services/CombatResolutionService.js';
-import { SessionService } from '../services/SessionService.js';
 import { CharacterService } from '../services/CharacterService.js';
-import { EventService } from '../services/EventService.js';
 import { AppDataSource } from '../data-source.js';
 import { InputValidator } from '../utils/inputValidator.js';
 import { AuditLogger } from '../utils/auditLogger.js';
@@ -13,9 +11,7 @@ import { HttpError } from '../utils/HttpError.js';
 const combatService = new CombatService();
 const combatActionService = new CombatActionService();
 const combatResolutionService = new CombatResolutionService();
-const sessionService = new SessionService();
 const characterService = new CharacterService();
-const eventService = new EventService();
 
 export class CombatController {
     /**
@@ -27,21 +23,7 @@ export class CombatController {
         const requestedEventId = req.body.eventId ? InputValidator.validateId(req.body.eventId) : null;
         const userId = req.user.id;
 
-        const session = await sessionService.getActiveSessionByLocation(locationId);
-        const sessionId = session?.id || null;
-
-        let finalEventId = requestedEventId;
-        if (!finalEventId) {
-            const activeEvent = await eventService.getActiveEvent(locationId);
-            finalEventId = activeEvent?.id || null;
-        }
-
-        const round = await combatService.createRound(
-            locationId,
-            userId,
-            sessionId,
-            finalEventId
-        );
+        const round = await combatService.createRound(locationId, userId, requestedEventId);
 
         AuditLogger.logCombat(
             AuditLogger.EventTypes.COMBAT_ROUND_CREATE,
@@ -51,8 +33,8 @@ export class CombatController {
             {
                 round_id: round.id,
                 location_id: locationId,
-                session_id: sessionId,
-                event_id: finalEventId
+                session_id: round.sessionId,
+                event_id: round.eventId
             }
         );
 

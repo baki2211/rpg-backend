@@ -34,3 +34,19 @@ describe('POST /api/combat/rounds outside an event', () => {
     expect(session).toEqual({ locationId: location.id, isActive: true });
   });
 });
+
+describe('POST /api/combat/rounds during an active event', () => {
+  it('without an event id joins the location\'s active event and numbers after its last round', async () => {
+    const master = await makeUser({ role: 'master' });
+    const location = await makeLocation();
+    await makeCombatRound({ location, createdBy: master, roundNumber: 7, status: 'resolved' });
+    const activeEvent = await makeEvent({ location, createdBy: master, status: 'active' });
+    await makeCombatRound({ location, createdBy: master, event: activeEvent, roundNumber: 2, status: 'resolved' });
+    const client = await logIn(app, master);
+
+    const response = await client.post('/api/combat/rounds', { locationId: location.id });
+
+    expect(response.status).toBe(201);
+    expect(response.body.round).toMatchObject({ roundNumber: 3, status: 'active', eventId: activeEvent.id });
+  });
+});
