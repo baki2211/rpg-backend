@@ -6,7 +6,7 @@ import { makeUser, makeLocation, makeSession, makeCombatRound } from './support/
 
 const app = createApp();
 
-// `limit` is a positive PostgreSQL INTEGER; when it's absent the route keeps its default page size.
+// `limit` is a page size from 1 to 100; when it's absent the route keeps its default page size.
 // Malformed values used to reach the query as NaN or a negative take and fail as a 500.
 describe('a malformed or out-of-range limit is a bad request', () => {
   it('a negative limit on resolved combat rounds is refused', async () => {
@@ -20,15 +20,15 @@ describe('a malformed or out-of-range limit is a bad request', () => {
     expect(response.body).toEqual({ message: 'Value must be at least 1' });
   });
 
-  it('a limit beyond the integer range on location events is refused', async () => {
+  it('a limit above the maximum page size on location events is refused', async () => {
     const player = await makeUser();
     const location = await makeLocation();
     const client = await logIn(app, player);
 
-    const response = await client.get(`/api/events/location/${location.id}?limit=2147483648`);
+    const response = await client.get(`/api/events/location/${location.id}?limit=101`);
 
     expect(response.status).toBe(400);
-    expect(response.body).toEqual({ message: 'Value must be at most 2147483647' });
+    expect(response.body).toEqual({ message: 'Value must be at most 100' });
   });
 
   it('a non-numeric limit on session engine logs is refused', async () => {

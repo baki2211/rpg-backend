@@ -133,3 +133,24 @@ describe('a text value', () => {
         expect(result).toBe(expected);
     });
 });
+
+describe('a page size limit', () => {
+    it.each([
+        ['zero', '0', 'Value must be at least 1'],
+        ['one past the maximum page size', '101', 'Value must be at most 100'],
+        ['a word', 'abc', 'Value must be a valid integer'],
+        ['a repeated query param', ['5', '6'], 'Value must be a valid integer'],
+    ])('given as %s is a 400', (_name, input, message) => {
+        expect(() => InputValidator.validateLimit(input, 10)).toThrow(failure(message));
+    });
+
+    it.each([
+        ['the smallest page', '1', 1],
+        ['exactly the maximum page size', '100', 100],
+        ['missing, so the route default applies', undefined, 10],
+    ])('given as %s is accepted', (_name, input, expected) => {
+        const result = InputValidator.validateLimit(input, 10);
+
+        expect(result).toBe(expected);
+    });
+});

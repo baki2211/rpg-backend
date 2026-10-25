@@ -73,7 +73,7 @@ export class SessionController {
   });
 
   static getAllSessionsForLogs = asyncHandler(async (req, res) => {
-    const limit = InputValidator.validateInteger(req.query.limit ?? 100, { min: 1, max: 2147483647 });
+    const limit = InputValidator.validateLimit(req.query.limit, 100);
     res.json(await queryService.getAllSessionsForLogs(limit));
   });
 

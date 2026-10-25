@@ -7,14 +7,14 @@ const engineLogService = new EngineLogService();
 export class EngineLogController {
   static getLogsByLocation = asyncHandler(async (req, res) => {
     const locationId = InputValidator.validateLocationId(req.params.locationId);
-    const limit = InputValidator.validateInteger(req.query.limit ?? 50, { min: 1, max: 2147483647 });
+    const limit = InputValidator.validateLimit(req.query.limit, 50);
     const logs = await engineLogService.getLogsByLocation(locationId, limit);
     res.json({ success: true, logs, count: logs.length });
   });
 
   static getLogsBySession = asyncHandler(async (req, res) => {
     const sessionId = InputValidator.validateId(req.params.sessionId);
-    const limit = InputValidator.validateInteger(req.query.limit ?? 50, { min: 1, max: 2147483647 });
+    const limit = InputValidator.validateLimit(req.query.limit, 50);
     const type = InputValidator.validateText(req.query.type, { maxLength: 20 });
     const logs = type
       ? await engineLogService.getLogsBySessionAndType(sessionId, type, limit)

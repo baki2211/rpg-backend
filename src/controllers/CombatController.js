@@ -160,7 +160,7 @@ export class CombatController {
      * GET /api/combat/rounds/resolved/:locationId
      */
     static getResolvedRounds = asyncHandler(async (req, res) => {
-        const limit = InputValidator.validateInteger(req.query.limit ?? 10, { min: 1, max: 2147483647 });
+        const limit = InputValidator.validateLimit(req.query.limit, 10);
         const rounds = await combatService.getResolvedRounds(
             InputValidator.validateLocationId(req.params.locationId),
             limit

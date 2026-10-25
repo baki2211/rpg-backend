@@ -1,6 +1,9 @@
 import validator from 'validator';
 import { HttpError } from './HttpError.js';
 
+// Largest page a list endpoint returns; the biggest route default (session logs) is 100
+export const MAX_PAGE_SIZE = 100;
+
 /**
  * Input validation and sanitization utilities
  * Provides defense against XSS, SQL injection, and other common attacks
@@ -134,6 +137,16 @@ export class InputValidator {
             max: 2147483647, // PostgreSQL INTEGER max
             required: true
         });
+    }
+
+    /**
+     * Validate a `limit` query param: a page size from 1 to MAX_PAGE_SIZE
+     * @param {any} input - Raw query value
+     * @param {number} defaultLimit - Page size used when the param is absent
+     * @returns {number} Validated page size
+     */
+    static validateLimit(input, defaultLimit) {
+        return this.validateInteger(input ?? defaultLimit, { min: 1, max: MAX_PAGE_SIZE });
     }
 
     /**
