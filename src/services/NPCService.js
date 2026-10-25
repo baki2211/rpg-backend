@@ -2,15 +2,20 @@ import { AppDataSource } from '../data-source.js';
 import { Character } from '../models/characterModel.js';
 import { Race } from '../models/raceModel.js';
 import { CharacterStatsService } from './CharacterStatsService.js';
+import { StatDefinitionService } from './StatDefinitionService.js';
+import { standDownPlayedCharacters } from './CharacterService.js';
 import { HttpError } from '../utils/HttpError.js';
+import { InputValidator } from '../utils/inputValidator.js';
 import { logger } from '../utils/logger.js';
-import { Not } from 'typeorm';
 import { lockCharacter, lockUser } from '../utils/rowLocks.js';
+import { lockImageFiles } from '../utils/uploadedFiles.js';
 import { pickNpcUpdatableFields } from '../domain/character/npcUpdate.js';
+import { unknownStatKeys } from '../domain/character/stats.js';
 
 export class NPCService {
   characterRepository = AppDataSource.getRepository(Character);
   statsService = new CharacterStatsService();
+  statDefinitionService = new StatDefinitionService();
 
   async createNPC(data, createdBy, imageUrl = null) {
     const race = await AppDataSource.getRepository(Race).findOneBy({ id: data.race?.id });
@@ -74,6 +79,16 @@ export class NPCService {
 
   async updateNPC(npcId, data) {
     const updateData = pickNpcUpdatableFields(data);
+    if (updateData.raceId !== undefined) {
+      updateData.raceId = InputValidator.validateId(updateData.raceId);
+    }
+    if (updateData.stats) {
+      const statDefinitions = await this.statDefinitionService.getAllStatDefinitions(null, true);
+      const unknownKeys = unknownStatKeys(updateData.stats, statDefinitions);
+      if (unknownKeys.length > 0) {
+        throw new HttpError(400, `Unknown stats: ${unknownKeys.join(', ')}`);
+      }
+    }
 
     await AppDataSource.transaction(async (manager) => {
       // Stats are merged into the current row: locked and re-read so a concurrent write isn't lost
@@ -85,7 +100,13 @@ export class NPCService {
       if (!npc) {
         throw new HttpError(404, 'NPC not found');
       }
-      const { stats, rank } = await lockCharacter(manager, npcId);
+      const { stats, rank, imageUrl } = await lockCharacter(manager, npcId);
+      // A new imageUrl may point at an uploaded file: serialize with a concurrent check-and-delete of it
+      await lockImageFiles(manager, [imageUrl, updateData.imageUrl]);
+
+      if (updateData.raceId !== undefined && !(await manager.existsBy(Race, { id: updateData.raceId }))) {
+        throw new HttpError(404, 'Race not found');
+      }
 
       if (updateData.stats) {
         const updatedStats = { ...stats, ...updateData.stats };
@@ -174,8 +195,7 @@ export class NPCService {
         throw new HttpError(404, 'NPC not found');
       }
 
-      await manager.update(Character, { user: { id: userId } }, { isActive: false });
-      await manager.update(Character, { userId, isNPC: true, id: Not(npcId) }, { isActive: false, userId: null });
+      await standDownPlayedCharacters(manager, userId, npcId);
       await manager.update(Character, { id: npcId }, { isActive: true, userId });
       return npc;
     });

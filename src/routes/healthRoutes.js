@@ -8,6 +8,7 @@ import { RateLimitMiddleware } from '../middleware/rateLimitMiddleware.js';
 import { authenticateToken } from '../middleware/authMiddleware.js';
 import { isAdmin } from '../middleware/adminMiddleware.js';
 import { assessHealth } from '../utils/healthStatus.js';
+import { AuditLogger } from '../utils/auditLogger.js';
 
 // Track compression statistics
 let compressionStats = {
@@ -39,7 +40,9 @@ const router = express.Router();
 
 // Everything except the public GET / check exposes internals or triggers cleanups: admins only
 // Errors in these handlers reach errorHandler (Express 5 forwards throws and rejections): logged, generic 500.
+// Maintenance actions (POST) go through AuditLogger.auditAdminMaintenance: who, what, outcome.
 const adminOnly = [authenticateToken, isAdmin];
+const audited = AuditLogger.auditAdminMaintenance.bind(AuditLogger);
 
 let presenceWebSocketServer = null;
 let chatWebSocketServer = null;
@@ -191,6 +194,9 @@ router.get('/', rateLimitHealthChecks, async (req, res) => {
 // Detailed status for monitoring
 router.get('/status', adminOnly, (req, res) => {
   const memoryUsage = process.memoryUsage();
+  // Percentages come from memoryManager, like GET /health: usage_percent is RSS against the
+  // RSS budget (the number memory pressure decisions use); heap_usage_percent is heapUsed/heapTotal.
+  const memoryStats = memoryManager.getMemoryStats();
   const cpuUsage = process.cpuUsage();
   
   const status = {
@@ -205,7 +211,9 @@ router.get('/status', adminOnly, (req, res) => {
       heapTotal: memoryUsage.heapTotal,
       external: memoryUsage.external,
       rss: memoryUsage.rss,
-      usage_percentage: Math.round((memoryUsage.heapUsed / memoryUsage.heapTotal) * 100)
+      usage_percent: memoryStats.rss.percent,
+      limit_mb: memoryStats.limit,
+      heap_usage_percent: memoryStats.heap.percent
     },
     cpu: {
       user: cpuUsage.user,
@@ -228,7 +236,7 @@ router.get('/status', adminOnly, (req, res) => {
 });
 
 // Force memory cleanup (works without --expose-gc)
-router.post('/gc', adminOnly, (req, res) => {
+router.post('/gc', adminOnly, audited('memory.gc', (req, res) => {
   const beforeStats = memoryManager.getMemoryStats();
   const success = memoryManager.performGarbageCollection(true);
   
@@ -249,10 +257,11 @@ router.post('/gc', adminOnly, (req, res) => {
     memoryChange: `${freedMB}MB`,
     gcAvailable: !!global.gc
   });
-});
+  return { native_gc: success, rss_before_mb: beforeStats.rss.mb, rss_after_mb: afterStats.rss.mb };
+}));
 
 // Add cleanup endpoint
-router.post('/cleanup', adminOnly, (req, res) => {
+router.post('/cleanup', adminOnly, audited('websocket.cleanup', (req, res) => {
   if (presenceWebSocketServer?.cleanup) {
     logger.info('Manual cleanup requested via API');
     presenceWebSocketServer.cleanup();
@@ -268,7 +277,7 @@ router.post('/cleanup', adminOnly, (req, res) => {
       message: 'WebSocket servers not available' 
     });
   }
-});
+}));
 
 // Database health endpoint
 router.get('/database', adminOnly, (req, res) => {
@@ -277,7 +286,7 @@ router.get('/database', adminOnly, (req, res) => {
 });
 
 // Database connection cleanup endpoint
-router.post('/database/cleanup', adminOnly, async (req, res) => {
+router.post('/database/cleanup', adminOnly, audited('database.cleanup', async (req, res) => {
   logger.info('Manual database cleanup requested via API');
   const success = await dbHealthMonitor.releaseIdleConnections();
   const healthReport = dbHealthMonitor.getHealthReport();
@@ -287,7 +296,8 @@ router.post('/database/cleanup', adminOnly, async (req, res) => {
     message: success ? 'Database connections cleaned up' : 'Cleanup failed or not needed',
     poolStats: healthReport.database.pool
   });
-});
+  return { released: success };
+}));
 
 // Cache management endpoints
 router.get('/cache', adminOnly, (req, res) => {
@@ -299,7 +309,7 @@ router.get('/cache', adminOnly, (req, res) => {
   });
 });
 
-router.post('/cache/clear', adminOnly, (req, res) => {
+router.post('/cache/clear', adminOnly, audited('cache.clear', (req, res) => {
   const entity = req.body.entity;
   
   if (entity) {
@@ -319,16 +329,18 @@ router.post('/cache/clear', adminOnly, (req, res) => {
       stats: staticDataCache.getStats()
     });
   }
-});
+  return { entity: entity ?? 'all' };
+}));
 
-router.post('/cache/cleanup', adminOnly, (req, res) => {
+router.post('/cache/cleanup', adminOnly, audited('cache.cleanup', (req, res) => {
   const removedCount = staticDataCache.cleanup();
   res.json({
     success: true,
     message: `Cleaned up ${removedCount} expired cache entries`,
     stats: staticDataCache.getStats()
   });
-});
+  return { removed_entries: removedCount };
+}));
 
 // Compression statistics endpoint
 router.get('/compression', adminOnly, (req, res) => {
@@ -349,7 +361,7 @@ router.get('/compression', adminOnly, (req, res) => {
 });
 
 // Reset compression statistics
-router.post('/compression/reset', adminOnly, (req, res) => {
+router.post('/compression/reset', adminOnly, audited('compression_stats.reset', (req, res) => {
   compressionStats = {
     totalRequests: 0,
     compressedRequests: 0,
@@ -363,10 +375,10 @@ router.post('/compression/reset', adminOnly, (req, res) => {
     message: 'Compression statistics reset',
     timestamp: new Date().toISOString()
   });
-});
+}));
 
 // Manual memory cleanup endpoint
-router.post('/memory/cleanup', adminOnly, async (req, res) => {
+router.post('/memory/cleanup', adminOnly, audited('memory.cleanup', (req, res) => {
   logger.info('Manual memory cleanup requested via API');
   
   // Run cleanup in background to avoid timeout
@@ -380,7 +392,9 @@ router.post('/memory/cleanup', adminOnly, async (req, res) => {
     status: MemoryCleanupJob.getStatus(),
     timestamp: new Date().toISOString()
   });
-});
+  // The cleanup itself runs in the background: the audit records that it was started
+  return { started_in_background: true };
+}));
 
 // Memory optimization status endpoint
 router.get('/memory/status', adminOnly, (req, res) => {
@@ -419,14 +433,15 @@ router.get('/rate-limits', adminOnly, async (req, res) => {
 });
 
 // Clear specific rate limit
-router.post('/rate-limits/clear', adminOnly, async (req, res) => {
+router.post('/rate-limits/clear', adminOnly, audited('rate_limit.clear', async (req, res) => {
   const { key } = req.body;
 
   if (!key) {
-    return res.status(400).json({
+    res.status(400).json({
       success: false,
       message: 'Rate limit key is required'
     });
+    return { key: null };
   }
 
   const cleared = await RateLimitMiddleware.clearRateLimit(key);
@@ -436,6 +451,7 @@ router.post('/rate-limits/clear', adminOnly, async (req, res) => {
     message: cleared ? `Rate limit cleared for key: ${key}` : 'Rate limit key not found',
     timestamp: new Date().toISOString()
   });
-});
+  return { key, cleared };
+}));
 
 export default router; 

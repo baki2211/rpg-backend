@@ -6,12 +6,6 @@ import { HttpError } from '../utils/HttpError.js';
 
 const chatService = new ChatService();
 
-// Ids must be positive integers; anything else is a 400 (TypeORM 1.0 throws on undefined in `where`)
-const parseId = (raw) => {
-  const id = Number(raw);
-  return raw != null && raw !== '' && Number.isInteger(id) && id > 0 ? id : null;
-};
-
 export class ChatController {
   static getMessages = asyncHandler(async (req, res) => {
     const locationId = InputValidator.validateLocationId(req.params.locationId);
@@ -31,12 +25,8 @@ export class ChatController {
   static launchSkill = asyncHandler(async (req, res) => {
     const userId = req.user.id;
     const skillId = InputValidator.validateSkillId(req.params.skillId);
-    const locationId = parseId(req.body.locationId);
+    const locationId = InputValidator.validateLocationId(req.body.locationId);
     const { message } = req.body;
-
-    if (!locationId) {
-      throw new HttpError(400, 'Location ID is required');
-    }
 
     const skill = await AppDataSource.getRepository('Skill').findOne({
       where: { id: skillId },

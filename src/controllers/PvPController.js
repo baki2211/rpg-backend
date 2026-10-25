@@ -9,21 +9,12 @@ import { canResolvePvPEncounter } from '../domain/combat/pvpAuthorization.js';
 
 const pvpService = new PvPService();
 
-// Body ids must be positive integers; anything else is a 400 (TypeORM 1.0 throws on undefined in `where`)
-const parseId = (raw) => {
-    const id = Number(raw);
-    return raw != null && raw !== '' && Number.isInteger(id) && id > 0 ? id : null;
-};
-
 export class PvPController {
     static resolvePvPEncounter = asyncHandler(async (req, res) => {
-        const attackerId = parseId(req.body.attackerId);
-        const attackerSkillId = parseId(req.body.attackerSkillId);
-        const defenderId = parseId(req.body.defenderId);
-        const defenderSkillId = parseId(req.body.defenderSkillId);
-        if (!attackerId || !attackerSkillId || !defenderId || !defenderSkillId) {
-            throw new HttpError(400, 'Missing required fields: attackerId, attackerSkillId, defenderId, defenderSkillId');
-        }
+        const attackerId = InputValidator.validateCharacterId(req.body.attackerId);
+        const attackerSkillId = InputValidator.validateSkillId(req.body.attackerSkillId);
+        const defenderId = InputValidator.validateCharacterId(req.body.defenderId);
+        const defenderSkillId = InputValidator.validateSkillId(req.body.defenderSkillId);
 
         const owners = await AppDataSource.getRepository(Character).find({
             where: { id: In([attackerId, defenderId]) },
@@ -50,11 +41,8 @@ export class PvPController {
     });
 
     static simulateSkillOutput = asyncHandler(async (req, res) => {
-        const characterId = parseId(req.body.characterId);
-        const skillId = parseId(req.body.skillId);
-        if (!characterId || !skillId) {
-            throw new HttpError(400, 'characterId and skillId are required');
-        }
+        const characterId = InputValidator.validateCharacterId(req.body.characterId);
+        const skillId = InputValidator.validateSkillId(req.body.skillId);
         res.json(await pvpService.simulateSkillOutput(characterId, skillId, req.user.id));
     });
 }

@@ -18,6 +18,7 @@ import { Rank } from '../models/rankModel.js';
 import { StatDefinition } from '../models/statDefinitionModel.js';
 import { WikiSection } from '../models/wikiSectionModel.js';
 import { WikiEntry } from '../models/wikiEntryModel.js';
+import { CHARACTER_PLACEHOLDER_IMAGE_URL } from '../domain/character/characterImage.js';
 
 async function seed() {
   try {
@@ -341,7 +342,7 @@ async function seed() {
       rank: 1,
       statPoints: 0,
       skillPoints: 10, // Extra skill points for admin
-      imageUrl: '/uploads/placeholder.jpg'
+      imageUrl: CHARACTER_PLACEHOLDER_IMAGE_URL
     }));
 
     const userCharacter = await characterRepo.save(characterRepo.create({
@@ -367,7 +368,7 @@ async function seed() {
       rank: 1,
       statPoints: 0,
       skillPoints: 5, // Starting skill points
-      imageUrl: '/uploads/placeholder.jpg'
+      imageUrl: CHARACTER_PLACEHOLDER_IMAGE_URL
     }));
 
     // Assign skills to admin character

@@ -7,17 +7,18 @@ const engineLogService = new EngineLogService();
 export class EngineLogController {
   static getLogsByLocation = asyncHandler(async (req, res) => {
     const locationId = InputValidator.validateLocationId(req.params.locationId);
-    const { limit = 50 } = req.query;
-    const logs = await engineLogService.getLogsByLocation(locationId, parseInt(limit));
+    const limit = InputValidator.validateInteger(req.query.limit ?? 50, { min: 1, max: 2147483647 });
+    const logs = await engineLogService.getLogsByLocation(locationId, limit);
     res.json({ success: true, logs, count: logs.length });
   });
 
   static getLogsBySession = asyncHandler(async (req, res) => {
     const sessionId = InputValidator.validateId(req.params.sessionId);
-    const { limit = 50, type } = req.query;
+    const limit = InputValidator.validateInteger(req.query.limit ?? 50, { min: 1, max: 2147483647 });
+    const { type } = req.query;
     const logs = type
-      ? await engineLogService.getLogsBySessionAndType(sessionId, type, parseInt(limit))
-      : await engineLogService.getLogsBySession(sessionId, parseInt(limit));
+      ? await engineLogService.getLogsBySessionAndType(sessionId, type, limit)
+      : await engineLogService.getLogsBySession(sessionId, limit);
     res.json({ success: true, logs, count: logs.length });
   });
 
@@ -28,7 +29,7 @@ export class EngineLogController {
   });
 
   static clearOldLogs = asyncHandler(async (req, res) => {
-    const daysOld = InputValidator.validateInteger(req.params.daysOld, { min: 1 });
+    const daysOld = InputValidator.validateInteger(req.params.daysOld, { min: 1, max: 365 });
     const deletedCount = await engineLogService.clearOldLogs(daysOld);
     res.json({ success: true, message: `Deleted ${deletedCount} old engine logs`, deletedCount });
   });

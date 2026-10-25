@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import request from 'supertest';
 import { createApp } from '../../src/app.js';
+import { logIn } from './support/auth.js';
 import { query } from './support/database.js';
 import { makeUser, makeCharacter } from './support/factories.js';
 
@@ -29,23 +29,6 @@ const removeTestUploads = () => {
 beforeEach(removeTestUploads);
 afterEach(removeTestUploads);
 
-/**
- * A real login (cookie + CSRF), like support/auth.js, but also able to send multipart
- * uploads and DELETE requests, which the shared client doesn't offer yet.
- */
-async function logInForImages({ username, password }) {
-  const agent = request.agent(app);
-  const login = await agent.post('/api/auth/login').send({ username, password });
-  expect(login.status).toBe(200);
-  const csrfCookie = login.headers['set-cookie'].find((line) => line.startsWith('csrfToken='));
-  const csrfToken = decodeURIComponent(csrfCookie.split(';')[0].slice('csrfToken='.length));
-
-  return {
-    upload: (url, filePath) => agent.post(url).set('X-CSRF-Token', csrfToken).attach('image', filePath),
-    delete: (url) => agent.delete(url).set('X-CSRF-Token', csrfToken),
-  };
-}
-
 function makePortraitToUpload() {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'c1-portrait-'));
   const filePath = path.join(directory, `${TEST_FILE_MARKER}.png`);
@@ -64,9 +47,9 @@ describe('character portrait upload and removal', () => {
     const previousFile = `old-${TEST_FILE_MARKER}.jpg`;
     fs.writeFileSync(path.join(UPLOADS_DIR, previousFile), 'old portrait');
     const character = await makeCharacter({ user: player, imageUrl: `/uploads/${previousFile}` });
-    const client = await logInForImages(player);
+    const client = await logIn(app, player);
 
-    const uploaded = await client.upload(`/api/characters/${character.id}/image`, makePortraitToUpload());
+    const uploaded = await client.upload(`/api/characters/${character.id}/image`, 'image', makePortraitToUpload());
     const uploadedUrl = await readImageUrl(character.id);
     const uploadedFileExisted = fs.existsSync(path.join(UPLOADS_DIR, path.basename(uploadedUrl)));
     const removed = await client.delete(`/api/characters/${character.id}/image`);
@@ -88,7 +71,7 @@ describe('character portrait upload and removal', () => {
     fs.writeFileSync(path.join(UPLOADS_DIR, sharedFile), 'shared portrait');
     const character = await makeCharacter({ user: player, imageUrl: `/uploads/${sharedFile}` });
     const otherCharacter = await makeCharacter({ isNPC: true, imageUrl: `/uploads/${sharedFile}` });
-    const client = await logInForImages(player);
+    const client = await logIn(app, player);
 
     const response = await client.delete(`/api/characters/${character.id}/image`);
 
@@ -101,7 +84,7 @@ describe('character portrait upload and removal', () => {
   it('removing a portrait whose file is already gone still resets the image to the placeholder', async () => {
     const player = await makeUser();
     const character = await makeCharacter({ user: player, imageUrl: `/uploads/missing-${TEST_FILE_MARKER}.jpg` });
-    const client = await logInForImages(player);
+    const client = await logIn(app, player);
 
     const response = await client.delete(`/api/characters/${character.id}/image`);
 
@@ -113,7 +96,7 @@ describe('character portrait upload and removal', () => {
     const player = await makeUser();
     fs.writeFileSync(OUTSIDE_FILE, 'must survive');
     const character = await makeCharacter({ user: player, imageUrl: `/uploads/../${OUTSIDE_FILE_NAME}` });
-    const client = await logInForImages(player);
+    const client = await logIn(app, player);
 
     const response = await client.delete(`/api/characters/${character.id}/image`);
 
@@ -128,10 +111,10 @@ describe('character portrait upload and removal', () => {
     const ownedFile = `owned-${TEST_FILE_MARKER}.jpg`;
     fs.writeFileSync(path.join(UPLOADS_DIR, ownedFile), 'owner portrait');
     const character = await makeCharacter({ user: owner, imageUrl: `/uploads/${ownedFile}` });
-    const client = await logInForImages(intruder);
+    const client = await logIn(app, intruder);
 
     const removed = await client.delete(`/api/characters/${character.id}/image`);
-    const uploaded = await client.upload(`/api/characters/${character.id}/image`, makePortraitToUpload());
+    const uploaded = await client.upload(`/api/characters/${character.id}/image`, 'image', makePortraitToUpload());
 
     expect(removed.status).toBe(404);
     expect(uploaded.status).toBe(404);

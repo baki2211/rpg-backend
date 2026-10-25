@@ -6,8 +6,7 @@ import { InputValidator } from '../utils/inputValidator.js';
 import { AuditLogger } from '../utils/auditLogger.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { HttpError } from '../utils/HttpError.js';
-import { deleteUploadedFile } from '../utils/uploadedFiles.js';
-import { logger } from '../utils/logger.js';
+import { deleteUploadedFile, deleteImageFileIfUnreferenced } from '../utils/uploadedFiles.js';
 import {
   CHARACTER_PLACEHOLDER_IMAGE_URL,
   characterImageUrlFor
@@ -18,24 +17,21 @@ const characterStatsService = new CharacterStatsService();
 const characterSkillsService = new CharacterSkillsService();
 const npcService = new NPCService();
 
-// Runs after the image change committed: a failed delete leaves an orphan file, never a dangling URL,
-// and never fails the request for a change that is already saved.
-const deleteFileAfterCommit = async (fileName) => {
-  if (!fileName) return;
-  try {
-    await deleteUploadedFile(fileName);
-  } catch (error) {
-    logger.warn('Orphan image file left behind', { fileName, error: error.message });
-  }
-};
+// The upload middleware already wrote the new file; when the request fails, nothing points at it.
+const discardUpload = (file) => (file ? deleteUploadedFile(file.filename).catch(() => {}) : undefined);
 
 export class CharacterController {
   static createCharacter = asyncHandler(async (req, res) => {
-    const validatedData = InputValidator.validateCharacterCreation(req.body);
-    const userId = InputValidator.validateUserId(req.user.id);
-    const imageUrl = req.file ? characterImageUrlFor(req.file.filename) : CHARACTER_PLACEHOLDER_IMAGE_URL;
-
-    const character = await characterService.createCharacter(validatedData, userId, imageUrl);
+    let validatedData, userId, character;
+    try {
+      validatedData = InputValidator.validateCharacterCreation(req.body);
+      userId = InputValidator.validateUserId(req.user.id);
+      const imageUrl = req.file ? characterImageUrlFor(req.file.filename) : CHARACTER_PLACEHOLDER_IMAGE_URL;
+      character = await characterService.createCharacter(validatedData, userId, imageUrl);
+    } catch (error) {
+      await discardUpload(req.file);
+      throw error;
+    }
 
     AuditLogger.logCharacter(
       AuditLogger.EventTypes.CHARACTER_CREATE,
@@ -105,11 +101,10 @@ export class CharacterController {
       const characterId = InputValidator.validateCharacterId(req.params.characterId);
       result = await characterService.updateCharacterImage(characterId, userId, characterImageUrlFor(req.file.filename));
     } catch (error) {
-      // The upload middleware already wrote the new file; nothing points at it now.
-      await deleteUploadedFile(req.file.filename).catch(() => {});
+      await discardUpload(req.file);
       throw error;
     }
-    await deleteFileAfterCommit(result.fileToDelete);
+    await deleteImageFileIfUnreferenced(result.fileToDelete);
 
     res.status(200).json(result.character);
   });
@@ -123,7 +118,7 @@ export class CharacterController {
       userId,
       CHARACTER_PLACEHOLDER_IMAGE_URL
     );
-    await deleteFileAfterCommit(fileToDelete);
+    await deleteImageFileIfUnreferenced(fileToDelete);
 
     res.status(204).end();
   });

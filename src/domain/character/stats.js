@@ -4,11 +4,11 @@ export const DEFAULT_STAT_MAX = 100;
 /**
  * Check a character's stats against the stat definitions.
  * Errors: a missing primary stat, a value that isn't a number, a value outside [minValue, maxValue].
- * Warnings: keys in `stats` that no definition knows.
+ * Keys in `stats` that no definition knows are not checked here (a stat update rejects them, see unknownStatKeys).
  * @param {Object} stats - character.stats
  * @param {Array<{ internalName: string, displayName: string, category: string, minValue: number, maxValue: number|null }>} statDefinitions
  *   - the active definitions being checked, in the order errors should be reported
- * @returns {{ isValid: boolean, errors: string[], warnings: string[] }}
+ * @returns {{ isValid: boolean, errors: string[] }}
  */
 export function validateCharacterStats(stats, statDefinitions) {
     const errors = [];
@@ -38,11 +38,7 @@ export function validateCharacterStats(stats, statDefinitions) {
         }
     }
 
-    const warnings = Object.keys(stats)
-        .filter(statName => !statDefinitions.some(def => def.internalName === statName))
-        .map(statName => `Unknown stat: ${statName}`);
-
-    return { isValid: errors.length === 0, errors, warnings };
+    return { isValid: errors.length === 0, errors };
 }
 
 // Keys computeDerivedStats writes into character.stats. reactions and speed have no stat definition.

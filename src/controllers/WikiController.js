@@ -87,14 +87,14 @@ export class WikiController {
 
     const entry = await entryService.createEntry(
       {
-        sectionId: parseInt(sectionId),
+        sectionId: InputValidator.validateId(sectionId),
         title,
         content,
         excerpt,
         tags: Array.isArray(tags) ? tags : (tags ? [tags] : []),
         isPublished: isPublished !== undefined ? isPublished : true,
         position,
-        parentEntryId: parentEntryId ? parseInt(parentEntryId) : null
+        parentEntryId: parentEntryId ? InputValidator.validateId(parentEntryId) : null
       },
       req.user.id
     );
@@ -108,10 +108,11 @@ export class WikiController {
       updateData.tags = [updateData.tags];
     }
 
+    // Absent leaves the parent unchanged, null or '' detaches the entry, anything else must be an id
     if (updateData.parentEntryId === '') {
       updateData.parentEntryId = null;
-    } else if (updateData.parentEntryId && typeof updateData.parentEntryId === 'string') {
-      updateData.parentEntryId = parseInt(updateData.parentEntryId);
+    } else if (updateData.parentEntryId != null) {
+      updateData.parentEntryId = InputValidator.validateId(updateData.parentEntryId);
     }
 
     const entry = await entryService.updateEntry(InputValidator.validateId(req.params.id), updateData);
@@ -181,7 +182,7 @@ export class WikiController {
 
     const results = await searchService.searchEntries(
       query.trim(),
-      sectionId ? parseInt(sectionId) : null
+      sectionId ? InputValidator.validateId(sectionId) : null
     );
     res.json(results);
   });

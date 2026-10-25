@@ -13,8 +13,8 @@ const queryService = new SessionQueryService();
 
 export class SessionController {
   static createSession = asyncHandler(async (req, res) => {
-    const { name, locationId } = req.body;
-    res.json(await sessionService.createSession(name, locationId));
+    const { name } = req.body;
+    res.json(await sessionService.createSession(name, InputValidator.validateLocationId(req.body.locationId)));
   });
 
   static getSession = asyncHandler(async (req, res) => {
@@ -30,8 +30,10 @@ export class SessionController {
   });
 
   static addParticipant = asyncHandler(async (req, res) => {
-    const { characterId } = req.body;
-    res.json(await participantService.addParticipant(InputValidator.validateId(req.params.sessionId), characterId));
+    res.json(await participantService.addParticipant(
+      InputValidator.validateId(req.params.sessionId),
+      InputValidator.validateCharacterId(req.body.characterId)
+    ));
   });
 
   static removeParticipant = asyncHandler(async (req, res) => {
@@ -71,8 +73,8 @@ export class SessionController {
   });
 
   static getAllSessionsForLogs = asyncHandler(async (req, res) => {
-    const { limit } = req.query;
-    res.json(await queryService.getAllSessionsForLogs(limit ? parseInt(limit) : 100));
+    const limit = InputValidator.validateInteger(req.query.limit ?? 100, { min: 1, max: 2147483647 });
+    res.json(await queryService.getAllSessionsForLogs(limit));
   });
 
   static freezeSession = asyncHandler(async (req, res) => {

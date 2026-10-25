@@ -1,5 +1,6 @@
 import { queryMonitor } from '../utils/queryMonitor.js';
 import { logger } from '../utils/logger.js';
+import { AuditLogger } from '../utils/auditLogger.js';
 
 /**
  * Express middleware to enable query monitoring per request
@@ -79,7 +80,7 @@ export const queryStatsHandler = (req, res) => {
 /**
  * Endpoint to reset query monitoring data
  */
-export const resetQueryStatsHandler = (req, res) => {
+export const resetQueryStatsHandler = AuditLogger.auditAdminMaintenance('query_stats.reset', (req, res) => {
     try {
         queryMonitor.reset();
         res.json({
@@ -93,4 +94,4 @@ export const resetQueryStatsHandler = (req, res) => {
             error: 'Failed to reset query statistics'
         });
     }
-};
+});

@@ -81,10 +81,6 @@ export class CombatActionService {
             { roll: rollD20(), preCalculated: preCalculatedValues }
         );
 
-        if (!calculationResult.success) {
-            throw new HttpError(400, `Skill calculation failed: ${calculationResult.error}`);
-        }
-
         const { finalOutput, outcomeMultiplier, rollQuality } = calculationResult;
 
         const action = actionRepository.create({

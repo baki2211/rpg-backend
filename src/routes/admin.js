@@ -6,6 +6,7 @@ import combatConstantRoutes from './combatConstant.js';
 import masteryTierRoutes from './masteryTier.js';
 import staticDataCache from '../utils/staticDataCache.js';
 import { logger } from '../utils/logger.js';
+import { AuditLogger } from '../utils/auditLogger.js';
 
 const router = Router();
 
@@ -18,7 +19,8 @@ router.get('/dashboard', authenticateToken, isAdmin, (req, res) => {
 // Use after direct SQL edits to those tables so the change is visible
 // without a process restart.
 // A failure reaches errorHandler (Express 5 forwards the rejection): logged, generic 500.
-router.post('/cache/reload', authenticateToken, isAdmin, async (req, res) => {
+// Both reloads are audited (AuditLogger.auditAdminMaintenance), success or failure.
+router.post('/cache/reload', authenticateToken, isAdmin, AuditLogger.auditAdminMaintenance('cache.reload', async (req, res) => {
     staticDataCache.clear();
     staticDataCache.isInitialized = false;
     await staticDataCache.preloadCache();
@@ -27,11 +29,11 @@ router.post('/cache/reload', authenticateToken, isAdmin, async (req, res) => {
         success: true,
         stats: staticDataCache.getStats()
     });
-});
+}));
 
 // Reload a single entity. Entity name must match the cache key prefix
 // (Race, Skill, SkillBranch, SkillType, StatDefinition, Rank, CombatConstant, MasteryTier).
-router.post('/cache/reload/:entity', authenticateToken, isAdmin, async (req, res) => {
+router.post('/cache/reload/:entity', authenticateToken, isAdmin, AuditLogger.auditAdminMaintenance('cache.reload_entity', async (req, res) => {
     const { entity } = req.params;
     const reloaders = {
         Race: () => staticDataCache.getRaces(),
@@ -45,10 +47,11 @@ router.post('/cache/reload/:entity', authenticateToken, isAdmin, async (req, res
     };
 
     if (!reloaders[entity]) {
-        return res.status(400).json({
+        res.status(400).json({
             success: false,
             error: `Unknown entity '${entity}'. Valid: ${Object.keys(reloaders).join(', ')}`
         });
+        return { entity };
     }
 
     staticDataCache.clearEntity(entity);
@@ -58,7 +61,8 @@ router.post('/cache/reload/:entity', authenticateToken, isAdmin, async (req, res
         entity
     });
     res.status(200).json({ success: true, entity, stats: staticDataCache.getStats() });
-});
+    return { entity };
+}));
 
 // Nested race management routes
 router.use('/races', authenticateToken, isAdmin, raceRoutes);

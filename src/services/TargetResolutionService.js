@@ -65,7 +65,8 @@ export class TargetResolutionService {
      * @param {Character} caster - Character using the skill
      * @param {string|number} targetIdentifier - Target identifier (optional)
      * @param {Object} options - Resolution options (see findCharacter; options.lookupBy is required when a target is given)
-     * @returns {Promise<Object>} Resolved target data
+     * @returns {Promise<Object>} Resolved target data. `isValid: false` comes with a client-facing `error` (400)
+     * @throws on an unexpected failure (e.g. the lookup query fails)
      */
     async resolveSkillTarget(skill, caster, targetIdentifier = null, options = {}) {
         const result = {
@@ -138,8 +139,10 @@ export class TargetResolutionService {
                     break;
             }
         } catch (error) {
+            // Unexpected (DB/driver or programming error): rethrown so the client gets the generic 500,
+            // never this text. Expected problems are returned in `error` above.
             logger.error('Error resolving skill target:', { error: error.message, skillId: skill.id });
-            result.error = `Failed to resolve target: ${error.message}`;
+            throw error;
         }
 
         return result;

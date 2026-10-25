@@ -3,11 +3,13 @@ import { LocationService } from '../services/LocationService.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { InputValidator } from '../utils/inputValidator.js';
 import { HttpError } from '../utils/HttpError.js';
-import fs from 'fs';
-import path from 'path';
+import { deleteUploadedFile, deleteImageFileIfUnreferenced } from '../utils/uploadedFiles.js';
 
 const locationService = new LocationService();
 const mapService = new MapService();
+
+// The upload middleware already wrote the new file; when the request fails, nothing points at it.
+const discardUpload = (file) => (file ? deleteUploadedFile(file.filename).catch(() => {}) : undefined);
 
 export class MapController {
   static getAllMaps = asyncHandler(async (req, res) => {
@@ -19,33 +21,36 @@ export class MapController {
     if (!req.file) {
       throw new HttpError(400, 'File upload failed. Please upload a valid image.');
     }
-    const imageUrl = `/uploads/${req.file.filename}`;
-    res.status(201).json(await mapService.createMap(name, imageUrl));
+    let map;
+    try {
+      map = await mapService.createMap(name, `/uploads/${req.file.filename}`);
+    } catch (error) {
+      await discardUpload(req.file);
+      throw error;
+    }
+    res.status(201).json(map);
   });
 
   static updateMap = asyncHandler(async (req, res) => {
-    const id = InputValidator.validateId(req.params.id);
-    const { name } = req.body;
-
-    const existingMap = await mapService.getMapById(id);
-
-    const updatedFields = { name };
-    if (req.file) {
-      if (existingMap.imageUrl && existingMap.imageUrl.startsWith('/uploads/')) {
-        const oldImagePath = path.join(process.cwd(), existingMap.imageUrl);
-        fs.unlink(oldImagePath, (err) => {
-          if (err) console.warn('Failed to delete old image:', err.message);
-        });
-      }
-      updatedFields.imageUrl = `/uploads/${req.file.filename}`;
+    let result;
+    try {
+      const id = InputValidator.validateId(req.params.id);
+      const { name } = req.body;
+      const updatedFields = req.file ? { name, imageUrl: `/uploads/${req.file.filename}` } : { name };
+      result = await mapService.updateMap(id, updatedFields);
+    } catch (error) {
+      await discardUpload(req.file);
+      throw error;
     }
+    await deleteImageFileIfUnreferenced(result.fileToDelete);
 
-    res.status(200).json(await mapService.updateMap(id, updatedFields));
+    res.status(200).json(result.map);
   });
 
   static deleteMap = asyncHandler(async (req, res) => {
     const id = InputValidator.validateId(req.params.id);
-    await mapService.deleteMap(id);
+    const { fileToDelete } = await mapService.deleteMap(id);
+    await deleteImageFileIfUnreferenced(fileToDelete);
     res.status(204).end();
   });
 

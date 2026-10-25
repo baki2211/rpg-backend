@@ -269,20 +269,6 @@ export class InputValidator {
     }
 
     /**
-     * Validate combat action input
-     * @param {object} actionData - Combat action data
-     * @returns {object} Validated action data
-     */
-    static validateCombatAction(actionData) {
-        return this.validateObject(actionData, {
-            roundId: { type: 'integer', required: true, options: { min: 1 } },
-            characterId: { type: 'integer', required: true, options: { min: 1 } },
-            skillId: { type: 'integer', required: true, options: { min: 1 } },
-            targetId: { type: 'integer', required: false, options: { min: 1 } }
-        });
-    }
-
-    /**
      * Validate character creation data
      * @param {object} characterData - Character creation data
      * @returns {object} Validated character data
@@ -316,10 +302,7 @@ export class InputValidator {
                     if (!value || typeof value !== 'object') {
                         throw new HttpError(400, 'Race is required');
                     }
-                    if (!value.id || !Number.isInteger(Number(value.id))) {
-                        throw new HttpError(400, 'Race ID is required');
-                    }
-                    return { id: this.validateInteger(value.id, { min: 1 }) };
+                    return { id: this.validateId(value.id) };
                 },
                 required: true
             },

@@ -23,24 +23,21 @@ export class CombatController {
      * POST /api/combat/rounds
      */
     static createRound = asyncHandler(async (req, res) => {
-        const { locationId, eventId } = req.body;
+        const locationId = InputValidator.validateLocationId(req.body.locationId);
+        const requestedEventId = req.body.eventId ? InputValidator.validateId(req.body.eventId) : null;
         const userId = req.user.id;
-
-        if (!locationId) {
-            throw new HttpError(400, 'Location ID is required');
-        }
 
         const session = await sessionService.getActiveSessionByLocation(locationId);
         const sessionId = session?.id || null;
 
-        let finalEventId = eventId || null;
+        let finalEventId = requestedEventId;
         if (!finalEventId) {
             const activeEvent = await eventService.getActiveEvent(locationId);
             finalEventId = activeEvent?.id || null;
         }
 
         const round = await combatService.createRound(
-            parseInt(locationId),
+            locationId,
             userId,
             sessionId,
             finalEventId
@@ -53,7 +50,7 @@ export class CombatController {
             req,
             {
                 round_id: round.id,
-                location_id: parseInt(locationId),
+                location_id: locationId,
                 session_id: sessionId,
                 event_id: finalEventId
             }
@@ -181,7 +178,7 @@ export class CombatController {
      * GET /api/combat/rounds/resolved/:locationId
      */
     static getResolvedRounds = asyncHandler(async (req, res) => {
-        const limit = parseInt(req.query.limit) || 10;
+        const limit = InputValidator.validateInteger(req.query.limit ?? 10, { min: 1, max: 2147483647 });
         const rounds = await combatService.getResolvedRounds(
             InputValidator.validateLocationId(req.params.locationId),
             limit

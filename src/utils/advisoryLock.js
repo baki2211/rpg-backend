@@ -46,3 +46,22 @@ export const JOB_LOCK_KEYS = {
   SESSION_EXPIRATION: 7100001,
   MEMORY_CLEANUP: 7100002
 };
+
+// Namespaces for transaction-scoped locks keyed on a name. These use Postgres' two-key form
+// (namespace, hashtext(name)), whose key space never overlaps the single-key JOB_LOCK_KEYS.
+// Keep the values unique and stable for the same reason.
+export const XACT_LOCK_NAMESPACES = {
+  UPLOADED_FILE: 7200001
+};
+
+/**
+ * Hold a Postgres advisory lock on `name` (within `namespace`) until the transaction of `manager`
+ * commits or rolls back. Waits while another transaction holds the same lock. Two names that hash
+ * alike only share a lock, which serializes them a little more than needed and is otherwise harmless.
+ * @param {import('typeorm').EntityManager} manager - A transaction's manager
+ * @param {number} namespace - One of XACT_LOCK_NAMESPACES
+ * @param {string} name
+ */
+export async function lockNameUntilCommit(manager, namespace, name) {
+  await manager.query('SELECT pg_advisory_xact_lock($1, hashtext($2))', [namespace, name]);
+}

@@ -2,7 +2,6 @@ import { AppDataSource } from '../data-source.js';
 import { Character } from '../models/characterModel.js';
 import { User } from '../models/userModel.js';
 import { Race } from '../models/raceModel.js';
-import { Map as GameMap } from '../models/mapModel.js';
 import { CharacterStatsService } from './CharacterStatsService.js';
 import { HttpError } from '../utils/HttpError.js';
 import { PRIMARY_STAT_POINT_POOL, exceedsPrimaryStatPool } from '../domain/character/statPoints.js';
@@ -10,6 +9,7 @@ import { imageFileToDelete } from '../domain/character/characterImage.js';
 import { logger } from '../utils/logger.js';
 import { Not } from 'typeorm';
 import { lockUser, lockCharacter } from '../utils/rowLocks.js';
+import { lockImageFiles, isImageUrlReferenced } from '../utils/uploadedFiles.js';
 
 // Fields a player may set when creating a character. Progression (rank, experience, skillPoints,
 // statPoints), ownership (userId, createdBy) and isNPC are server-controlled.
@@ -18,6 +18,20 @@ const CLIENT_CREATABLE_FIELDS = ['name', 'surname', 'age', 'gender', 'background
 const pickClientFields = (data) => Object.fromEntries(
   CLIENT_CREATABLE_FIELDS.filter(field => data[field] !== undefined).map(field => [field, data[field]])
 );
+
+/**
+ * Stop the user playing anything: every character carrying their userId is deactivated, and the NPCs
+ * among them are released (userId cleared). `exceptId` is left untouched. Every activation path calls
+ * this inside its transaction, holding the user's row lock, before it activates the chosen character.
+ * @param {import('typeorm').EntityManager} manager
+ * @param {number} userId
+ * @param {number|null} [exceptId] - The character about to be activated, if it already exists
+ */
+export async function standDownPlayedCharacters(manager, userId, exceptId = null) {
+  const others = exceptId == null ? {} : { id: Not(exceptId) };
+  await manager.update(Character, { userId, ...others }, { isActive: false });
+  await manager.update(Character, { userId, isNPC: true, ...others }, { isActive: false, userId: null });
+}
 
 export class CharacterService {
   characterRepository = AppDataSource.getRepository(Character);
@@ -72,8 +86,9 @@ export class CharacterService {
     return AppDataSource.transaction(async (manager) => {
       if (activate) {
         await lockUser(manager, user.id);
-        await manager.update(Character, { userId: user.id }, { isActive: false });
+        await standDownPlayedCharacters(manager, user.id);
       }
+      await lockImageFiles(manager, [imageUrl]);
       return manager.getRepository(Character).save(newCharacter);
     });
   }
@@ -125,9 +140,9 @@ export class CharacterService {
 
   /**
    * Point the user's character at a new image URL, in one transaction with the character row locked.
-   * The old file is not touched here: the caller deletes `fileToDelete` only after this commits,
-   * so the database never points at a file that was already removed. It is null when the old URL
-   * owns no file or another character or a map still points at it.
+   * The old file is not touched here: the caller deletes `fileToDelete` only after this commits
+   * (deleteImageFileIfUnreferenced), so the database never points at a file that was already removed.
+   * It is null when the old URL owns no file or another character or a map still points at it.
    * @returns {Promise<{ character: Object, fileToDelete: string|null }>}
    */
   async updateCharacterImage(characterId, userId, imageUrl) {
@@ -137,16 +152,12 @@ export class CharacterService {
         throw new HttpError(404, 'Character not found');
       }
 
+      const previousUrl = character.imageUrl;
+      await lockImageFiles(manager, [previousUrl, imageUrl]);
       await manager.update(Character, { id: characterId }, { imageUrl });
 
       // Runs after the update, so this character's own row no longer matches the old URL.
-      // A null URL is skipped: TypeORM would not match it as IS NULL.
-      const previousUrl = character.imageUrl;
-      const stillReferenced = previousUrl != null && (
-        await manager.existsBy(Character, { imageUrl: previousUrl }) ||
-        await manager.existsBy(GameMap, { imageUrl: previousUrl })
-      );
-      return imageFileToDelete(previousUrl, stillReferenced);
+      return imageFileToDelete(previousUrl, await isImageUrlReferenced(manager, previousUrl));
     });
 
     return { character: await this.getCharacterById(characterId, userId), fileToDelete };
@@ -170,8 +181,7 @@ export class CharacterService {
         throw new HttpError(404, 'Character not found or you do not have permission to activate this character');
       }
 
-      await manager.update(Character, { user: { id: userId }, id: Not(characterId) }, { isActive: false });
-      await manager.update(Character, { userId, isNPC: true }, { isActive: false, userId: null });
+      await standDownPlayedCharacters(manager, userId, characterId);
       await manager.update(Character, { id: characterId }, { isActive: true });
       return character;
     });

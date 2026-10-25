@@ -18,6 +18,8 @@ import { evaluatePost, chatRulesFromConstants } from '../domain/chat/messageRewa
 import { planChatSkillUse } from '../domain/chat/skillUse.js';
 import { lockCharacter } from '../utils/rowLocks.js';
 
+const SKILL_NOT_OWNED = 'Character does not have this skill';
+
 export class ChatService {
   chatRepository = AppDataSource.getRepository(ChatMessage);
   characterRepository = AppDataSource.getRepository(Character);
@@ -129,6 +131,11 @@ export class ChatService {
       // experience and level-up write the current values
       const author = await lockCharacter(manager, character.id);
 
+      // Ownership again, under lock: the skill may have been removed since prepareSkillUse checked it
+      if (skillUse) {
+        await lockOwnedSkill(manager, character.id, fullSkill.id);
+      }
+
       if (skillUse?.plan.submitToCombat) {
         await this.submitToCombat(skillUse.roundId, character, fullSkill, skill.selectedTarget, skillUse.calculation, manager);
       }
@@ -181,13 +188,14 @@ export class ChatService {
    * @returns {Promise<{ plan: Object, calculation: Object, roundId: number|null }>}
    */
   async prepareSkillUse(locationId, character, fullSkill, selectedTarget, grantsExperience) {
-    // Both the HTTP launch route and WS chat land here, so the ownership check covers both
+    // Both the HTTP launch route and WS chat land here, so the ownership check covers both.
+    // Checked early so nothing is rolled for a skill the character lacks; addMessage re-checks it under lock.
     const ownsSkill = await AppDataSource.getRepository(CharacterSkill).existsBy({
       characterId: character.id,
       skillId: fullSkill.id
     });
     if (!ownsSkill) {
-      throw new HttpError(403, 'Character does not have this skill');
+      throw new HttpError(403, SKILL_NOT_OWNED);
     }
 
     const { CombatService } = await import('./CombatService.js');
@@ -210,9 +218,6 @@ export class ChatService {
     }
 
     const calculation = await this.skillExecutionService.calculateSkillOutput(character, fullSkill, { roll: rollD20() });
-    if (!calculation.success) {
-      throw new HttpError(500, `Skill calculation failed: ${calculation.error}`);
-    }
 
     return { plan, calculation, roundId: activeRound?.id ?? null };
   }
@@ -299,6 +304,18 @@ export class ChatService {
       finalOutput,
       engineData
     );
+  }
+}
+
+// Lock the character's character_skills row for the skill until the post commits (taken after the
+// character row, per the lock order in utils/rowLocks.js). 403 when the character no longer has the skill.
+async function lockOwnedSkill(manager, characterId, skillId) {
+  const owned = await manager.getRepository(CharacterSkill).findOne({
+    where: { characterId, skillId },
+    lock: { mode: 'pessimistic_write' }
+  });
+  if (!owned) {
+    throw new HttpError(403, SKILL_NOT_OWNED);
   }
 }
 

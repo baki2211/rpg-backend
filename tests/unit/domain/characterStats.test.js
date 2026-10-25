@@ -14,7 +14,7 @@ describe('stat validation', () => {
     ])('a stat %s is valid', (_name, definition, value) => {
         const result = validateCharacterStats({ [definition.internalName]: value }, [definition]);
 
-        expect(result).toEqual({ isValid: true, errors: [], warnings: [] });
+        expect(result).toEqual({ isValid: true, errors: [] });
     });
 
     it.each([
@@ -28,7 +28,7 @@ describe('stat validation', () => {
     ])('a stat %s is an error', (_name, definition, value, error) => {
         const result = validateCharacterStats({ [definition.internalName]: value }, [definition]);
 
-        expect(result).toEqual({ isValid: false, errors: [error], warnings: [] });
+        expect(result).toEqual({ isValid: false, errors: [error] });
     });
 
     it('every broken stat is reported, in the order of the definitions', () => {
@@ -37,20 +37,19 @@ describe('stat validation', () => {
         expect(result).toEqual({
             isValid: false,
             errors: ['Focus cannot be greater than 15', 'Fortitude cannot be less than 1', 'Health cannot be less than 0'],
-            warnings: [],
         });
     });
 
     it('a missing resource is not an error', () => {
         const result = validateCharacterStats({ for: 5 }, [FORTITUDE, HEALTH]);
 
-        expect(result).toEqual({ isValid: true, errors: [], warnings: [] });
+        expect(result).toEqual({ isValid: true, errors: [] });
     });
 
-    it('a stat no definition knows is only a warning', () => {
+    it('a stat no definition knows is not an error', () => {
         const result = validateCharacterStats({ for: 5, luck: 3 }, [FORTITUDE]);
 
-        expect(result).toEqual({ isValid: true, errors: [], warnings: ['Unknown stat: luck'] });
+        expect(result).toEqual({ isValid: true, errors: [] });
     });
 });
 

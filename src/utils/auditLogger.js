@@ -245,6 +245,55 @@ export class AuditLogger {
     }
     
     /**
+     * Log an admin maintenance action (cache reload/clear, GC, memory/WebSocket/database cleanup,
+     * rate-limit clear, stats reset): who ran it, which action, and how it ended
+     * @param {string} action - Stable action name, e.g. 'cache.reload'
+     * @param {object} req - Express request (the admin is req.user)
+     * @param {object} outcome - { success, details, error }
+     */
+    static logAdminMaintenance(action, req, { success = true, details = {}, error = null } = {}) {
+        this.logEvent(this.EventTypes.ADMIN_SYSTEM_ACTION, {
+            userId: req.user?.id ?? null,
+            req,
+            success,
+            error,
+            riskLevel: this.RiskLevels.MEDIUM,
+            details: {
+                ...details,
+                action,
+                admin_role: req.user?.role ?? null
+            }
+        });
+    }
+
+    /**
+     * Wrap an admin maintenance route handler so every run is audited with logAdminMaintenance.
+     * The handler may return extra details for the audit entry. The outcome is the response
+     * status (below 400 is a success); a thrown error is audited as a failure and rethrown
+     * so errorHandler still answers.
+     * @param {string} action - Stable action name, e.g. 'cache.reload'
+     * @param {Function} handler - async (req, res) => details | undefined
+     * @returns {Function} Express handler
+     */
+    static auditAdminMaintenance(action, handler) {
+        return async (req, res) => {
+            let details;
+            try {
+                details = await handler(req, res);
+            } catch (error) {
+                AuditLogger.logAdminMaintenance(action, req, { success: false, error });
+                throw error;
+            }
+            // `return res.status(...).json(...)` hands back the response itself: never log that
+            const extraDetails = details === res ? {} : details;
+            AuditLogger.logAdminMaintenance(action, req, {
+                success: res.statusCode < 400,
+                details: { ...extraDetails, response_status: res.statusCode }
+            });
+        };
+    }
+
+    /**
      * Log security events with appropriate risk levels
      */
     static logSecurity(eventType, userId, req, details = {}, riskLevel = this.RiskLevels.MEDIUM) {

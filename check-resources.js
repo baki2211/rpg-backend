@@ -1,28 +1,23 @@
 #!/usr/bin/env node
 
-import https from 'https';
+// Usage: node check-resources.js [baseUrl]
+// The base URL comes from the first argument, then BACKEND_URL, then production.
+// Example: node check-resources.js http://localhost:5001
+const DEFAULT_BACKEND_URL = 'https://arcanerealms.org';
+const BACKEND_URL = (process.argv[2] || process.env.BACKEND_URL || DEFAULT_BACKEND_URL).replace(/\/+$/, '');
 
-const BACKEND_URL = 'https://arcanerealms.org';
-
-function makeRequest(path) {
-  return new Promise((resolve, reject) => {
-    const url = `${BACKEND_URL}${path}`;
-    https.get(url, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        try {
-          if (res.statusCode === 200) {
-            resolve(JSON.parse(data));
-          } else {
-            resolve({ error: `HTTP ${res.statusCode}`, body: data });
-          }
-        } catch (e) {
-          resolve({ error: 'Parse error', body: data });
-        }
-      });
-    }).on('error', reject);
-  });
+// Global fetch (Node 18+) handles both http:// and https:// base URLs.
+async function makeRequest(path) {
+  const res = await fetch(`${BACKEND_URL}${path}`);
+  const data = await res.text();
+  try {
+    if (res.status === 200) {
+      return JSON.parse(data);
+    }
+    return { error: `HTTP ${res.status}`, body: data };
+  } catch (e) {
+    return { error: 'Parse error', body: data };
+  }
 }
 
 function formatBytes(bytes) {
@@ -34,7 +29,7 @@ function formatBytes(bytes) {
 }
 
 async function checkResources() {
-  console.log('Checking Backend Resource Usage...');
+  console.log(`Checking Backend Resource Usage at ${BACKEND_URL}...`);
   console.log('═'.repeat(60));
   console.log(`Your Plan: Starter (512MB RAM, 0.5 CPU)`);
   console.log('═'.repeat(60));
@@ -124,11 +119,13 @@ async function checkResources() {
     }
 
   } catch (error) {
-    console.log(`Connection Error: ${error.message}`);
+    // fetch wraps the network error: its code is on error.cause
+    const code = error.cause?.code ?? error.code;
+    console.log(`Connection Error: ${error.cause?.message ?? error.message}`);
     
-    if (error.code === 'ENOTFOUND') {
+    if (code === 'ENOTFOUND') {
       console.log(' Backend may be spun down (auto-sleep after 15min idle)');
-    } else if (error.code === 'ECONNREFUSED') {
+    } else if (code === 'ECONNREFUSED') {
       console.log(' Connection refused - service may be restarting');
     }
   }

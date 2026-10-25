@@ -11,7 +11,9 @@ export class EventController {
         if (!title || !type || !locationId) {
             throw new HttpError(400, 'Title, type, and locationId are required');
         }
-        res.status(201).json(await eventService.createEvent(title, type, locationId, req.user.id, description));
+        res.status(201).json(await eventService.createEvent(
+            title, type, InputValidator.validateLocationId(locationId), req.user.id, description
+        ));
     });
 
     static closeEvent = asyncHandler(async (req, res) => {
@@ -31,11 +33,11 @@ export class EventController {
     });
 
     static getEventsByLocation = asyncHandler(async (req, res) => {
-        const { limit = 10, status } = req.query;
+        const limit = InputValidator.validateInteger(req.query.limit ?? 10, { min: 1, max: 2147483647 });
         res.json(await eventService.getEventsByLocation(
             InputValidator.validateLocationId(req.params.locationId),
-            parseInt(limit),
-            status
+            limit,
+            req.query.status
         ));
     });
 

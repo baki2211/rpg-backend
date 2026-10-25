@@ -17,13 +17,8 @@ const characterRepository = AppDataSource.getRepository(Character);
 const skillRepository = AppDataSource.getRepository(Skill);
 const characterSkillRepository = AppDataSource.getRepository(CharacterSkill);
 
-const isPresent = (raw) => raw != null && raw !== '';
-
-// Body ids must be positive integers; anything else is a 400 (TypeORM 1.0 throws on undefined in `where`)
-const parseId = (raw) => {
-  const id = Number(raw);
-  return isPresent(raw) && Number.isInteger(id) && id > 0 ? id : null;
-};
+// The clash target is optional: absent (null or '') means a solo use, anything else must be an id
+const optionalId = (raw) => (raw == null || raw === '' ? null : InputValidator.validateId(raw));
 
 export const SkillController = {
   getAllSkills: asyncHandler(async (req, res) => {
@@ -48,16 +43,10 @@ export const SkillController = {
   }),
 
   useSkill: asyncHandler(async (req, res) => {
-    const characterId = parseId(req.body.characterId);
-    const skillId = parseId(req.body.skillId);
-    const targetId = parseId(req.body.targetId);
-    const targetSkillId = parseId(req.body.targetSkillId);
-    if (!characterId || !skillId) {
-      throw new HttpError(400, 'characterId and skillId are required');
-    }
-    if ((isPresent(req.body.targetId) && !targetId) || (isPresent(req.body.targetSkillId) && !targetSkillId)) {
-      throw new HttpError(400, 'targetId and targetSkillId must be valid ids');
-    }
+    const characterId = InputValidator.validateCharacterId(req.body.characterId);
+    const skillId = InputValidator.validateSkillId(req.body.skillId);
+    const targetId = optionalId(req.body.targetId);
+    const targetSkillId = optionalId(req.body.targetSkillId);
 
     // Only the caller's own characters can use skills; someone else's character reads as not found
     const character = await characterRepository.findOne({ where: { id: characterId, userId: req.user.id } });

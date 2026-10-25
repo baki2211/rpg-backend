@@ -20,15 +20,32 @@ describe('rejected input is a 400 with the validation message', () => {
     });
 
     it.each([
-        ['a missing required field', { characterId: 2, skillId: 3 }, "Validation error for field 'roundId': roundId is required"],
-        ['a field that is not an integer', { roundId: 1, characterId: 2, skillId: 'fireball' }, "Validation error for field 'skillId': Value must be a valid integer"],
-    ])('a combat action with %s names the field', (_name, actionData, message) => {
-        expect(() => InputValidator.validateCombatAction(actionData)).toThrow(failure(message));
+        ['an empty race', { race: {} }, 'Integer value is required'],
+        ['a race id of zero', { race: { id: 0 } }, 'Value must be at least 1'],
+        ['a negative race id', { raceId: '-2' }, 'Value must be at least 1'],
+        ['a race id one past the PostgreSQL integer limit', { race: { id: 2147483648 } }, 'Value must be at most 2147483647'],
+        ['a race id string one past the PostgreSQL integer limit', { raceId: '2147483648' }, 'Value must be at most 2147483647'],
+        ['a decimal race id', { race: { id: '1.5' } }, 'Value must be a valid integer'],
+        ['a race id that is a word', { raceId: 'elf' }, 'Value must be a valid integer'],
+        ['a race id with a trailing space', { race: { id: '7 ' } }, 'Value must be a valid integer'],
+        ['a race that is not an object', { race: 'elf' }, 'Race is required'],
+        ['no race at all', {}, 'race is required'],
+    ])('a new character with %s is a 400 naming the race field', (_name, raceFields, message) => {
+        expect(() => InputValidator.validateCharacterCreation({ name: 'Hero', ...raceFields }))
+            .toThrow(failure(`Validation error for field 'race': ${message}`));
     });
+});
 
-    it('a failing custom field validator is still a 400 naming the field', () => {
-        expect(() => InputValidator.validateCharacterCreation({ name: 'Hero', race: {} }))
-            .toThrow(failure("Validation error for field 'race': Race ID is required"));
+describe('the race of a new character', () => {
+    it.each([
+        ['a race id string', { raceId: '3' }, { id: 3 }],
+        ['a race object with a numeric id', { race: { id: 1 } }, { id: 1 }],
+        ['a race object with a digit string id', { race: { id: '12' } }, { id: 12 }],
+        ['the PostgreSQL integer limit', { raceId: '2147483647' }, { id: 2147483647 }],
+    ])('given as %s is returned as a race with a numeric id', (_name, raceFields, expected) => {
+        const result = InputValidator.validateCharacterCreation({ name: 'Hero', ...raceFields });
+
+        expect(result.race).toEqual(expected);
     });
 });
 

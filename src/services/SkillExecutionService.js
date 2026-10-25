@@ -16,17 +16,17 @@ export class SkillExecutionService {
      * @param {number} options.roll - The d20 for a fresh calculation (rollD20() in src/utils/dice.js)
      * @param {Object} options.preCalculated - Pre-calculated `{ finalOutput, rollQuality }` to use instead
      * @returns {Promise<Object>} Calculation result
+     * @throws when the output can't be computed. The error propagates unchanged so the client gets
+     *   the generic 500 (errorHandler / chat WS reply) and never its text
      */
     async calculateSkillOutput(caster, skill, { roll, preCalculated = null } = {}) {
         const result = {
-            success: false,
             finalOutput: 0,
             outcomeMultiplier: 1.0,
             rollQuality: 'Standard',
             impact: 0,
             skillUses: 0,
-            branchUses: 0,
-            error: null
+            branchUses: 0
         };
 
         try {
@@ -38,7 +38,6 @@ export class SkillExecutionService {
                 logger.debug('Using pre-calculated skill values');
                 return {
                     ...result,
-                    success: true,
                     finalOutput: accepted.finalOutput,
                     rollQuality: accepted.quality,
                     outcomeMultiplier: accepted.multiplier
@@ -49,7 +48,6 @@ export class SkillExecutionService {
 
             return {
                 ...result,
-                success: true,
                 finalOutput: output.finalOutput,
                 outcomeMultiplier: output.outcomeMultiplier,
                 rollQuality: output.quality,
@@ -58,8 +56,8 @@ export class SkillExecutionService {
                 branchUses: output.branchUses
             };
         } catch (error) {
-            logger.error('Skill calculation failed:', { error: error.message });
-            return { ...result, error: error.message };
+            logger.error('Skill calculation failed:', { error: error.message, characterId: caster.id, skillId: skill.id });
+            throw error;
         }
     }
 }
