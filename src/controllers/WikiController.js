@@ -9,6 +9,15 @@ const sectionService = new WikiSectionService();
 const entryService = new WikiEntryService();
 const searchService = new WikiSearchService();
 
+// Fields an admin edit may write. Slug, level, section and authorship are derived or server-controlled,
+// so anything else in the body is dropped.
+const SECTION_UPDATABLE_FIELDS = ['name', 'description', 'position', 'isActive'];
+const ENTRY_UPDATABLE_FIELDS = ['title', 'content', 'excerpt', 'tags', 'isPublished', 'position', 'parentEntryId'];
+
+const pickFields = (data, fields) => Object.fromEntries(
+  fields.filter(field => data[field] !== undefined).map(field => [field, data[field]])
+);
+
 export class WikiController {
   // ============ ADMIN SECTION ENDPOINTS ============
 
@@ -35,7 +44,10 @@ export class WikiController {
   });
 
   static adminUpdateSection = asyncHandler(async (req, res) => {
-    const section = await sectionService.updateSection(InputValidator.validateId(req.params.id), req.body);
+    const section = await sectionService.updateSection(
+      InputValidator.validateId(req.params.id),
+      pickFields(req.body, SECTION_UPDATABLE_FIELDS)
+    );
     res.json(section);
   });
 
@@ -102,7 +114,7 @@ export class WikiController {
   });
 
   static adminUpdateEntry = asyncHandler(async (req, res) => {
-    const updateData = { ...req.body };
+    const updateData = pickFields(req.body, ENTRY_UPDATABLE_FIELDS);
 
     if (updateData.tags && !Array.isArray(updateData.tags)) {
       updateData.tags = [updateData.tags];
