@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Backend for Arcane Realms (https://arcanerealms.org), a browser-based tabletop-style RPG. Plain JavaScript ESM (`"type": "module"`), no build step. Express 5, TypeORM 1.0 over PostgreSQL, native `ws` for realtime, JWT auth. CI runs on Node 22; the dev Dockerfile uses `node:20`.
+Backend for Arcane Realms, a browser-based tabletop-style RPG. Plain JavaScript ESM (`"type": "module"`), no build step. Express 5, TypeORM 1.0 over PostgreSQL, native `ws` for realtime, JWT auth. CI runs on Node 20 and 22; the dev Dockerfile uses `node:20`.
 
-`docs/` is **gitignored** (local only), but when it's present it's the current source of truth. Start at `docs/PROJECT_CONTEXT.md` and use `docs/DOCUMENTATION_INDEX.md` to pick a topic file. `README.md` is a shorter overview that still gets committed.
+`docs/` is the source of truth. Start at `docs/PROJECT_CONTEXT.md` and use `docs/DOCUMENTATION_INDEX.md` to pick a topic file. `README.md` is a shorter public overview.
 
 ## Commands
 
@@ -54,7 +54,7 @@ To verify, re-run generate into a throwaway name. It must report "No changes in 
 - Models are TypeORM `EntitySchema` definitions, not classes, so entities are plain objects. Persist them with `repository.save(entity)` or `manager.save(...)`, never `entity.save()`. DB column names are camelCase, so quote them in raw SQL (`"userId"`). Check `src/models/` for real field names. For example, HP is `stats.hp`.
 - Auth: the JWT is read only from the `token` httpOnly cookie. Mutating `/api` requests need an `X-CSRF-Token` header that matches the `csrfToken` cookie (double-submit); login and register are exempt. Roles are `user`, `staffer`, `master` and `admin`, gated by `requireRole([...])` in `middleware/authMiddleware.js`. Older map and race routes use `isAdmin` instead.
 - Realtime: chat lives at `/ws/chat` and is authenticated in `websockets/upgradeHandler.js`. That handler also caps chat connections based on RSS memory pressure. Presence WS is a separate server, cross-wired through `chatWS.setPresenceBroadcaster(...)`. `utils/memoryManager.js` can force-close WS connections under memory pressure.
-- `utils/staticDataCache.js` preloads read-mostly tables (races, skills, stat definitions, combat constants). After editing those tables with direct SQL, bust the cache with `POST /api/admin/cache/reload[/:entity]`. Game tunables live in the `CombatConstant`, `MasteryTier` and `StatDefinition` rows. `staticDataCache.getSkillRules()` turns those rows into the rank and outcome tables. The defaults in `src/domain/skills/` are used when rows are missing or invalid. The game design isn't final: refactors keep current values, and rule questions go to the "Game design status" list in `RULEBOOK_REVIEW.md`.
+- `utils/staticDataCache.js` preloads read-mostly tables (races, skills, stat definitions, combat constants). After editing those tables with direct SQL, bust the cache with `POST /api/admin/cache/reload[/:entity]`. Game tunables live in the `CombatConstant`, `MasteryTier` and `StatDefinition` rows. `staticDataCache.getSkillRules()` turns those rows into the rank and outcome tables. The defaults in `src/domain/skills/` are used when rows are missing or invalid. The game design isn't final: refactors keep current values, and rule questions go to `docs/game_design_gaps.md`.
 - Domain flows that span several services:
   - **Session/Event**: creating an event mutates the location's existing free-role session in place (`isEvent=true`, `eventId` set), and closing the event reverts it. See `EventService` and the `Session*Service` split (CRUD / Lifecycle / Participant / Query).
   - **Combat**: `CombatService` handles the round lifecycle. `CombatActionService` handles submission through `TargetResolutionService` and `SkillExecutionService`. `CombatResolutionService` handles clash detection and resolution through `src/domain/combat/{roundClashes,clashTable}.js`. The d20 is rolled once per side at the request edge (`utils/dice.js`) and passed down.
