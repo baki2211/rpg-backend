@@ -33,7 +33,8 @@ Pure functions, no I/O (see [`dev_rulebook.md`](dev_rulebook.md) §2). Each has 
 ### Characters
 - `CharacterService`: PC CRUD, image, activation (one active character per user), `getActiveCharacter`
   (read-only, PC vs controlled NPC), `findCharacterWithSkillsAndRace`.
-- `CharacterStatsService`: loads stat definitions and ranks, calls `domain/character/stats.js`.
+- `CharacterStatsService`: loads stat definitions and ranks, calls `domain/character/stats.js`; recomputes
+  derived stats on stat update and level-up, and for every character via `recomputeAllDerivedStats`.
 - `NPCService`: NPC CRUD, `activateNPC` / `deactivateNPC` (a master temporarily controls an NPC).
 - `CharacterSkillsService`: `acquireSkill`, available / acquired skills.
 

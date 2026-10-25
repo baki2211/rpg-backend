@@ -7,8 +7,10 @@ import masteryTierRoutes from './masteryTier.js';
 import staticDataCache from '../utils/staticDataCache.js';
 import { logger } from '../utils/logger.js';
 import { AuditLogger } from '../utils/auditLogger.js';
+import { CharacterStatsService } from '../services/CharacterStatsService.js';
 
 const router = Router();
+const characterStatsService = new CharacterStatsService();
 
 // Admin dashboard route
 router.get('/dashboard', authenticateToken, isAdmin, (req, res) => {
@@ -62,6 +64,16 @@ router.post('/cache/reload/:entity', authenticateToken, isAdmin, AuditLogger.aud
     });
     res.status(200).json({ success: true, entity, stats: staticDataCache.getStats() });
     return { entity };
+}));
+
+// Recompute every character's and NPC's derived stats (reactions, speed, hp, aether) with the current
+// rule, races and ranks. Run after a rule change or after editing races/ranks. Resets current HP and
+// aether to their maximum.
+router.post('/characters/recompute-stats', authenticateToken, isAdmin, AuditLogger.auditAdminMaintenance('characters.recompute_stats', async (req, res) => {
+    const result = await characterStatsService.recomputeAllDerivedStats();
+    logger.info('Character derived stats recomputed by admin', { userId: req.user?.id, ...result });
+    res.status(200).json({ success: true, ...result });
+    return result;
 }));
 
 // Nested race management routes

@@ -3,10 +3,11 @@ import { Character } from '../models/characterModel.js';
 import { StatDefinitionService } from './StatDefinitionService.js';
 import { RankService } from './RankService.js';
 import { Rank } from '../models/rankModel.js';
-import { lockCharacter } from '../utils/rowLocks.js';
+import { Race } from '../models/raceModel.js';
+import { lockCharacter, lockCharacters } from '../utils/rowLocks.js';
 import { HttpError } from '../utils/HttpError.js';
 import { PRIMARY_STAT_POINT_POOL, primaryStatPointsUsed, exceedsPrimaryStatPool } from '../domain/character/statPoints.js';
-import { DEFAULT_STAT_MAX, validateCharacterStats, unknownStatKeys, computeDerivedStats, levelUp } from '../domain/character/stats.js';
+import { DEFAULT_STAT_MAX, validateCharacterStats, unknownStatKeys, computeDerivedStats, cumulativeRankBonus, levelUp } from '../domain/character/stats.js';
 
 export class CharacterStatsService {
   characterRepository = AppDataSource.getRepository(Character);
@@ -141,7 +142,8 @@ export class CharacterStatsService {
 
   /**
    * Apply every rank the character's experience has reached and save it when it levels up
-   * (rule in src/domain/character/stats.js#levelUp). Updates `character` in place.
+   * (rule in src/domain/character/stats.js#levelUp), then recompute its derived stats with the new rank.
+   * Like a stat update, that writes the maximum into stats.hp / stats.aether. Updates `character` in place.
    * `character` must be the row locked in the caller's transaction (lockCharacter), so the
    * whole-`stats` write can't overwrite a concurrent change.
    * @param {Object} character - Locked character row
@@ -152,17 +154,63 @@ export class CharacterStatsService {
     const ranks = await manager.getRepository(Rank).find({ order: { level: 'ASC' } });
     const { leveledUp, ...progress } = levelUp(character, ranks);
     if (leveledUp) {
-      Object.assign(character, progress);
+      const race = await manager.getRepository(Race).findOneBy({ id: character.raceId });
+      const primaryStatNames = await this.primaryStatNames();
+      const derived = computeDerivedStats({
+        baseStats: character.stats,
+        race,
+        rankBonus: cumulativeRankBonus(ranks, progress.rank),
+        primaryStatNames
+      });
+      Object.assign(character, progress, { stats: { ...character.stats, ...derived } });
       await manager.save(Character, character);
     }
     return leveledUp;
   }
 
   async computeDerivedStats(baseStats, race, rankLevel) {
-    const [rank, primaryStats] = await Promise.all([
-      this.rankService.getRank(rankLevel),
-      this.statDefinitionService.getAllStatDefinitions('primary_stat', true)
-    ]);
-    return computeDerivedStats({ baseStats, race, rank, primaryStatNames: primaryStats.map(stat => stat.internalName) });
+    const [ranks, primaryStatNames] = await Promise.all([this.rankService.getAllRanks(), this.primaryStatNames()]);
+    return computeDerivedStats({ baseStats, race, rankBonus: cumulativeRankBonus(ranks, rankLevel), primaryStatNames });
+  }
+
+  /**
+   * Recompute the derived stats (reactions, speed, hp, aether) of every character and NPC with the
+   * current rule, races and ranks. For rows saved under an older rule. Like a stat update, it writes
+   * the maximum into stats.hp / stats.aether, so it also restores current HP and aether.
+   * @returns {Promise<{ total: number, updated: number }>} Characters checked, and how many changed
+   */
+  async recomputeAllDerivedStats() {
+    return AppDataSource.transaction(async (manager) => {
+      const ids = (await manager.getRepository(Character).find({ select: { id: true } })).map(row => row.id);
+      if (ids.length === 0) {
+        return { total: 0, updated: 0 };
+      }
+      // One transaction connection: its queries run one after the other
+      const characters = await lockCharacters(manager, ids);
+      const ranks = await manager.getRepository(Rank).find();
+      const races = await manager.getRepository(Race).find();
+      const primaryStatNames = await this.primaryStatNames();
+      const racesById = new Map(races.map(race => [race.id, race]));
+
+      let updated = 0;
+      for (const character of characters.values()) {
+        const derived = computeDerivedStats({
+          baseStats: character.stats,
+          race: racesById.get(character.raceId) ?? null,
+          rankBonus: cumulativeRankBonus(ranks, character.rank),
+          primaryStatNames
+        });
+        if (Object.entries(derived).some(([statName, value]) => character.stats[statName] !== value)) {
+          await manager.update(Character, { id: character.id }, { stats: { ...character.stats, ...derived } });
+          updated++;
+        }
+      }
+      return { total: characters.size, updated };
+    });
+  }
+
+  async primaryStatNames() {
+    const primaryStats = await this.statDefinitionService.getAllStatDefinitions('primary_stat', true);
+    return primaryStats.map(stat => stat.internalName);
   }
 }

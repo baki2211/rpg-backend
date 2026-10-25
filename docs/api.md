@@ -24,6 +24,7 @@ All API routes are mounted under `/api` in `src/app.js`:
 | `/api/user` | `routes/user.js` | profile, change password |
 | `/api/admin` | `routes/admin.js` | admin dashboard guard, static-data cache reload |
 | `/api/admin/query-stats` · `POST /api/admin/query-stats/reset` | inline in `src/app.js` | query monitor (admin) |
+| `POST /api/admin/characters/recompute-stats` | `routes/admin.js` | recompute every character's/NPC's derived stats (reactions, speed, hp, aether) with the current rule, races and ranks; resets current HP/aether to max. Returns `{ success, total, updated }` (admin, audited) |
 | `/api/admin/cache/reload` · `/api/admin/cache/reload/:entity` | `routes/admin.js` | clear + re-warm staticDataCache (admin). Entities: `Race`, `Skill`, `SkillBranch`, `SkillType`, `StatDefinition`, `Rank` |
 | `/api/protected` | `routes/protected.js` | sample auth-gated routes |
 | `/api/health` | `routes/healthRoutes.js` | public liveness/readiness check at `GET /api/health`; every sub-route is admin-only (see [Health](#health)) |

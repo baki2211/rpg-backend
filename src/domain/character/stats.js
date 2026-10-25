@@ -56,26 +56,56 @@ export function unknownStatKeys(statUpdates, statDefinitions) {
     return Object.keys(statUpdates).filter(statName => !knownKeys.has(statName));
 }
 
+// races column holding each primary stat's race bonus. A primary stat not listed here has no race bonus.
+const RACE_STAT_BONUS_COLUMNS = {
+    foc: 'focusBonus',
+    con: 'controlBonus',
+    res: 'resilienceBonus',
+    ins: 'instinctBonus',
+    pre: 'presenceBonus',
+    for: 'forceBonus',
+};
+
+/**
+ * The HP/aether bonus of a character at rank `level`: the hpPercent and aetherPercent of every rank
+ * from the first up to `level`, added up (each rank grants its percentage on top of the ones below).
+ * @param {Array<{ level: number, hpPercent?: number, aetherPercent?: number }>} ranks - ranks rows, any order
+ * @param {number} level - the character's rank
+ * @returns {{ hpPercent: number, aetherPercent: number }}
+ */
+export function cumulativeRankBonus(ranks, level) {
+    let hpPercent = 0;
+    let aetherPercent = 0;
+    for (const rank of ranks) {
+        if (rank.level <= level) {
+            hpPercent += rank.hpPercent || 0;
+            aetherPercent += rank.aetherPercent || 0;
+        }
+    }
+    return { hpPercent, aetherPercent };
+}
+
 /**
  * Stats derived from the primary stats, the race and the character rank.
- * Race primary-stat bonuses are read from `race[<internalName>Bonus]`.
+ * Race primary-stat bonuses are read from the races columns in RACE_STAT_BONUS_COLUMNS (foc → focusBonus, ...).
  * - reactions = floor((INS + FOC) / 2 + INS × 0.165)
  * - speed = floor((FOR + CON + RES) / 3 + FOR × 0.165 + race.speedBonus)
- * - hp = floor((RES × 2 + CON × 3 + race.healthBonus) × (1 + rank.hpPercent / 100))
- * - aether = floor((race.manaBonus + √(sum of primary stats) × 5) × (1 + rank.aetherPercent / 100))
+ * - hp = floor((RES × 2 + CON × 3 + race.healthBonus) × (1 + rankBonus.hpPercent / 100))
+ * - aether = floor((race.manaBonus + √(sum of primary stats) × 5) × (1 + rankBonus.aetherPercent / 100))
+ * This is the only place the rank percentages are applied (levelUp leaves hp and aether alone).
  * @param {Object} params
  * @param {Object} params.baseStats - character.stats before race bonuses (a missing stat counts as 0)
  * @param {Object|null} params.race - races row
- * @param {{ hpPercent?: number, aetherPercent?: number } | null} params.rank - ranks row for the character's rank; null for none
+ * @param {{ hpPercent?: number, aetherPercent?: number } | null} params.rankBonus - cumulativeRankBonus for the character's rank; null for none
  * @param {string[]} params.primaryStatNames - internalName of the active primary stat definitions
  * @returns {{ reactions: number, speed: number, hp: number, aether: number }}
  */
-export function computeDerivedStats({ baseStats, race, rank, primaryStatNames }) {
+export function computeDerivedStats({ baseStats, race, rankBonus, primaryStatNames }) {
     const statValues = {};
     let primarySum = 0;
 
     for (const statName of primaryStatNames) {
-        const finalValue = (baseStats[statName] || 0) + (race?.[`${statName}Bonus`] || 0);
+        const finalValue = (baseStats[statName] || 0) + (race?.[RACE_STAT_BONUS_COLUMNS[statName]] || 0);
         statValues[statName] = finalValue;
         primarySum += finalValue;
     }
@@ -93,28 +123,27 @@ export function computeDerivedStats({ baseStats, race, rank, primaryStatNames })
 
     const BHP = race?.healthBonus || 0;
     const baseHP = ((RES * 2) + (CON * 3)) + BHP;
-    const hp = Math.floor(baseHP * (1 + (rank?.hpPercent || 0) / 100));
+    const hp = Math.floor(baseHP * (1 + (rankBonus?.hpPercent || 0) / 100));
 
     const BAE = race?.manaBonus || 0;
     const baseAE = BAE + Math.sqrt(primarySum) * 5;
-    const aether = Math.floor(baseAE * (1 + (rank?.aetherPercent || 0) / 100));
+    const aether = Math.floor(baseAE * (1 + (rankBonus?.aetherPercent || 0) / 100));
 
     return { reactions: Math.floor(reactions), speed: Math.floor(speed), hp, aether };
 }
 
 /**
  * Apply every rank the character's experience has reached, one level at a time.
- * Each new rank adds its statPoints and skillPoints and, when set, raises current aether and hp
- * by its aetherPercent / hpPercent (floored). Stops at the first missing level.
+ * Each new rank adds its statPoints and skillPoints. Stops at the first missing level.
+ * The rank's hp/aether percentages are not applied here: recompute the derived stats with the new rank
+ * (computeDerivedStats + cumulativeRankBonus).
  * Pure: returns new values and leaves the inputs untouched.
- * @param {{ rank: number, experience: number, statPoints: number, skillPoints: number, stats: Object }} character
- * @param {Array<{ level: number, requiredExperience: number, statPoints: number, skillPoints: number,
- *                 aetherPercent?: number, hpPercent?: number }>} ranks - ranks rows, any order
- * @returns {{ leveledUp: boolean, rank: number, statPoints: number, skillPoints: number, stats: Object }}
+ * @param {{ rank: number, experience: number, statPoints: number, skillPoints: number }} character
+ * @param {Array<{ level: number, requiredExperience: number, statPoints: number, skillPoints: number }>} ranks - ranks rows, any order
+ * @returns {{ leveledUp: boolean, rank: number, statPoints: number, skillPoints: number }}
  */
 export function levelUp(character, ranks) {
     let { rank, statPoints, skillPoints } = character;
-    const stats = { ...character.stats };
     let leveledUp = false;
 
     let nextRank = ranks.find(entry => entry.level === rank + 1);
@@ -123,16 +152,9 @@ export function levelUp(character, ranks) {
         statPoints += nextRank.statPoints;
         skillPoints += nextRank.skillPoints;
 
-        if (nextRank.aetherPercent && stats.aether !== undefined) {
-            stats.aether = Math.floor(stats.aether * (1 + nextRank.aetherPercent / 100));
-        }
-        if (nextRank.hpPercent && stats.hp !== undefined) {
-            stats.hp = Math.floor(stats.hp * (1 + nextRank.hpPercent / 100));
-        }
-
         leveledUp = true;
         nextRank = ranks.find(entry => entry.level === rank + 1);
     }
 
-    return { leveledUp, rank, statPoints, skillPoints, stats };
+    return { leveledUp, rank, statPoints, skillPoints };
 }

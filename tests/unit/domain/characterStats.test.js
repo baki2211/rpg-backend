@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateCharacterStats, unknownStatKeys, computeDerivedStats, levelUp } from '../../../src/domain/character/stats.js';
+import { validateCharacterStats, unknownStatKeys, computeDerivedStats, cumulativeRankBonus, levelUp } from '../../../src/domain/character/stats.js';
 
 const FORTITUDE = { internalName: 'for', displayName: 'Fortitude', category: 'primary_stat', minValue: 1, maxValue: 15, defaultValue: 5 };
 const FOCUS = { internalName: 'foc', displayName: 'Focus', category: 'primary_stat', minValue: 0, maxValue: 15, defaultValue: 5 };
@@ -82,8 +82,8 @@ function makeBaseStats(overrides = {}) {
     return { foc: 5, con: 5, res: 5, ins: 5, pre: 5, for: 5, ...overrides };
 }
 
-function derivedStatsOf({ baseStats = makeBaseStats(), race = null, rank = null, primaryStatNames = SIX_PRIMARY_STATS } = {}) {
-    return computeDerivedStats({ baseStats, race, rank, primaryStatNames });
+function derivedStatsOf({ baseStats = makeBaseStats(), race = null, rankBonus = null, primaryStatNames = SIX_PRIMARY_STATS } = {}) {
+    return computeDerivedStats({ baseStats, race, rankBonus, primaryStatNames });
 }
 
 describe('derived stats', () => {
@@ -128,10 +128,18 @@ describe('derived stats', () => {
         // speed 5.825 + 3 = 8.825
         ['a race speed bonus is added to speed', { healthBonus: 0, manaBonus: 0, speedBonus: 3 }, { reactions: 5, speed: 8, hp: 25, aether: 27 }],
         // INS 9: reactions 14 / 2 + 9 × 0.165 = 8.485; aether √34 × 5 = 29.15
-        ['a race bonus keyed by the stat internal name raises that stat', { insBonus: 4 }, { reactions: 8, speed: 5, hp: 25, aether: 29 }],
-        // Current behaviour, see docs/game_design.md §8.4: the races columns are named focusBonus,
-        // instinctBonus, ..., but the formula reads focBonus, insBonus, ..., so these bonuses are ignored.
-        ['a race bonus under the races column name (instinctBonus) is ignored', { instinctBonus: 4, forceBonus: 2 }, { reactions: 5, speed: 5, hp: 25, aether: 27 }],
+        ['a race instinct bonus raises instinct', { instinctBonus: 4 }, { reactions: 8, speed: 5, hp: 25, aether: 29 }],
+        // FOC 9: reactions 14 / 2 + 0.825 = 7.825; aether √34 × 5 = 29.15
+        ['a race focus bonus raises focus', { focusBonus: 4 }, { reactions: 7, speed: 5, hp: 25, aether: 29 }],
+        // CON 9: speed 19 / 3 + 0.825 = 7.16; hp 10 + 27 = 37
+        ['a race control bonus raises control', { controlBonus: 4 }, { reactions: 5, speed: 7, hp: 37, aether: 29 }],
+        // RES 9: speed 7.16; hp 18 + 15 = 33
+        ['a race resilience bonus raises resilience', { resilienceBonus: 4 }, { reactions: 5, speed: 7, hp: 33, aether: 29 }],
+        ['a race presence bonus raises presence', { presenceBonus: 4 }, { reactions: 5, speed: 5, hp: 25, aether: 29 }],
+        // FOR 9: speed 19 / 3 + 9 × 0.165 = 7.82
+        ['a race force bonus raises force', { forceBonus: 4 }, { reactions: 5, speed: 7, hp: 25, aether: 29 }],
+        // G4 regression: the formula used to read focBonus, insBonus, ..., which no races column is named
+        ['a bonus keyed by the stat internal name (insBonus) is not a races column and is ignored', { insBonus: 4 }, { reactions: 5, speed: 5, hp: 25, aether: 27 }],
     ])('%s', (_name, race, expected) => {
         const result = derivedStatsOf({ race });
 
@@ -146,8 +154,8 @@ describe('derived stats', () => {
         ['the rank-raised hp is floored', { hpPercent: 10, aetherPercent: 0 }, { reactions: 5, speed: 5, hp: 27, aether: 27 }],
         // hp 25 × 2 = 50; aether 27.39 × 1.5 = 41.08
         ['a rank can double hp and add half to aether', { hpPercent: 100, aetherPercent: 50 }, { reactions: 5, speed: 5, hp: 50, aether: 41 }],
-    ])('%s', (_name, rank, expected) => {
-        const result = derivedStatsOf({ rank });
+    ])('%s', (_name, rankBonus, expected) => {
+        const result = derivedStatsOf({ rankBonus });
 
         expect(result).toEqual(expected);
     });
@@ -155,8 +163,8 @@ describe('derived stats', () => {
     it('race bonuses and rank percentages combine', () => {
         const result = computeDerivedStats({
             baseStats: { for: 10, con: 8, res: 6, foc: 4, ins: 2 },
-            race: { forBonus: 2, speedBonus: 1, healthBonus: 5, manaBonus: 3 },
-            rank: { hpPercent: 10, aetherPercent: 20 },
+            race: { forceBonus: 2, speedBonus: 1, healthBonus: 5, manaBonus: 3 },
+            rankBonus: { hpPercent: 10, aetherPercent: 20 },
             primaryStatNames: ['for', 'con', 'res', 'foc', 'ins'],
         });
 
@@ -164,6 +172,42 @@ describe('derived stats', () => {
         // reactions (2 + 4) / 2 + 2 × 0.165 = 3.33; speed 26 / 3 + 12 × 0.165 + 1 = 11.65
         // hp (6 × 2 + 8 × 3 + 5) × 1.1 = 45.1; aether (3 + √32 × 5) × 1.2 = 37.54
         expect(result).toEqual({ reactions: 3, speed: 11, hp: 45, aether: 37 });
+    });
+});
+
+describe('cumulative rank bonus', () => {
+    // Ranks 1-4 as seeded: rank 1 grants nothing, every rank above it +4% hp and +3% aether
+    function makeSeededRanks() {
+        return [
+            { level: 3, hpPercent: 4, aetherPercent: 3 },
+            { level: 1, hpPercent: 0, aetherPercent: 0 },
+            { level: 4, hpPercent: 4, aetherPercent: 3 },
+            { level: 2, hpPercent: 4, aetherPercent: 3 },
+        ];
+    }
+
+    it.each([
+        ['rank 1 has no bonus', 1, { hpPercent: 0, aetherPercent: 0 }],
+        ['rank 2 has its own percentages', 2, { hpPercent: 4, aetherPercent: 3 }],
+        ['rank 3 adds rank 2 and rank 3', 3, { hpPercent: 8, aetherPercent: 6 }],
+        ['rank 4 adds every rank up to it', 4, { hpPercent: 12, aetherPercent: 9 }],
+        ['a rank above the last defined one stops at the last', 9, { hpPercent: 12, aetherPercent: 9 }],
+    ])('%s', (_name, level, expected) => {
+        const result = cumulativeRankBonus(makeSeededRanks(), level);
+
+        expect(result).toEqual(expected);
+    });
+
+    it('with no ranks defined there is no bonus', () => {
+        const result = cumulativeRankBonus([], 3);
+
+        expect(result).toEqual({ hpPercent: 0, aetherPercent: 0 });
+    });
+
+    it('a rank row without percentages adds nothing', () => {
+        const result = cumulativeRankBonus([{ level: 1 }, { level: 2, hpPercent: 4, aetherPercent: 3 }], 2);
+
+        expect(result).toEqual({ hpPercent: 4, aetherPercent: 3 });
     });
 });
 
@@ -177,28 +221,25 @@ function makeRanks() {
 }
 
 function makeCharacter(overrides = {}) {
-    return { rank: 1, experience: 0, statPoints: 0, skillPoints: 5, stats: { hp: 100, aether: 50 }, ...overrides };
+    return { rank: 1, experience: 0, statPoints: 0, skillPoints: 5, ...overrides };
 }
 
 describe('level-up', () => {
     it.each([
         ['one below rank 2 stays at rank 1', 499,
-            { leveledUp: false, rank: 1, statPoints: 0, skillPoints: 5, stats: { hp: 100, aether: 50 } }],
-        // hp 100 × 1.04 = 104; aether 50 × 1.03 = 51.5
+            { leveledUp: false, rank: 1, statPoints: 0, skillPoints: 5 }],
         ['exactly at rank 2 reaches rank 2', 500,
-            { leveledUp: true, rank: 2, statPoints: 16, skillPoints: 8, stats: { hp: 104, aether: 51 } }],
+            { leveledUp: true, rank: 2, statPoints: 16, skillPoints: 8 }],
         ['one below rank 3 stops at rank 2', 749,
-            { leveledUp: true, rank: 2, statPoints: 16, skillPoints: 8, stats: { hp: 104, aether: 51 } }],
-        // two steps: hp 104 × 1.04 = 108.16; aether 51 × 1.03 = 52.53
+            { leveledUp: true, rank: 2, statPoints: 16, skillPoints: 8 }],
         ['exactly at rank 3 climbs two ranks in one go', 750,
-            { leveledUp: true, rank: 3, statPoints: 32, skillPoints: 11, stats: { hp: 108, aether: 52 } }],
+            { leveledUp: true, rank: 3, statPoints: 32, skillPoints: 11 }],
         ['one below rank 4 stops at rank 3', 1199,
-            { leveledUp: true, rank: 3, statPoints: 32, skillPoints: 11, stats: { hp: 108, aether: 52 } }],
-        // three steps: hp 108 × 1.04 = 112.32; aether 52 × 1.03 = 53.56
+            { leveledUp: true, rank: 3, statPoints: 32, skillPoints: 11 }],
         ['exactly at rank 4 climbs three ranks in one go', 1200,
-            { leveledUp: true, rank: 4, statPoints: 48, skillPoints: 14, stats: { hp: 112, aether: 53 } }],
+            { leveledUp: true, rank: 4, statPoints: 48, skillPoints: 14 }],
         ['far past the last rank stops at the last rank', 50000,
-            { leveledUp: true, rank: 4, statPoints: 48, skillPoints: 14, stats: { hp: 112, aether: 53 } }],
+            { leveledUp: true, rank: 4, statPoints: 48, skillPoints: 14 }],
     ])('experience %s', (_name, experience, expected) => {
         const result = levelUp(makeCharacter({ experience }), makeRanks());
 
@@ -210,21 +251,16 @@ describe('level-up', () => {
 
         const result = levelUp(character, makeRanks());
 
-        expect(result).toEqual({ leveledUp: true, rank: 3, statPoints: 20, skillPoints: 4, stats: { hp: 104, aether: 51 } });
+        expect(result).toEqual({ leveledUp: true, rank: 3, statPoints: 20, skillPoints: 4 });
     });
 
-    it('a rank without hp or aether percentages grants only points', () => {
-        const ranks = [{ level: 2, requiredExperience: 100, statPoints: 3, skillPoints: 1, aetherPercent: 0, hpPercent: 0 }];
+    // G9 regression: level-up used to multiply stored hp/aether by the rank percent on top of the formula
+    it('hp and aether are not touched by the level-up (the derived stats are recomputed instead)', () => {
+        const character = makeCharacter({ experience: 500, stats: { hp: 100, aether: 50 } });
 
-        const result = levelUp(makeCharacter({ experience: 100 }), ranks);
+        const result = levelUp(character, makeRanks());
 
-        expect(result).toEqual({ leveledUp: true, rank: 2, statPoints: 3, skillPoints: 6, stats: { hp: 100, aether: 50 } });
-    });
-
-    it('stats without hp or aether are left as they are', () => {
-        const result = levelUp(makeCharacter({ experience: 500, stats: { for: 5 } }), makeRanks());
-
-        expect(result.stats).toEqual({ for: 5 });
+        expect(result).toEqual({ leveledUp: true, rank: 2, statPoints: 16, skillPoints: 8 });
     });
 
     it('a missing level stops the climb', () => {
@@ -236,7 +272,7 @@ describe('level-up', () => {
     it('with no ranks defined nobody levels up', () => {
         const result = levelUp(makeCharacter({ experience: 1000 }), []);
 
-        expect(result).toEqual({ leveledUp: false, rank: 1, statPoints: 0, skillPoints: 5, stats: { hp: 100, aether: 50 } });
+        expect(result).toEqual({ leveledUp: false, rank: 1, statPoints: 0, skillPoints: 5 });
     });
 
     it('leaves the character it was given untouched', () => {

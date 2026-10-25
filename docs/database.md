@@ -87,7 +87,9 @@ the defaults with `POST /api/{combat-constants,mastery-tiers,skill-validation-ru
 
 After editing a cached table (races, skills, branches, types, stat definitions, ranks, combat constants,
 mastery tiers) in SQL, call `POST /api/admin/cache/reload[/:entity]` or restart; see
-[`architecture.md`](architecture.md#cross-cutting-subsystems).
+[`architecture.md`](architecture.md#cross-cutting-subsystems). Characters' stored derived stats
+(`reactions`, `speed`, `hp`, `aether`) don't follow a race or rank edit on their own: run
+`POST /api/admin/characters/recompute-stats` afterwards (it also resets current HP/aether to the maximum).
 
 ## Related
 
