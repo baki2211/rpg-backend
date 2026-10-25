@@ -4,41 +4,10 @@ import { SessionService } from './SessionService.js';
 import { HttpError } from '../utils/HttpError.js';
 import { logger } from '../utils/logger.js';
 
-const VALID_STATUSES = ['open', 'closed', 'frozen'];
-
 export class SessionLifecycleService {
   constructor() {
     this.sessionRepository = AppDataSource.getRepository(Session);
     this.sessionService = new SessionService();
-  }
-
-  async updateSessionStatus(sessionId, status) {
-    if (!VALID_STATUSES.includes(status)) {
-      throw new HttpError(400, 'Invalid status. Must be open, closed, or frozen');
-    }
-
-    const session = await this.sessionService.getSession(sessionId);
-    if (!session) {
-      throw new HttpError(404, 'Session not found');
-    }
-
-    const oldStatus = session.status;
-
-    await this.sessionRepository.update(
-      { id: sessionId },
-      { status, updatedAt: new Date() }
-    );
-
-    const updatedSession = await this.sessionService.getSession(sessionId);
-
-    logger.session(`Session ${sessionId} status changed from ${oldStatus} to ${status}`, {
-      sessionId,
-      locationId: session.locationId,
-      oldStatus,
-      newStatus: status
-    });
-
-    return updatedSession;
   }
 
   async freezeSession(sessionId) {

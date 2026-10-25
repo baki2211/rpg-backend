@@ -89,9 +89,8 @@ Examples (see `routes/session.js` for the full list):
 - `GET /location/:locationId` and `GET /location/:locationId/participants`
 - `POST /:sessionId/{freeze,unfreeze,close}`
 - `POST /:sessionId/participants`, `DELETE /:sessionId/participants/:characterId`
-- `PUT /:sessionId/{status,active}`
 
-Only `POST /:sessionId/{freeze,unfreeze,close}` require master/admin; the other writes are open to any logged-in user. 
+Every write (create, participants, freeze/unfreeze/close) requires master/admin. Players join a location's session implicitly through `SessionParticipantService.ensureActiveSessionForLocation`, not through these routes.
 
 ## Events (`/api/events`)
 

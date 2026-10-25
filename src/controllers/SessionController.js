@@ -56,18 +56,6 @@ export class SessionController {
     res.json(await participantService.getLocationParticipants(InputValidator.validateLocationId(req.params.locationId)));
   });
 
-  static updateSessionStatus = asyncHandler(async (req, res) => {
-    res.json(await lifecycleService.updateSessionStatus(InputValidator.validateId(req.params.sessionId), req.body.status));
-  });
-
-  static updateSessionActive = asyncHandler(async (req, res) => {
-    const { isActive } = req.body;
-    if (typeof isActive !== 'boolean') {
-      throw new HttpError(400, 'isActive must be a boolean');
-    }
-    res.json(await sessionService.updateSessionActive(InputValidator.validateId(req.params.sessionId), isActive));
-  });
-
   static getClosedSessions = asyncHandler(async (req, res) => {
     res.json(await queryService.getClosedSessions());
   });

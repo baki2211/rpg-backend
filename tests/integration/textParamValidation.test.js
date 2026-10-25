@@ -33,9 +33,9 @@ describe('a malformed text param is a bad request', () => {
   });
 
   it('a session without a name is refused and nothing is saved', async () => {
-    const player = await makeUser();
+    const master = await makeUser({ role: 'master' });
     const location = await makeLocation();
-    const client = await logIn(app, player);
+    const client = await logIn(app, master);
 
     const response = await client.post('/api/sessions', { locationId: location.id });
 
@@ -45,9 +45,9 @@ describe('a malformed text param is a bad request', () => {
   });
 
   it('a session name longer than 100 characters is refused and nothing is saved', async () => {
-    const player = await makeUser();
+    const master = await makeUser({ role: 'master' });
     const location = await makeLocation();
-    const client = await logIn(app, player);
+    const client = await logIn(app, master);
 
     const response = await client.post('/api/sessions', { name: 'a'.repeat(101), locationId: location.id });
 
@@ -59,9 +59,9 @@ describe('a malformed text param is a bad request', () => {
 
 describe('a valid session name', () => {
   it('is saved trimmed', async () => {
-    const player = await makeUser();
+    const master = await makeUser({ role: 'master' });
     const location = await makeLocation();
-    const client = await logIn(app, player);
+    const client = await logIn(app, master);
 
     const response = await client.post('/api/sessions', { name: '  Tavern  ', locationId: location.id });
 

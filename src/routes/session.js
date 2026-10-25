@@ -18,8 +18,8 @@ router.get('/active', SessionController.getAllSessions);
 // Get closed sessions
 router.get('/closed', SessionController.getClosedSessions);
 
-// Create a new session
-router.post('/', SessionController.createSession);
+// Create a new session (admin/master only)
+router.post('/', masterOrAdmin, SessionController.createSession);
 
 // Get session by location
 router.get('/location/:locationId', SessionController.getSessionByLocation);
@@ -39,17 +39,11 @@ router.post('/:sessionId/close', masterOrAdmin, SessionController.closeSession);
 // Get all participants in a session
 router.get('/:sessionId/participants', SessionController.getParticipants);
 
-// Add participant to session
-router.post('/:sessionId/participants', SessionController.addParticipant);
+// Add participant to session (admin/master only)
+router.post('/:sessionId/participants', masterOrAdmin, SessionController.addParticipant);
 
-// Remove participant from session
-router.delete('/:sessionId/participants/:characterId', SessionController.removeParticipant);
-
-// Update session status (freeze/unfreeze) - legacy endpoint
-router.put('/:sessionId/status', SessionController.updateSessionStatus);
-
-// Update session active state (open/close) - legacy endpoint
-router.put('/:sessionId/active', SessionController.updateSessionActive);
+// Remove participant from session (admin/master only)
+router.delete('/:sessionId/participants/:characterId', masterOrAdmin, SessionController.removeParticipant);
 
 // Get a specific session
 router.get('/:id', SessionController.getSession);

@@ -43,12 +43,4 @@ export class SessionService {
       relations: { participants: true }
     });
   }
-
-  async updateSessionActive(sessionId, isActive) {
-    await this.sessionRepository.update(
-      { id: sessionId },
-      { isActive, updatedAt: new Date() }
-    );
-    return await this.getSession(sessionId);
-  }
 }

@@ -59,9 +59,9 @@ describe('a malformed or out-of-range id in a request body is a bad request', ()
   });
 
   it('a session participant beyond the integer range is refused and nobody joins', async () => {
-    const player = await makeUser();
+    const master = await makeUser({ role: 'master' });
     const session = await makeSession({ location: await makeLocation() });
-    const client = await logIn(app, player);
+    const client = await logIn(app, master);
 
     const response = await client.post(`/api/sessions/${session.id}/participants`, { characterId: '2147483648' });
 
