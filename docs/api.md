@@ -67,7 +67,6 @@ All API routes are mounted under `/api` in `src/app.js`:
 | GET | `/api/health/memory/status` | memory stats, cleanup job status, cache + compression stats |
 | GET | `/api/health/rate-limits` | active rate-limit keys |
 | POST | `/api/health/gc` | force garbage collection / alternative cleanup |
-| POST | `/api/health/cleanup` | presence WS cleanup |
 | POST | `/api/health/database/cleanup` | release idle DB connections |
 | POST | `/api/health/cache/clear` | clear staticDataCache (body `{ entity }` optional) |
 | POST | `/api/health/cache/cleanup` | drop expired cache entries |

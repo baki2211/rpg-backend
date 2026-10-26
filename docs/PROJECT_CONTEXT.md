@@ -26,7 +26,7 @@ src/
   services/             # load → domain → persist shells (CombatService, SkillEngine, etc.)
   models/               # TypeORM EntitySchema definitions
   middleware/           # auth, rate limit, validation, compression, query monitor
-  websockets/           # ChatWebSocket, PresenceWebSocket, upgradeHandler
+  websockets/           # ChatWebSocket, upgradeHandler
   jobs/                 # seed.js, sessionExpiration, memoryCleanup
   utils/                # logger, auditLogger, memoryManager, dbHealthMonitor, caches
   migrations/           # TypeORM migrations, schema and data (see database.md)

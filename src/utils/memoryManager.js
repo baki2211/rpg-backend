@@ -18,8 +18,8 @@ class MemoryManager {
     };
   }
 
-  setWebSocketServers(presenceWS, chatWS) {
-    this.webSocketServers = { presenceWS, chatWS };
+  setWebSocketServers(chatWS) {
+    this.webSocketServers = { chatWS };
   }
 
   startMonitoring() {
@@ -167,10 +167,6 @@ class MemoryManager {
     // Close all WebSocket connections immediately
     if (this.webSocketServers) {
       try {
-        if (this.webSocketServers.presenceWS?.cleanup) {
-          this.webSocketServers.presenceWS.cleanup();
-          logger.info('Emergency: Closed all presence WebSocket connections');
-        }
         if (this.webSocketServers.chatWS?.cleanup) {
           this.webSocketServers.chatWS.cleanup();
           logger.info(' Emergency: Closed all chat WebSocket connections');
@@ -245,20 +241,7 @@ class MemoryManager {
     // Close some WebSocket connections if we have too many
     if (this.webSocketServers) {
       try {
-        const presenceCount = this.webSocketServers.presenceWS?.getConnectionCount?.() || 0;
         const chatCount = this.webSocketServers.chatWS?.getConnectionCount?.() || 0;
-        
-        if (presenceCount > 5) {
-          logger.warn(`Too many presence connections (${presenceCount}), forcing cleanup`);
-          // Force cleanup of stale connections
-          if (this.webSocketServers.presenceWS?.wss) {
-            this.webSocketServers.presenceWS.wss.clients.forEach(ws => {
-              if (ws.readyState !== ws.OPEN) {
-                ws.terminate();
-              }
-            });
-          }
-        }
         
         if (chatCount > 10) {
           logger.warn(`Too many chat connections (${chatCount}), forcing cleanup`);

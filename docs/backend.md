@@ -90,8 +90,6 @@ service, and return `{ message, data? }`-style JSON; errors are `HttpError`s ren
 
 - `upgradeHandler.js`: `/ws/chat` only; cookie JWT; memory-based connection cap.
 - `ChatWebSocket.js`: chat rooms, pushes.
-- `PresenceWebSocket.js`: online-user tracking; currently unreachable (see
-  [`known_issues.md`](known_issues.md)). Live presence is the SSE stream in `routes/presenceRoutes.js`.
 
 ## Jobs (`src/jobs/`)
 

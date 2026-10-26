@@ -44,12 +44,10 @@ const router = express.Router();
 const adminOnly = [authenticateToken, isAdmin];
 const audited = AuditLogger.auditAdminMaintenance.bind(AuditLogger);
 
-let presenceWebSocketServer = null;
 let chatWebSocketServer = null;
 
 // Set WebSocket server references for monitoring
-export const setWebSocketServers = (presence, chat) => {
-  presenceWebSocketServer = presence;
+export const setWebSocketServers = (chat) => {
   chatWebSocketServer = chat;
 };
 
@@ -110,15 +108,11 @@ router.get('/', rateLimitHealthChecks, async (req, res) => {
     // Get connection counts
     const getConnectionCounts = () => {
       try {
-        return {
-          presence: presenceWebSocketServer?.getConnectionCount?.() || 0,
-          chat: chatWebSocketServer?.getConnectionCount?.() || 0,
-          total: (presenceWebSocketServer?.getConnectionCount?.() || 0) + 
-                 (chatWebSocketServer?.getConnectionCount?.() || 0)
-        };
+        const chat = chatWebSocketServer?.getConnectionCount?.() || 0;
+        return { chat, total: chat };
       } catch (error) {
         logger.warn('Connection count check failed:', error.message);
-        return { presence: 0, chat: 0, total: 0 };
+        return { chat: 0, total: 0 };
       }
     };
 
@@ -184,7 +178,7 @@ router.get('/', rateLimitHealthChecks, async (req, res) => {
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
       memory: { status: 'unknown' },
-      connections: { presence: 0, chat: 0, total: 0 },
+      connections: { chat: 0, total: 0 },
       gc_available: false,
       error: 'Health check failed'
     });
@@ -220,10 +214,6 @@ router.get('/status', adminOnly, (req, res) => {
       system: cpuUsage.system
     },
     websockets: {
-      presence: {
-        connections: presenceWebSocketServer?.getConnectionCount?.() || 0,
-        status: presenceWebSocketServer ? 'active' : 'inactive'
-      },
       chat: {
         connections: chatWebSocketServer?.getConnectionCount?.() || 0,
         status: chatWebSocketServer ? 'active' : 'inactive'
@@ -258,25 +248,6 @@ router.post('/gc', adminOnly, audited('memory.gc', (req, res) => {
     gcAvailable: !!global.gc
   });
   return { native_gc: success, rss_before_mb: beforeStats.rss.mb, rss_after_mb: afterStats.rss.mb };
-}));
-
-// Add cleanup endpoint
-router.post('/cleanup', adminOnly, audited('websocket.cleanup', (req, res) => {
-  if (presenceWebSocketServer?.cleanup) {
-    logger.info('Manual cleanup requested via API');
-    presenceWebSocketServer.cleanup();
-    res.json({ 
-      success: true, 
-      message: 'WebSocket connections cleaned up',
-      presenceConnections: presenceWebSocketServer.getConnectionCount?.() || 0,
-      chatConnections: chatWebSocketServer?.getConnectionCount?.() || 0
-    });
-  } else {
-    res.status(503).json({ 
-      success: false, 
-      message: 'WebSocket servers not available' 
-    });
-  }
 }));
 
 // Database health endpoint

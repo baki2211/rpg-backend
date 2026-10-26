@@ -32,8 +32,7 @@ data, call them, persist, and notify. Background jobs are in-process intervals s
   header, and computes a connection cap from RSS pressure: 15, then 12 above 70% and 8 above 85% of
   `WS_MEMORY_BUDGET_MB` (default 512). Over the cap → 503.
 - Presence runs over **SSE**: `GET /api/presence/events`, with `POST /api/presence/location` and
-  `/heartbeat` (`routes/presenceRoutes.js`). A presence WebSocket server is also created and cross-wired
-  (`chatWS.setPresenceBroadcaster(presenceWS.broadcastOnlineUsers)`), but nothing upgrades into it;
+  `/heartbeat` (`routes/presenceRoutes.js`). There is no presence WebSocket.
 
 ## Layering
 

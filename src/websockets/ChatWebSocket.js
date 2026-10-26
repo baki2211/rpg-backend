@@ -33,14 +33,9 @@ export const setupWebSocketServer = () => {
   
   const locationConnections = new Map();
   const userConnections = new Map(); // Track user connections to prevent duplicates
-  let presenceBroadcaster = null;
   const MAX_CONNECTIONS_PER_LOCATION = 8; // Increased per-location limit
   const MAX_TOTAL_CONNECTIONS = 30; // Increased total connection limit
   let totalConnections = 0;
-
-  const setPresenceBroadcaster = (broadcaster) => {
-    presenceBroadcaster = broadcaster;
-  };
 
   // More aggressive cleanup interval for stale connections
   const cleanupInterval = setInterval(() => {
@@ -135,11 +130,6 @@ export const setupWebSocketServer = () => {
     ws.lastActivity = new Date();
     ws.messageCount = 0;
     ws.isAlive = true; // For heartbeat monitoring
-
-    // Trigger presence broadcast when user joins (debounced)
-    if (presenceBroadcaster && userId) {
-      setTimeout(() => presenceBroadcaster(), 1000);
-    }
 
     // Rate limiting reset interval
     const rateLimitReset = setInterval(() => {
@@ -272,11 +262,6 @@ export const setupWebSocketServer = () => {
       clearInterval(pingInterval);
       
       logger.debug(`Chat connection closed for user ${userId} in location ${locationId}. Total connections: ${totalConnections}`);
-
-      // Trigger presence broadcast when user leaves (debounced)
-      if (presenceBroadcaster && userId) {
-        setTimeout(() => presenceBroadcaster(), 1000);
-      }
     });
 
     ws.on('error', (error) => {
@@ -433,7 +418,6 @@ export const setupWebSocketServer = () => {
 
   return {
     wss,
-    setPresenceBroadcaster,
     cleanup,
     getConnectionCount: () => totalConnections,
     handleUpgrade(request, socket, head) {

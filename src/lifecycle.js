@@ -51,7 +51,7 @@ export async function startServer({ server, port }) {
   return { sessionExpirationInterval };
 }
 
-export function installShutdownHandlers({ server, chatWS, presenceWS, intervals }) {
+export function installShutdownHandlers({ server, chatWS, intervals }) {
   const gracefulShutdown = (signal) => {
     logger.info(`Received ${signal}. Starting graceful shutdown...`);
 
@@ -62,7 +62,6 @@ export function installShutdownHandlers({ server, chatWS, presenceWS, intervals 
         uptime_seconds: process.uptime(),
         memory_usage: process.memoryUsage(),
         active_connections: {
-          presence: presenceWS?.getConnectionCount?.() || 0,
           chat: chatWS?.getConnectionCount?.() || 0,
         },
       },
@@ -71,11 +70,6 @@ export function installShutdownHandlers({ server, chatWS, presenceWS, intervals 
 
     server.close(() => {
       logger.info('HTTP server closed');
-
-      if (presenceWS?.cleanup) {
-        presenceWS.cleanup();
-        logger.info('Presence WebSocket connections closed');
-      }
 
       if (chatWS?.cleanup) {
         chatWS.cleanup();
