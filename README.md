@@ -159,7 +159,7 @@ npm run migration:revert
 
 ## Testing
 
-Tests use [Vitest](https://vitest.dev/). Unit tests (`tests/unit/`, `vitest.config.js`) cover the pure game rules in `src/domain/` and need no database. Integration tests (`tests/integration/`, `vitest.integration.config.js`) use supertest against real Postgres, on a dedicated `rpg_test` database created and migrated automatically. CI runs `npm test` (unit) on every push and PR (`.github/workflows/pr-tests.yml`).
+Tests use [Vitest](https://vitest.dev/). Unit tests (`tests/unit/`, `vitest.config.js`) cover the pure game rules in `src/domain/` and need no database. Integration tests (`tests/integration/`, `vitest.integration.config.js`) use supertest against real Postgres, on a dedicated `rpg_test` database created and migrated automatically. CI (`.github/workflows/node.js.yml`) runs the unit suite on Node 20 and 22 and the integration suite against Postgres on every push and PR to `main`.
 
 ```bash
 npm test                                   # unit tests

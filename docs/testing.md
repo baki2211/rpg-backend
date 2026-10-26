@@ -13,10 +13,9 @@
 `npm run test:all` runs both. Single file: `npx vitest run <path>` (add
 `--config vitest.integration.config.js` for integration). Single test: `-t "<name substring>"`.
 
-CI (`.github/workflows/`):
+CI (`.github/workflows/`, push and PR to `main`):
 - `node.js.yml` `build`: unit suite on Node 20 and 22.
 - `node.js.yml` `integration`: integration suite on Node 22 with a `postgres:12` service.
-- `pr-tests.yml`: unit suite again on Node 22, on every push (overlaps with `build`).
 
 ## Unit tests
 
